@@ -63,7 +63,7 @@ const DOM = {
 };
 
 const state = {
-  activeView: "workbench",
+  activeView: "command",
   pairingToken: sessionStorage.getItem("omnivla-pairing-token") || "",
   status: null,
   activePlan: null,
@@ -171,7 +171,7 @@ const hidePairingPrompt = () => {
 };
 
 const openView = (view) => {
-  if (!["workbench", "activity", "safety", "settings"].includes(view)) return;
+  if (!["command", "live", "history", "safety", "runtime"].includes(view)) return;
   state.activeView = view;
   document.querySelectorAll("[data-view]").forEach((panel) => {
     panel.classList.toggle("is-active", panel.dataset.view === view);
@@ -526,6 +526,7 @@ const confirmApproval = async (event) => {
     DOM.approvalDialog.close();
     state.pendingApproval = null;
     showToast("Run approved. OmniVLA is taking the first step.", "success");
+    openView("live");
     await refreshStatus();
   } catch (error) {
     showToast(error.message);
@@ -539,7 +540,7 @@ const newChat = async () => {
     await api("/api/chats/new", { method: "POST", body: "{}" });
     DOM.taskInput.value = "";
     await refreshStatus();
-    openView("workbench");
+    openView("command");
     DOM.taskInput.focus();
   } catch (error) {
     showToast(error.message);
@@ -550,7 +551,7 @@ const switchChat = async (chatId) => {
   try {
     await api("/api/chats/switch", { method: "POST", body: JSON.stringify({ id: chatId }) });
     await refreshStatus();
-    openView("workbench");
+    openView("command");
   } catch (error) {
     showToast(error.message);
   }

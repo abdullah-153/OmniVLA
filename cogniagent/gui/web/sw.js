@@ -1,5 +1,5 @@
-const CACHE_NAME = "omnivla-command-center-v3";
-const APP_SHELL = ["/", "/assets/app.css?v=3", "/assets/app.js?v=3", "/manifest.webmanifest", "/assets/icons/omnivla-mark.svg"];
+const CACHE_NAME = "omnivla-command-center-v4";
+const APP_SHELL = ["/", "/assets/app.css?v=4", "/assets/app.js?v=4", "/manifest.webmanifest", "/assets/icons/omnivla-mark.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));

@@ -3,6 +3,28 @@ const path = require('path');
 
 let win;
 
+function revealWindow(window) {
+  if (!window || window.isDestroyed()) return;
+  if (typeof window.setOpacity !== 'function') {
+    window.show();
+    return;
+  }
+
+  window.setOpacity(0);
+  window.show();
+  const frames = 9;
+  let frame = 0;
+  const fadeTimer = setInterval(() => {
+    if (!window || window.isDestroyed()) {
+      clearInterval(fadeTimer);
+      return;
+    }
+    frame += 1;
+    window.setOpacity(Math.min(1, frame / frames));
+    if (frame >= frames) clearInterval(fadeTimer);
+  }, 20);
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1280,
@@ -10,6 +32,7 @@ function createWindow() {
     minWidth: 1000,
     minHeight: 700,
     frame: false, // Make window frameless for custom title bar
+    show: false,
     backgroundColor: "#08090a",
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -41,6 +64,10 @@ function createWindow() {
     if (!url.startsWith('http://127.0.0.1:8000/')) {
       event.preventDefault();
     }
+  });
+
+  win.once('ready-to-show', () => {
+    revealWindow(win);
   });
 
   loadApp();

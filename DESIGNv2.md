@@ -5,6 +5,26 @@
 
 Linear's design system is a midnight command center built on near-black surfaces (#08090a) with paper-white type and one electric acid-lime accent (#e4f222) that functions as a functional flashlight — small, high-contrast, and used sparingly to signal action. The interface treats darkness as a substrate rather than a theme: text is crisp white at tight tracking (-0.022em), weights sit in a low 400–510 band rather than bold, and borders are hairline-thin (0.5px) to let geometry do the work that shadows usually would. Components feel precision-machined — 6px and 12px radii, compact 8–12px paddings, and almost no decorative ornament — letting the product UI (issue cards, kanban boards, AI agent panels) be the only visual texture in an otherwise quiet system.
 
+## OmniVLA application composition
+
+This reference is applied to OmniVLA as a focused application, not a long
+marketing page. The authoritative product layout rules live in `DESIGN.md`.
+
+- The command center uses five discrete workspaces: Command, Live, History,
+  Safety, and Runtime. One workspace is active at a time.
+- Command holds only intent and reviewed runbook. Live holds only current
+  phase, screen evidence, actual trace, and intervention controls. History,
+  Safety, and Runtime keep supporting information out of the active task.
+- Default content width is 920px; only Live and History may widen to 1100px.
+  Use one surface for one owned decision or evidence block; do not nest cards
+  merely to simulate richness.
+- The primary action is acid lime. Phase colors are reserved for execution
+  telemetry: teal thinking, lime acting, violet verification, coral human
+  intervention/error, green verified completion.
+- Motion is restrained and stateful: page transitions, active navigation,
+  live evidence pulse, and animated execution edges. It must use transform /
+  opacity where possible and honor reduced-motion preferences.
+
 
 
 ## Tokens — Colors

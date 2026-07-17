@@ -8,11 +8,14 @@
   </head>
   <body>
     <main class="execution-shell" id="execution-shell" data-tone="idle" aria-live="polite">
+      <div class="execution-atmosphere" aria-hidden="true"><i></i><i></i><i></i></div>
       <div class="screen-edges" aria-hidden="true">
         <span class="screen-edge edge-top"></span>
         <span class="screen-edge edge-right"></span>
         <span class="screen-edge edge-bottom"></span>
         <span class="screen-edge edge-left"></span>
+        <span class="edge-runner runner-top"></span><span class="edge-runner runner-right"></span>
+        <span class="edge-runner runner-bottom"></span><span class="edge-runner runner-left"></span>
         <i class="edge-corner corner-nw"></i><i class="edge-corner corner-ne"></i>
         <i class="edge-corner corner-se"></i><i class="edge-corner corner-sw"></i>
       </div>
@@ -20,13 +23,13 @@
       <section class="run-beacon" id="run-beacon" aria-label="OmniVLA execution status">
         <header class="beacon-header">
           <div class="beacon-brand"><span class="mark" aria-hidden="true">△</span><span>OmniVLA</span></div>
-          <span class="beacon-state" id="beacon-state">Standing by</span>
+          <div class="beacon-meta"><span class="beacon-state" id="beacon-state">Standing by</span><span class="phase-duration" id="phase-duration">0s</span></div>
         </header>
         <div class="beacon-main">
           <p class="phase-label" id="phase-label">Preparing local control plane</p>
           <p class="action-text" id="action-text">No active run.</p>
         </div>
-        <div class="signal-rail" aria-hidden="true"><span></span></div>
+        <div class="signal-rail" aria-hidden="true"><span></span><i></i><b></b></div>
         <section class="trace-panel" aria-label="Actual execution trace">
           <div class="trace-heading"><span>Observed actions</span><span id="trace-count">No actions yet</span></div>
           <ol class="trace-list" id="trace-list"></ol>

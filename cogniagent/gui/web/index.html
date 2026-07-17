@@ -8,22 +8,23 @@
     <title>OmniVLA — Command Center</title>
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/assets/icons/omnivla-mark.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/assets/app.css?v=3" />
-    <script src="/assets/app.js?v=3" defer></script>
+    <link rel="stylesheet" href="/assets/app.css?v=4" />
+    <script src="/assets/app.js?v=4" defer></script>
   </head>
   <body>
     <div class="app-shell" id="app-shell" data-run-state="idle">
       <header class="product-bar" aria-label="Application controls">
         <div class="bar-inner">
-          <a class="wordmark" href="#workbench" aria-label="OmniVLA command center">
+          <a class="wordmark" href="#command" data-view-target="command" aria-label="OmniVLA command center">
             <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 2 22 21H2L12 2Zm0 5.1L7.2 16h9.6L12 7.1Z" /></svg>
             <span>OmniVLA</span>
           </a>
-          <nav class="product-nav" aria-label="Command center sections">
-            <button class="nav-link is-active" data-view-target="workbench" aria-current="page">Command</button>
-            <button class="nav-link" data-view-target="activity">Trace</button>
+          <nav class="product-nav" aria-label="Command center pages">
+            <button class="nav-link is-active" data-view-target="command" aria-current="page">Command</button>
+            <button class="nav-link" data-view-target="live">Live</button>
+            <button class="nav-link" data-view-target="history">History</button>
             <button class="nav-link" data-view-target="safety">Safety</button>
-            <button class="nav-link" data-view-target="settings">Runtime</button>
+            <button class="nav-link" data-view-target="runtime">Runtime</button>
           </nav>
           <div class="bar-end">
             <div class="titlebar-status" id="titlebar-status" aria-live="polite">
@@ -52,20 +53,16 @@
           </form>
         </div>
 
-        <section class="view-panel is-active" id="workbench" data-view="workbench" aria-labelledby="workbench-title">
-          <header class="hero-heading">
+        <section class="view-panel is-active command-view" id="command" data-view="command" aria-labelledby="command-title">
+          <header class="page-heading">
             <div>
               <p class="eyebrow">Supervised computer use / local-first</p>
-              <h1 id="workbench-title">Command your desktop<br />with evidence in view.</h1>
+              <h1 id="command-title">Set the outcome.<br />Review the route.</h1>
             </div>
-            <div class="hero-aside">
-              <p>Every run begins with a reviewed plan, then stays observable at each safe boundary.</p>
-              <button class="text-button" data-action="open-safety">Review control policy <span aria-hidden="true">→</span></button>
-              <button class="button button-ghost" id="install-app" hidden>Install companion</button>
-            </div>
+            <p class="page-lede">Compose one clear intent. OmniVLA returns a reviewable runbook before it can touch your desktop.</p>
           </header>
 
-          <section class="intent-composer" aria-labelledby="intent-label">
+          <section class="intent-composer focus-surface" aria-labelledby="intent-label">
             <div class="composer-topline">
               <label id="intent-label" for="task-input">What should OmniVLA accomplish?</label>
               <span class="keyboard-hint">Ctrl / ⌘ + Enter</span>
@@ -74,68 +71,76 @@
             <div class="composer-footer">
               <span class="composer-status"><span class="status-dot is-safe"></span><span id="composer-policy">Plan review required</span></span>
               <div class="composer-actions">
-                <button class="button button-ghost" data-action="use-example">Use example</button>
+                <button class="text-button" data-action="use-example">Use example</button>
                 <button class="button button-primary" id="draft-plan">Draft runbook <span aria-hidden="true">↵</span></button>
               </div>
             </div>
           </section>
 
-          <section class="recent-runs" aria-labelledby="recent-runs-label">
-            <div class="section-label-row">
-              <p id="recent-runs-label" class="eyebrow">Recent runs</p>
-              <button class="text-icon" data-action="new-chat" aria-label="Create a new run">+ New run</button>
+          <article class="surface review-surface">
+            <div class="surface-heading">
+              <div>
+                <p class="eyebrow">Reviewed intent</p>
+                <h2>Runbook</h2>
+              </div>
+              <span class="state-label" id="plan-state">Awaiting intent</span>
             </div>
-            <div class="conversation-list" id="conversation-list"></div>
-          </section>
-
-          <section class="command-grid" aria-label="Runbook and live execution">
-            <article class="surface plan-card">
-              <div class="surface-heading">
-                <div>
-                  <p class="eyebrow">01 / reviewed intent</p>
-                  <h2>Runbook</h2>
-                </div>
-                <span class="state-label" id="plan-state">Awaiting intent</span>
+            <div class="plan-content" id="plan-content">
+              <div class="empty-state">
+                <span class="empty-mark" aria-hidden="true">△</span>
+                <p>Draft a plan to see scope, expected actions, and any safety checks before execution begins.</p>
               </div>
-              <div class="plan-content" id="plan-content">
-                <div class="empty-state">
-                  <span class="empty-mark" aria-hidden="true">△</span>
-                  <p>Draft a runbook to make the intended scope and safety checks explicit before the first action.</p>
-                </div>
-              </div>
-              <footer class="plan-footer" id="plan-footer" hidden>
-                <span class="risk-summary" id="risk-summary"></span>
+            </div>
+            <footer class="plan-footer" id="plan-footer" hidden>
+              <span class="risk-summary" id="risk-summary"></span>
+              <div class="plan-actions">
+                <button class="button button-ghost" data-view-target="live">Open live view</button>
                 <button class="button button-commit" id="approve-plan">Approve &amp; execute</button>
-              </footer>
-            </article>
+              </div>
+            </footer>
+          </article>
 
-            <article class="surface execution-card">
-              <div class="surface-heading">
-                <div>
-                  <p class="eyebrow">02 / live system</p>
-                  <h2>Execution signal</h2>
-                </div>
-                <span class="live-pulse" id="live-pulse"><i></i> Ready</span>
+          <footer class="page-footnote">
+            <button class="text-button" data-action="open-safety">Review control policy <span aria-hidden="true">→</span></button>
+            <button class="button button-ghost" id="install-app" hidden>Install companion</button>
+          </footer>
+        </section>
+
+        <section class="view-panel live-view" id="live" data-view="live" aria-labelledby="live-title">
+          <header class="page-heading page-heading--inline">
+            <div>
+              <p class="eyebrow">Only evidence in motion</p>
+              <h1 id="live-title">Live execution.</h1>
+            </div>
+            <p class="page-lede">The agent’s current action, screen evidence, and verified trace stay together—without crowding planning or runtime configuration.</p>
+          </header>
+
+          <section class="live-command surface" aria-label="Current execution status">
+            <div class="surface-heading">
+              <div>
+                <p class="eyebrow">Current run</p>
+                <h2>Execution signal</h2>
               </div>
-              <div class="metric-rack">
-                <div class="metric"><span>State</span><strong id="metric-status">Idle</strong></div>
-                <div class="metric"><span>Recorded actions</span><strong id="metric-step">—</strong></div>
-                <div class="metric"><span>Last cycle</span><strong id="metric-latency">—</strong></div>
-                <div class="metric"><span>Model</span><strong id="metric-model">Local</strong></div>
-              </div>
-              <div class="active-action" id="active-action">
-                <span class="active-marker">△</span>
-                <p>Ready for a reviewed task.</p>
-              </div>
-              <div class="control-strip">
-                <button class="button button-ghost" data-action="toggle-pause" id="pause-button" disabled>Pause</button>
-                <button class="button button-ghost" data-action="reexecute" id="retry-button" disabled>Prepare retry</button>
-                <button class="button button-danger" data-action="stop" id="stop-button" disabled>Stop run</button>
-              </div>
-            </article>
+              <span class="live-pulse" id="live-pulse"><i></i> Ready</span>
+            </div>
+            <div class="metric-rack">
+              <div class="metric"><span>State</span><strong id="metric-status">Idle</strong></div>
+              <div class="metric"><span>Recorded actions</span><strong id="metric-step">—</strong></div>
+              <div class="metric"><span>Last cycle</span><strong id="metric-latency">—</strong></div>
+              <div class="metric"><span>Model</span><strong id="metric-model">Local</strong></div>
+            </div>
+            <div class="active-action" id="active-action">
+              <span class="active-marker">△</span>
+              <p>Ready for a reviewed task.</p>
+            </div>
+            <div class="control-strip">
+              <button class="button button-ghost" data-action="toggle-pause" id="pause-button" disabled>Pause</button>
+              <button class="button button-ghost" data-action="reexecute" id="retry-button" disabled>Prepare retry</button>
+              <button class="button button-danger" data-action="stop" id="stop-button" disabled>Stop run</button>
+            </div>
           </section>
 
-          <section class="execution-stage" aria-label="Live canvas and run trace">
+          <section class="live-evidence">
             <article class="surface screen-surface">
               <div class="surface-heading">
                 <div><p class="eyebrow">Live canvas</p><h2>Newest observation</h2></div>
@@ -149,10 +154,10 @@
             <article class="surface trace-surface">
               <div class="surface-heading">
                 <div><p class="eyebrow">Observed trace</p><h2>Actual actions</h2></div>
-                <button class="text-button" data-view-target="activity">Full trace <span aria-hidden="true">→</span></button>
+                <button class="text-button" data-view-target="history">History <span aria-hidden="true">→</span></button>
               </div>
               <div class="execution-timeline" id="execution-timeline">
-                <div class="timeline-empty">A trace is created from actual model actions—not a prefilled step counter.</div>
+                <div class="timeline-empty">Execution actions will appear here as the agent works.</div>
               </div>
             </article>
           </section>
@@ -166,12 +171,17 @@
           </section>
         </section>
 
-        <section class="view-panel" id="activity" data-view="activity" aria-labelledby="activity-title">
-          <header class="hero-heading compact-heading">
-            <div><p class="eyebrow">Auditability, not theatre</p><h1 id="activity-title">Inspect the run<br />as it happened.</h1></div>
-            <button class="button button-ghost" data-action="refresh">Refresh trace</button>
+        <section class="view-panel history-view" id="history" data-view="history" aria-labelledby="history-title">
+          <header class="page-heading page-heading--inline">
+            <div><p class="eyebrow">Run record / local only</p><h1 id="history-title">Review, don’t relive.</h1></div>
+            <button class="button button-ghost" data-action="refresh">Refresh</button>
           </header>
-          <div class="two-column-layout">
+
+          <section class="history-stack">
+            <article class="surface run-library">
+              <div class="surface-heading"><div><p class="eyebrow">Saved runs</p><h2>Choose a workspace</h2></div><button class="text-icon" data-action="new-chat">+ New run</button></div>
+              <div class="conversation-list" id="conversation-list"></div>
+            </article>
             <article class="surface audit-card">
               <div class="surface-heading"><div><p class="eyebrow">Operator journal</p><h2>Control-plane events</h2></div><span class="state-label">Last 120</span></div>
               <ol class="audit-list" id="audit-list"></ol>
@@ -180,11 +190,14 @@
               <div class="surface-heading"><div><p class="eyebrow">Runtime stream</p><h2>System signals</h2></div><button class="text-button" data-action="copy-logs">Copy</button></div>
               <pre class="console-output" id="console-output">Waiting for diagnostics…</pre>
             </article>
-          </div>
+          </section>
         </section>
 
-        <section class="view-panel" id="safety" data-view="safety" aria-labelledby="safety-title">
-          <header class="hero-heading compact-heading"><div><p class="eyebrow">Human authority stays explicit</p><h1 id="safety-title">Bound autonomy<br />before it starts.</h1></div></header>
+        <section class="view-panel safety-view" id="safety" data-view="safety" aria-labelledby="safety-title">
+          <header class="page-heading">
+            <div><p class="eyebrow">Human authority stays explicit</p><h1 id="safety-title">Bound autonomy<br />before it starts.</h1></div>
+            <p class="page-lede">Safety decisions are intentional settings, not hidden defaults in the execution view.</p>
+          </header>
           <div class="two-column-layout">
             <article class="surface policy-card">
               <div class="surface-heading"><div><p class="eyebrow">Execution policy</p><h2>Control boundary</h2></div><span class="state-label" id="policy-state">Supervised</span></div>
@@ -207,8 +220,11 @@
           </div>
         </section>
 
-        <section class="view-panel" id="settings" data-view="settings" aria-labelledby="settings-title">
-          <header class="hero-heading compact-heading"><div><p class="eyebrow">Local model orchestration</p><h1 id="settings-title">Tune the runtime,<br />not the guardrails.</h1></div></header>
+        <section class="view-panel runtime-view" id="runtime" data-view="runtime" aria-labelledby="runtime-title">
+          <header class="page-heading">
+            <div><p class="eyebrow">Local model orchestration</p><h1 id="runtime-title">Tune the runtime,<br />not the guardrails.</h1></div>
+            <p class="page-lede">The 6 GB performance profile stays observable and intentionally separate from task control.</p>
+          </header>
           <form class="settings-form surface" id="settings-form">
             <div class="surface-heading"><div><p class="eyebrow">Execution environment</p><h2>Model and run settings</h2></div><span class="state-label">Applies next run</span></div>
             <div class="form-grid">
@@ -221,7 +237,6 @@
             </div>
             <div class="settings-footer"><p class="form-note">Local Holo runs use the 6 GB performance profile: one VLA slot, compact context, and a CPU critic.</p><button class="button button-primary" type="submit">Save environment</button></div>
           </form>
-
           <section class="runtime-health surface" aria-labelledby="runtime-health-title">
             <div class="surface-heading"><div><p class="eyebrow">Runtime health</p><h2 id="runtime-health-title">Inference lane</h2></div><span id="health-state">Checking</span></div>
             <dl class="health-grid"><div><dt>Free VRAM</dt><dd id="health-vram">—</dd></div><div><dt>VLA layers</dt><dd id="health-layers">—</dd></div><div><dt>Critic service</dt><dd id="health-planner">—</dd></div><div><dt>Critic review</dt><dd id="health-critic">—</dd></div></dl>
@@ -231,10 +246,11 @@
       </main>
 
       <nav class="mobile-nav" aria-label="Mobile navigation">
-        <button class="is-active" data-view-target="workbench"><span>⌘</span>Command</button>
-        <button data-view-target="activity"><span>↗</span>Trace</button>
-        <button data-view-target="safety"><span>◎</span>Safety</button>
-        <button data-view-target="settings"><span>◌</span>Runtime</button>
+        <button class="is-active" data-view-target="command"><span>⌘</span><small>Command</small></button>
+        <button data-view-target="live"><span>◉</span><small>Live</small></button>
+        <button data-view-target="history"><span>↗</span><small>History</small></button>
+        <button data-view-target="safety"><span>◎</span><small>Safety</small></button>
+        <button data-view-target="runtime"><span>◌</span><small>Runtime</small></button>
       </nav>
     </div>
 

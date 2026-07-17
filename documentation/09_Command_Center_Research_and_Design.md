@@ -67,17 +67,19 @@ copying a vendor interface:
 ## Design delivery
 
 The web command center is a file-backed installable PWA at
-cogniagent/gui/web. It is a from-scratch Command / Trace / Safety / Runtime
-surface rather than a reskin of the earlier flow. The matching phone layout has
-its own compact navigation and pairing controls instead of simply shrinking the
+`cogniagent/gui/web`. It is a from-scratch five-workspace surface—Command,
+Live, History, Safety, and Runtime—rather than a reskin of the earlier flow.
+Planning, active evidence, audit data, safety policy, and inference controls no
+longer compete in one dashboard. The matching phone layout has its own compact
+five-item navigation and pairing controls instead of simply shrinking the
 desktop UI. The desktop application consumes the same assets, which prevents
 the Electron shell and browser surface from drifting apart.
 
-The execution overlay is also rebuilt around live state: animated edge glows
-change by phase (teal thinking, lime action, violet verification, coral
-intervention/error), an indeterminate progress rail communicates work without
-inventing a percentage, and its trace is rendered from actual agent actions.
-Reduced-motion preferences are respected.
+The execution overlay is also rebuilt around live state: animated edge runners,
+corners, and ambient glows change by phase (teal thinking, lime action, violet
+verification, coral intervention/error); an indeterminate signal rail and a
+real phase timer communicate work without inventing a percentage; and its trace
+is rendered from actual agent actions. Reduced-motion preferences are respected.
 
 ## Known operational boundary
 

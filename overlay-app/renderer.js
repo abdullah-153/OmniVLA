@@ -12,9 +12,13 @@ const hitlSubmit = document.querySelector("#hitl-submit");
 const pauseButton = document.querySelector("#pause-button");
 const stopButton = document.querySelector("#stop-button");
 const modelLabel = document.querySelector("#model-label");
+const phaseDuration = document.querySelector("#phase-duration");
 
 let paused = false;
 let requestInFlight = false;
+let activePhaseName = "idle";
+let phaseStartedAt = null;
+let phaseTimer = null;
 
 const WORKING_STATES = new Set(["thinking", "acting", "verifying", "hitl", "queued", "stopping", "paused"]);
 
@@ -43,6 +47,36 @@ const toTitleCase = (value) =>
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
 const activePhase = (data) => (data.paused ? "paused" : data.phase || data.status || "idle");
+
+const formatElapsed = (seconds) => {
+  const value = Math.max(0, Math.floor(Number(seconds) || 0));
+  if (value < 60) return String(value) + "s";
+  return String(Math.floor(value / 60)) + "m " + String(value % 60).padStart(2, "0") + "s";
+};
+
+const updatePhaseDuration = () => {
+  const active = WORKING_STATES.has(activePhaseName);
+  if (!active || !phaseStartedAt) {
+    phaseDuration.textContent = activePhaseName === "done" ? "Complete" : "Standing by";
+    return;
+  }
+  phaseDuration.textContent = formatElapsed(Date.now() / 1000 - phaseStartedAt);
+};
+
+const syncPhaseClock = (phase, startedAt, active) => {
+  const parsedStart = Number(startedAt);
+  const normalizedStart = Number.isFinite(parsedStart) && parsedStart > 0 ? parsedStart : null;
+  if (phase !== activePhaseName || (normalizedStart !== null && normalizedStart !== phaseStartedAt)) {
+    activePhaseName = phase;
+    phaseStartedAt = normalizedStart ?? Date.now() / 1000;
+  }
+  if (active && !phaseTimer) phaseTimer = window.setInterval(updatePhaseDuration, 250);
+  if (!active && phaseTimer) {
+    window.clearInterval(phaseTimer);
+    phaseTimer = null;
+  }
+  updatePhaseDuration();
+};
 
 const appendTrace = (label, current = false) => {
   const item = document.createElement("li");
@@ -76,11 +110,14 @@ const renderStatus = (data) => {
 
   shell.classList.toggle("is-visible", active);
   shell.dataset.tone = phase;
+  syncPhaseClock(phase, data.phase_started_at, active);
   paused = Boolean(data.paused);
   stateLabel.textContent = toTitleCase(phase);
   phaseLabel.textContent = phaseCopy[phase] || "Preparing local execution";
   actionText.textContent = data.current_action || "Working on the reviewed runbook.";
-  modelLabel.textContent = (data.settings?.model_type || "local").toUpperCase() + " / local control";
+  const lastCycle = Number(data.timing?.last_step_ms);
+  const cycleCopy = Number.isFinite(lastCycle) && lastCycle > 0 ? " / " + formatElapsed(lastCycle / 1000) + " cycle" : " / local control";
+  modelLabel.textContent = (data.settings?.model_type || "local").toUpperCase() + cycleCopy;
   pauseButton.textContent = paused ? "Resume" : "Pause";
 
   renderTrace(data, phase);
