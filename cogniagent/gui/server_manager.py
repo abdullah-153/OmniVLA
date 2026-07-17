@@ -7,7 +7,10 @@ import socket
 import logging
 import requests
 import subprocess
+import threading
+from functools import wraps
 from gui_telemetry import get_free_vram, calculate_gpu_layers, kill_port_owner
+from cogniagent.config import config
 
 
 
@@ -15,6 +18,71 @@ server_process = None
 planner_process = None
 active_planner_gpu = None
 active_vla_max_gpu = None
+planner_start_lock = threading.RLock()
+vla_start_lock = threading.RLock()
+
+
+def _serialize_model_start(lock):
+    """Prevent concurrent UI threads from relaunching the same model server."""
+
+    def decorate(start_function):
+        @wraps(start_function)
+        def synchronized(*args, **kwargs):
+            with lock:
+                return start_function(*args, **kwargs)
+
+        return synchronized
+
+    return decorate
+
+
+def vla_context_size() -> int:
+    """Keep the local vision server inside the validated 6 GB memory profile."""
+    try:
+        requested = int(getattr(config.llm, "context_size", 4096))
+    except (TypeError, ValueError):
+        requested = 4096
+    return max(2048, min(requested, 4096))
+
+
+def build_planner_server_command(model_path: str, gpu_layers: str) -> list[str]:
+    """Build the short-context, single-slot critic command deterministically."""
+    return [
+        r"llama-cpp\llama-server.exe",
+        "-m", model_path,
+        "--port", "8090",
+        "-ngl", gpu_layers,
+        "-c", "2048",
+        "-np", "1",
+        "-fa", "on",
+        "-ctk", "q4_0",
+        "-ctv", "q4_0",
+        "--batch-size", "512",
+        "--threads", "8",
+        "--threads-batch", "8",
+        "--host", "127.0.0.1",
+    ]
+
+
+def build_vla_server_command(model_path: str, gpu_layers: str) -> list[str]:
+    """Build the single-slot VLA command without allocating unused GPU slots."""
+    return [
+        r"llama-cpp\llama-server.exe",
+        "-m", model_path,
+        "--mmproj", r"models\Holo-3.1-4B.mmproj-f16.gguf",
+        "--port", "8089",
+        "-ngl", gpu_layers,
+        "-ctk", "q8_0",
+        "-ctv", "q8_0",
+        "-fa", "on",
+        "-c", str(vla_context_size()),
+        "-np", "1",
+        "--cache-prompt",
+        "--batch-size", "512",
+        "--threads", "8",
+        "--threads-batch", "8",
+        "--host", "127.0.0.1",
+    ]
 
 def parse_server_log_for_optimizations(log_line: str) -> dict:
     optimizations = {"flash_attention": False, "kv_cache_q8": False}
@@ -29,7 +97,8 @@ def check_vram_limit(free_vram_gb: float) -> str:
         return "Warning: Free VRAM is below recommended threshold of 5.0GB."
     return ""
 
-def start_planner_server(use_gpu=True):
+@_serialize_model_start(planner_start_lock)
+def start_planner_server(use_gpu=False):
     global planner_process, active_planner_gpu
     planner_model_path = r"models\Qwen3.5-4B.Q4_K_M.gguf"
     if not os.path.exists(planner_model_path):
@@ -76,19 +145,7 @@ def start_planner_server(use_gpu=True):
 
     os.environ["ANON_TELEMETRY"] = "False"
     os.environ["CHROMA_TELEMETRY_STATUS"] = "False"
-    planner_cmd = [
-        r"llama-cpp\llama-server.exe",
-        "-m", planner_model_path,
-        "--port", "8090",
-        "-ngl", ngl_val,
-        "-c", "8192",
-        "-fa", "on",
-        "-ctk", "q4_0",
-        "-ctv", "q4_0",
-        "--batch-size", "512",
-        "--threads", "8",
-        "--host", "127.0.0.1"
-    ]
+    planner_cmd = build_planner_server_command(planner_model_path, ngl_val)
     
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -174,6 +231,7 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=1024, rag_conte
         logging.error(f"Error in run_planner_chat: {e}")
         return f"Planner connection error: {e}"
 
+@_serialize_model_start(vla_start_lock)
 def start_llama_server(model_path, max_gpu=False):
     global server_process, active_vla_max_gpu
     if not os.path.exists(model_path):
@@ -221,21 +279,7 @@ def start_llama_server(model_path, max_gpu=False):
     
     os.environ["ANON_TELEMETRY"] = "False"
     os.environ["CHROMA_TELEMETRY_STATUS"] = "False"
-    server_cmd = [
-        r"llama-cpp\llama-server.exe",
-        "-m", model_path,
-        "--mmproj", r"models\Holo-3.1-4B.mmproj-f16.gguf",
-        "--port", "8089",
-        "-ngl", ngl_val,
-        "-ctk", "q8_0",
-        "-ctv", "q8_0",
-        "-fa", "on",
-        "-c", "8192",
-        "--cache-prompt",
-        "--batch-size", "512",
-        "--threads", "8",
-        "--host", "127.0.0.1"
-    ]
+    server_cmd = build_vla_server_command(model_path, ngl_val)
     
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

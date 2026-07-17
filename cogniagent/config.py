@@ -28,8 +28,14 @@ class LLMConfig:
     model: str = "models/Holo-3.1-4B-abliterated-rdo.Q4_K_M.gguf"
     model_type: str = "local"
     api_key: str = ""
-    context_size: int = 8192
-    max_tokens: int = 512
+    # The local deployment has a 6 GB GPU. A single 4k context slot keeps the
+    # Holo vision model fully resident while still leaving room for its mmproj
+    # and the quantized KV cache. Conversation compaction keeps long runs
+    # within this budget instead of relying on a larger, slower cache.
+    context_size: int = 4096
+    # An action JSON response is normally well below 200 tokens. Keeping this
+    # cap tight prevents an accidental long rationale from dominating latency.
+    max_tokens: int = 320
     temperature: float = 0.2
     gpu_layers: int = 99
 

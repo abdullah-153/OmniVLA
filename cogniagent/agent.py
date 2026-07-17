@@ -5,7 +5,7 @@ import threading
 import numpy as np
 
 from cogniagent.config import config
-from cogniagent.perception.vlm_engine import VLMEngine
+from cogniagent.perception.vlm_engine import VLMEngine, checkpoint_execution_context
 from cogniagent.execution.router import ActionRouter
 from cogniagent.memory.episodic_memory import EpisodicMemory, Episode, Trajectory
 from cogniagent.perception.verification import ScreenVerifier
@@ -26,12 +26,18 @@ class CogniAgent:
         self.grounder = UIAutomationGrounder(config.perception.max_elements)
         # Callback for UI status updates
         self.on_status_change = None
+        self.on_timing_update = None
         self._last_semantic_state = None
 
     def _notify(self, status: str, detail: str = ""):
         """Notify the UI of status changes."""
         if self.on_status_change:
             self.on_status_change(status, detail)
+
+    def _record_timing(self, phase: str, duration_ms: int):
+        """Expose bounded per-phase timing without coupling execution to the UI."""
+        if self.on_timing_update:
+            self.on_timing_update(phase, max(0, int(duration_ms)))
 
     @staticmethod
     def _is_test_environment() -> bool:
@@ -88,6 +94,7 @@ class CogniAgent:
         step_idx = 0
         while step_idx < max_steps:
             logger.info(f"--- Step {step_idx + 1} ---")
+            step_started_at = time.time()
             
             # Check previous step's parallel critic result (non-blocking, short timeout)
             if step_idx > 0 and critic_thread:
@@ -123,16 +130,20 @@ class CogniAgent:
                         )
                     })
             
-            messages_checkpoints[step_idx] = copy.deepcopy(messages)
+            # A critic can only rewind the immediately preceding action. Store
+            # text context only: the next inference always captures a fresh
+            # screen, so retaining JPEGs in every checkpoint only burns RAM.
+            messages_checkpoints[step_idx] = checkpoint_execution_context(messages)
+            for stale_step in list(messages_checkpoints):
+                if stale_step < step_idx - 2:
+                    del messages_checkpoints[stale_step]
             self._notify("thinking", f"Step {step_idx + 1}")
             
             # Perceive and Reason
             vlm_start = time.time()
-            copy_messages = copy.deepcopy(messages)
-            vlm_result = self.vlm.reason(task, copy_messages)
-            messages.clear()
-            messages.extend(copy_messages)
+            vlm_result = self.vlm.reason(task, messages)
             vlm_duration = time.time() - vlm_start
+            self._record_timing("model", int(vlm_duration * 1000))
             
             if not vlm_result:
                 logger.error("VLM failed to return a response.")
@@ -291,6 +302,8 @@ class CogniAgent:
                 result = self.executor.execute_vlm_action(vlm_result, orig_dims)
                 exec_time = int((time.time() - exec_start) * 1000)
 
+            self._record_timing("action", exec_time)
+
             if action_desp == "terminate" and not result.get("success", False):
                 # Do not present a blocked completion as a successful critic
                 # review in the command center.
@@ -310,6 +323,8 @@ class CogniAgent:
             # This verifier was part of the original action loop. Keep it
             # optional for constrained local deployments and use its bounded
             # sampler when enabled.
+            verification_started_at = time.time()
+            self._notify("verifying", "Checking screen outcome")
             if self.config.perception.visual_verification_enabled:
                 time.sleep(1.0)
                 after_img, _ = self.vlm.capture_screen(for_vlm=False)
@@ -338,6 +353,8 @@ class CogniAgent:
             injected_state = getattr(self, "next_mock_state", None)
             new_state = injected_state or self._capture_semantic_state()
             self._last_semantic_state = new_state
+            self._record_timing("verification", int((time.time() - verification_started_at) * 1000))
+            self._record_timing("step", int((time.time() - step_started_at) * 1000))
             
             if hasattr(self, "next_mock_state"):
                 self.next_mock_state = None

@@ -1,16 +1,18 @@
 # OmniVLA: Cognitive Agent Harness
 
-This project contains the **OmniVLA** cognitive agent harness and its supervised Command Center. The checked-in local profile uses the Holo-3.1 4B GGUF and vision projector available in `models/`, running through `llama-server`. The startup scripts retain compatibility notes for the original Holo-3.1-9B target.
+This project contains the **OmniVLA** cognitive agent harness and its supervised Command Center. The configured local profile uses Holo-3.1 4B GGUF plus a vision projector through `llama-server`. The startup scripts retain compatibility notes for the original Holo-3.1-9B target.
 
 ## Prerequisites
 
 1. **System & GPU**: Windows OS with an NVIDIA GPU (recommended: RTX 4050 6GB VRAM or better) with CUDA drivers installed.
 2. **Python**: Python 3.10+ (tested with Python 3.12).
-3. **Model Files**: The default local profile expects the checked-in files:
+3. **Model Files**: The default local profile expects these files in `models/`:
    - `models/Holo-3.1-4B-abliterated-rdo.Q4_K_M.gguf` (main VLM)
    - `models/Holo-3.1-4B.mmproj-f16.gguf` (vision projector)
    - `models/Qwen3.5-4B.Q4_K_M.gguf` (planner)
 4. **Llama-server executable**: Ensure `llama-server.exe` exists under the `llama-cpp/` directory.
+
+> Model weights, llama.cpp binaries, chats, recordings, and local memory are deliberately excluded from Git. They remain local to the machine that runs the agent; only source, tests, documentation, and configuration are published.
 
 ---
 
@@ -46,11 +48,22 @@ The command center starts at `http://127.0.0.1:8000`. For a mobile companion, en
 
 Open the LAN address shown under **Safety → Pair a second screen**, then enter the short-lived pairing code. Remote controls remain disabled until explicitly enabled from the desktop.
 
+### 6 GB local performance profile
+
+The default configuration is intentionally tuned for a consumer GPU with 6 GB VRAM:
+
+- The Holo VLA is the only model allocated GPU layers. The planner/critic is explicitly CPU-only, avoiding VRAM and KV-cache contention.
+- Each llama.cpp server uses one execution slot, bounded context (4,096 tokens for VLA; 2,048 for critic), compact KV cache types, Flash Attention, prompt caching, and an 8-thread CPU prompt path.
+- The VLA receives a compact action contract and short rolling history instead of a generated Pydantic schema and unbounded screenshot checkpoints. This reduces prompt prefill work without weakening the existing action verifier or human-in-the-loop checks.
+- The Command Center and execution overlay show real phase and timing data (thinking, input, verification, and full cycle), plus the actual trace length. The visible action count is not a fabricated step-progress meter; the step budget remains a safety limit only.
+
+Use the first two runs as warm-up, then compare the **Last cycle** value in the Command Center across three representative tasks. See [the local performance profile](documentation/10_Local_Performance_Profile.md) for the rationale and a repeatable measurement procedure.
+
 ---
 
 ## 3. Running the Test Suite
 
-To run all automated unit and integration tests (56 tests in total), execute the following command in the project root:
+To run all automated unit and integration tests, execute the following command in the project root:
 
 ```bash
 python -m pytest tests/ -v

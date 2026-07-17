@@ -1,7 +1,6 @@
-# Test assertions requirement: -ngl 99 -ngl -1 -ctk q8_0 -ctv q8_0 -fa on Holo-3.1-9B
 <#
 .SYNOPSIS
-    Starts the llama-server backend hosting the Holo-3.1-9B VLM.
+    Starts the 6 GB-friendly Holo-3.1-4B local VLM backend.
 .PARAMETER ModelPath
     Path to the primary LLM GGUF model.
 .PARAMETER MmprojPath
@@ -12,6 +11,9 @@
     Context window size (defaults to 4096).
 .PARAMETER Port
     Port number for the API server (defaults to 8080).
+.PARAMETER ParallelSlots
+    Number of concurrent llama-server slots. One is the safe default for a
+    single interactive desktop agent on a 6 GB GPU.
 .PARAMETER HostIP
     Binding host IP address (defaults to 127.0.0.1).
 .PARAMETER LogDir
@@ -31,10 +33,14 @@ param (
     [int]$GpuLayers = -1,
 
     [Parameter(Mandatory = $false)]
-    [int]$ContextSize = 8192,
+    [int]$ContextSize = 4096,
 
     [Parameter(Mandatory = $false)]
     [int]$Port = 8080,
+
+    [Parameter(Mandatory = $false)]
+    [ValidateRange(1, 4)]
+    [int]$ParallelSlots = 1,
 
     [Parameter(Mandatory = $false)]
     [string]$HostIP = "127.0.0.1",
@@ -57,7 +63,7 @@ $PidFile = Join-Path $LogDir "llama_server.pid"
 $ExePath = Join-Path $PSScriptRoot "llama-cpp\llama-server.exe"
 
 Write-Host "========================================="
-Write-Host " Holo-3.1-9B Server Starter Tool"
+Write-Host " Holo-3.1-4B Server Starter Tool"
 Write-Host "========================================="
 
 # --- 1. Pre-Flight Checks ---
@@ -115,6 +121,11 @@ $Arguments = @(
     "-ctv", "q8_0",
     "-fa", "on",
     "-c", $ContextSize,
+    "-np", $ParallelSlots,
+    "--cache-prompt",
+    "--batch-size", "512",
+    "--threads", "8",
+    "--threads-batch", "8",
     "--port", $Port,
     "--host", $HostIP
 )

@@ -14,6 +14,7 @@ const DOM = {
   approvePlan: document.querySelector("#approve-plan"),
   metricStatus: document.querySelector("#metric-status"),
   metricStep: document.querySelector("#metric-step"),
+  metricLatency: document.querySelector("#metric-latency"),
   metricModel: document.querySelector("#metric-model"),
   livePulse: document.querySelector("#live-pulse"),
   activeAction: document.querySelector("#active-action"),
@@ -74,7 +75,7 @@ const state = {
   policyDirty: false,
 };
 
-const WORKING_STATES = new Set(["thinking", "acting", "hitl", "queued"]);
+const WORKING_STATES = new Set(["thinking", "acting", "verifying", "hitl", "queued", "stopping", "paused"]);
 
 const createElement = (tagName, options = {}) => {
   const element = document.createElement(tagName);
@@ -102,6 +103,14 @@ const formatExpiry = (seconds) => {
   const minutes = Math.floor(seconds / 60);
   const remainder = seconds % 60;
   return String(minutes) + "m " + String(remainder) + "s";
+};
+
+const formatDuration = (milliseconds) => {
+  const value = Number(milliseconds);
+  if (!Number.isFinite(value) || value <= 0) return "—";
+  if (value < 1000) return String(Math.round(value)) + " ms";
+  const seconds = value / 1000;
+  return seconds < 10 ? seconds.toFixed(1) + " s" : Math.round(seconds) + " s";
 };
 
 const showToast = (message, type = "") => {
@@ -176,15 +185,16 @@ const openView = (view) => {
   if (view === "safety") void fetchPairingDetails();
 };
 
-const setStatusPresentation = (status) => {
-  const normalized = status || "offline";
-  const isWorking = WORKING_STATES.has(normalized);
-  const isSafe = normalized === "done";
+const setStatusPresentation = (status, phase, paused) => {
+  const normalized = paused ? "paused" : phase || status || "offline";
+  const isWorking = WORKING_STATES.has(normalized) || WORKING_STATES.has(status);
+  const isSafe = normalized === "done" || status === "done";
   DOM.statusDot.className = "status-dot " + (isWorking ? "is-working" : isSafe ? "is-active" : "");
   DOM.statusLabel.textContent = toTitleCase(normalized);
   DOM.metricStatus.textContent = toTitleCase(normalized);
   DOM.livePulse.classList.toggle("is-idle", !isWorking);
   DOM.livePulse.lastChild.textContent = isWorking ? " Live" : " Ready";
+  DOM.app.dataset.runState = normalized;
 };
 
 const renderConversations = (chats, activeId) => {
@@ -337,7 +347,11 @@ const renderHealth = (telemetry, criticReview) => {
       ? "Unavailable"
       : (Number(data.free_vram) / 1024).toFixed(1) + " GB";
   DOM.healthLayers.textContent = String(data.optimal_ngl ?? "—") + " / 28";
-  DOM.healthPlanner.textContent = data.planner_gpu ? "Online" : "Standby";
+  DOM.healthPlanner.textContent = data.planner_active
+    ? data.planner_uses_gpu
+      ? "GPU lane"
+      : "CPU lane"
+    : "Standby";
   DOM.healthCritic.textContent = criticReview?.status ? toTitleCase(criticReview.status) : "Standby";
   DOM.healthState.textContent = data.vla_gpu ? "Operational" : "Monitoring";
 };
@@ -390,15 +404,18 @@ const renderStatus = (data) => {
   state.status = data;
   hidePairingPrompt();
 
-  setStatusPresentation(data.status);
-  DOM.metricStep.textContent = data.step ?? 0;
+  const phase = data.paused ? "paused" : data.phase || data.status;
+  setStatusPresentation(data.status, phase, data.paused);
+  const recordedActions = Array.isArray(data.steps) ? data.steps.length : 0;
+  DOM.metricStep.textContent = recordedActions ? String(recordedActions) : "—";
+  DOM.metricLatency.textContent = formatDuration(data.timing?.last_step_ms);
   DOM.metricModel.textContent = toTitleCase(data.settings?.model_type || "local");
   DOM.activeAction.replaceChildren(
     createElement("span", { className: "active-marker", text: "▲" }),
     createElement("p", { text: data.current_action || "Ready for a reviewed task." })
   );
 
-  const isWorking = WORKING_STATES.has(data.status);
+  const isWorking = WORKING_STATES.has(phase) || WORKING_STATES.has(data.status);
   const canRetry = Boolean(data.current_task) && !isWorking;
   DOM.pauseButton.disabled = !isWorking && !data.paused;
   DOM.pauseButton.textContent = data.paused ? "Resume" : "Pause";
@@ -412,7 +429,7 @@ const renderStatus = (data) => {
   DOM.console.textContent =
     Array.isArray(data.logs) && data.logs.length ? data.logs.slice(-80).join("\n") : "No runtime signals yet.";
   renderScreenshot(data.latest_screenshot_b64);
-  renderIntervention(data.status, data.current_action);
+  renderIntervention(phase, data.current_action);
   renderHealth(data.telemetry, data.critic_review);
   renderSettings(data.settings);
   renderSafety(data.safety, data.mobile, data.access);

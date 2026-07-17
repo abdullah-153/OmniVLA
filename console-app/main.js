@@ -10,7 +10,7 @@ function createWindow() {
     minWidth: 1000,
     minHeight: 700,
     frame: false, // Make window frameless for custom title bar
-    backgroundColor: "#fafafa",
+    backgroundColor: "#08090a",
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,

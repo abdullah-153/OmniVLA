@@ -56,6 +56,8 @@ telemetry_data = {
     "optimal_ngl": 28,
     "vla_gpu": None,
     "planner_gpu": None,
+    "planner_active": None,
+    "planner_uses_gpu": False,
     "planner_ngl": 0,
 }
 
@@ -331,14 +333,16 @@ def _update_telemetry_loop() -> None:
                     vla_active = False
             telemetry_data["vla_gpu"] = vla_active
 
-            planner_active = server_manager.active_planner_gpu
-            if planner_active is None:
-                try:
-                    planner_active = requests.get("http://127.0.0.1:8090/health", timeout=0.5).status_code == 200
-                except requests.RequestException:
-                    planner_active = False
+            try:
+                planner_active = requests.get("http://127.0.0.1:8090/health", timeout=0.5).status_code == 200
+            except requests.RequestException:
+                planner_active = False
+            planner_uses_gpu = bool(server_manager.active_planner_gpu)
+            telemetry_data["planner_active"] = planner_active
+            # Retain this legacy field as a health signal for older clients.
             telemetry_data["planner_gpu"] = planner_active
-            telemetry_data["planner_ngl"] = min(28, max(0, int(free_vram / 80))) if planner_active and free_vram else 0
+            telemetry_data["planner_uses_gpu"] = planner_uses_gpu
+            telemetry_data["planner_ngl"] = min(28, max(0, int(free_vram / 80))) if planner_uses_gpu and free_vram else 0
         except Exception as error:
             logger.debug("Telemetry refresh failed: %s", error)
         time.sleep(20)
@@ -521,6 +525,8 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             with gui_app.status_lock:
                 if gui_app.agent_status.get("status") == "thinking":
                     gui_app.agent_status["status"] = "idle"
+                    gui_app.agent_status["phase"] = "idle"
+                    gui_app.agent_status["phase_started_at"] = time.time()
                     gui_app.agent_status["current_action"] = "Ready for a reviewed task."
             planner_lock.release()
 
@@ -546,6 +552,8 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
 
             with gui_app.status_lock:
                 gui_app.agent_status["status"] = "thinking"
+                gui_app.agent_status["phase"] = "thinking"
+                gui_app.agent_status["phase_started_at"] = time.time()
                 gui_app.agent_status["current_action"] = "Planner is shaping a reviewed runbook."
 
             worker = threading.Thread(
@@ -647,6 +655,8 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         with gui_app.status_lock:
             gui_app.agent_status["steps"] = []
             gui_app.agent_status["status"] = "idle"
+            gui_app.agent_status["phase"] = "idle"
+            gui_app.agent_status["phase_started_at"] = time.time()
             gui_app.agent_status["current_action"] = "Ready for a reviewed task."
         self._json_response({"success": True})
 
@@ -710,6 +720,8 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         with gui_app.status_lock:
             gui_app.agent_status["steps"] = []
             gui_app.agent_status["status"] = "idle"
+            gui_app.agent_status["phase"] = "idle"
+            gui_app.agent_status["phase_started_at"] = time.time()
             gui_app.agent_status["current_action"] = "Reviewed retry run is ready for approval."
         self._json_response({"success": True}, 201)
 
@@ -776,6 +788,8 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             gui_app.hitl_response.append("stop")
             gui_app.hitl_event.set()
             gui_app.agent_status["current_action"] = "Stop requested. Waiting for the next safe boundary."
+            gui_app.agent_status["phase"] = "stopping"
+            gui_app.agent_status["phase_started_at"] = time.time()
             gui_app.agent_status["ui_mode"] = "chat"
         with db_lock:
             database = load_chats_db()
@@ -787,6 +801,8 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         with gui_app.status_lock:
             gui_app.agent_status["paused"] = paused
             gui_app.agent_status["current_action"] = "Run paused by operator." if paused else "Run resumed by operator."
+            gui_app.agent_status["phase"] = "paused" if paused else "thinking"
+            gui_app.agent_status["phase_started_at"] = time.time()
         with db_lock:
             database = load_chats_db()
             _record_audit(database, "run.paused" if paused else "run.resumed", "Operator updated the run state.")

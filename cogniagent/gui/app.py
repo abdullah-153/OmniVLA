@@ -68,6 +68,8 @@ def get_safe_status():
 
 agent_status = {
     "status": "idle",
+    "phase": "idle",
+    "phase_started_at": None,
     "step": 0,
     "total_time_ms": 0,
     "current_action": "None",
@@ -89,7 +91,14 @@ agent_status = {
         "status": "CORRECT",
         "reason": "Action verified as optimal.",
         "improved_prompt": ""
-    }
+    },
+    "timing": {
+        "last_model_ms": None,
+        "last_action_ms": None,
+        "last_verification_ms": None,
+        "last_step_ms": None,
+        "updated_at": None,
+    },
 }
 
 server_process = None
@@ -200,7 +209,7 @@ class DesktopOverlay:
 
 
 # ─── Server Manager Wrappers ──────────────────────────────────────────────
-def start_planner_server(use_gpu=True):
+def start_planner_server(use_gpu=False):
     import cogniagent.gui.server_manager as sm
     res = sm.start_planner_server(use_gpu=use_gpu)
     global planner_process, active_planner_gpu
@@ -212,7 +221,7 @@ def run_planner_chat(message, rag_context=""):
     import cogniagent.gui.server_manager as sm
     history = agent_status.get("chat_history", [])
     temp = agent_status["settings"].get("temperature", 0.2)
-    max_tokens = agent_status["settings"].get("max_tokens", 1024)
+    max_tokens = min(512, max(128, int(agent_status["settings"].get("max_tokens", 512))))
     return sm.run_planner_chat(message, history, temp, max_tokens, rag_context)
 
 def start_llama_server(max_gpu=False):
@@ -232,12 +241,21 @@ def execute_agent_task(task):
     with status_lock:
         agent_status["paused"] = False
         agent_status["status"] = "thinking"
+        agent_status["phase"] = "thinking"
+        agent_status["phase_started_at"] = time.time()
         agent_status["step"] = 0
         agent_status["total_time_ms"] = 0
         agent_status["current_action"] = "Agent is working..."
         agent_status["latest_screenshot_b64"] = ""
         agent_status["steps"] = []
         agent_status["current_task"] = task
+        agent_status["timing"] = {
+            "last_model_ms": None,
+            "last_action_ms": None,
+            "last_verification_ms": None,
+            "last_step_ms": None,
+            "updated_at": None,
+        }
     
     if agent_status["settings"].get("enable_recording", False):
         recording_active = True
@@ -253,7 +271,10 @@ def execute_agent_task(task):
         config.llm.model = agent_status["settings"]["model_path"]
         config.llm.temperature = agent_status["settings"]["temperature"]
         config.llm.api_key = agent_status["settings"].get("api_key", "")
-        config.llm.context_size = 8192
+        try:
+            config.llm.context_size = max(2048, min(int(config.llm.context_size), 4096))
+        except (TypeError, ValueError):
+            config.llm.context_size = 4096
  
         if model_type == "local":
             # Models already loaded on startup. Ensure llama-server is healthy.
@@ -291,6 +312,9 @@ def execute_agent_task(task):
                 
             with status_lock:
                 agent_status["status"] = status
+                if agent_status.get("phase") != status:
+                    agent_status["phase_started_at"] = time.time()
+                agent_status["phase"] = status
                 if "|" in detail:
                     action, thought = detail.split("|", 1)
                     agent_status["current_action"] = action
@@ -301,6 +325,22 @@ def execute_agent_task(task):
                         agent_status["current_thought"] = "Analyzing screen context..."
                     
         agent.on_status_change = on_status_update
+
+        def on_timing_update(phase, duration_ms):
+            timing_key = {
+                "model": "last_model_ms",
+                "action": "last_action_ms",
+                "verification": "last_verification_ms",
+                "step": "last_step_ms",
+            }.get(phase)
+            if not timing_key:
+                return
+            with status_lock:
+                timings = agent_status.setdefault("timing", {})
+                timings[timing_key] = int(duration_ms)
+                timings["updated_at"] = time.time()
+
+        agent.on_timing_update = on_timing_update
 
         def on_step_complete(step_info):
             screenshot_b64 = ""
@@ -323,6 +363,7 @@ def execute_agent_task(task):
                     step_info["segment_id"] = 1
                 if "eval_state" not in step_info:
                     step_info["eval_state"] = "EVALUATING"
+                step_info["timing"] = dict(agent_status.get("timing", {}))
                 agent_status["steps"].append(step_info)
                 agent_status["step"] = step_info["step"]
 
@@ -364,6 +405,8 @@ def execute_agent_task(task):
             
         with status_lock:
             agent_status["status"] = "done" if status == "success" else "failed"
+            agent_status["phase"] = agent_status["status"]
+            agent_status["phase_started_at"] = time.time()
             agent_status["current_action"] = f"Finished: {status}"
         
         steps_log = "\n".join([f"Step {s['step']}: {s.get('thought', '')}" for s in agent_status["steps"]])
@@ -436,6 +479,8 @@ def execute_agent_task(task):
         if stop_requested:
             with status_lock:
                 agent_status["status"] = "idle"
+                agent_status["phase"] = "idle"
+                agent_status["phase_started_at"] = time.time()
                 agent_status["current_action"] = "Stopped manually"
                 agent_status["current_thought"] = "Task terminated by user request."
                 agent_status["ui_mode"] = "chat"
@@ -443,6 +488,8 @@ def execute_agent_task(task):
             logging.error(f"Error: {e}")
             with status_lock:
                 agent_status["status"] = "error"
+                agent_status["phase"] = "error"
+                agent_status["phase_started_at"] = time.time()
                 agent_status["current_action"] = str(e)
     finally:
         recording_active = False
@@ -546,7 +593,10 @@ def main():
     print(f"URL Endpoint: http://127.0.0.1:8000 (bound to {server_host})")
     print("====================================================")
     
-    is_testing = 'unittest' in sys.modules or 'pytest' in sys.modules
+    # Honour the explicit test-mode escape hatch as well as test runners.  It
+    # lets the web shell be validated without booting either local model or
+    # Electron, which is especially important on the 6 GB target machine.
+    is_testing = is_test_process
     
     if not is_testing:
         from cogniagent.gui.server import start_telemetry_thread
@@ -557,7 +607,9 @@ def main():
             start_llama_server(max_gpu=True)
             time.sleep(2.0)
             logging.info("Pre-initializing Planner model on startup...")
-            start_planner_server(use_gpu=True)
+            # Keep the critic on CPU so the Holo vision model owns the 6 GB
+            # GPU. This avoids VRAM pressure and model-layer CPU spillover.
+            start_planner_server(use_gpu=False)
         t = threading.Thread(target=init_models_sequential)
         t.daemon = True
         t.start()

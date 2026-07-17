@@ -3,10 +3,11 @@
 ## Purpose
 
 This release reframes OmniVLA as a supervised desktop-agent control plane rather
-than a chat box that can immediately drive a machine. The design follows
-DESIGN.md: a precise, light, low-chrome interface with restrained monochrome
-tokens, compact metadata, 6px radii, and terminal green reserved for healthy
-state.
+than a chat box that can immediately drive a machine. The redesign follows
+DESIGNv2.md: a midnight precision instrument with near-black surfaces,
+hairline geometry, compact metadata, 6px controls, and a single acid-lime
+primary action. Phase color is deliberately reserved for live execution
+signals in the overlay, not general UI decoration.
 
 ## Market and technical research
 
@@ -66,10 +67,17 @@ copying a vendor interface:
 ## Design delivery
 
 The web command center is a file-backed installable PWA at
-cogniagent/gui/web. It carries the same typography, spacing, chrome, and
-interaction language into a phone-sized companion rather than treating mobile
-as a scaled desktop page. The desktop application consumes the same assets,
-which prevents the Electron shell and browser surface from drifting apart.
+cogniagent/gui/web. It is a from-scratch Command / Trace / Safety / Runtime
+surface rather than a reskin of the earlier flow. The matching phone layout has
+its own compact navigation and pairing controls instead of simply shrinking the
+desktop UI. The desktop application consumes the same assets, which prevents
+the Electron shell and browser surface from drifting apart.
+
+The execution overlay is also rebuilt around live state: animated edge glows
+change by phase (teal thinking, lime action, violet verification, coral
+intervention/error), an indeterminate progress rail communicates work without
+inventing a percentage, and its trace is rendered from actual agent actions.
+Reduced-motion preferences are respected.
 
 ## Known operational boundary
 

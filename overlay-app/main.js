@@ -7,13 +7,13 @@ let server;
 
 function createWindow() {
   const primaryDisplay = screen.getPrimaryDisplay();
-  const { width, height } = primaryDisplay.bounds;
+  const { x, y, width, height } = primaryDisplay.bounds;
 
   win = new BrowserWindow({
     width: width,
     height: height,
-    x: 0,
-    y: 0,
+    x,
+    y,
     transparent: true,
     frame: false,
     alwaysOnTop: true,

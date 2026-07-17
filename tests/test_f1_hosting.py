@@ -28,13 +28,17 @@ class TestF1Hosting(unittest.TestCase):
         
         with open(ps_path, "r", encoding="utf-8") as f:
             content = f.read()
-            
+
         self.assertIn("-ngl", content)
-        self.assertTrue("-ngl 99" in content or "-ngl -1" in content)
-        self.assertIn("-ctk q8_0", content)
-        self.assertIn("-ctv q8_0", content)
-        self.assertIn("-fa on", content)
-        self.assertIn("Holo-3.1-9B", content)
+        # The starter exposes GPU layers as an explicit parameter and passes
+        # it as a separate argv item. This preserves the safe default (-1)
+        # without hard-coding a fragile command-string fragment.
+        self.assertIn("[int]$GpuLayers = -1", content)
+        self.assertIn('"-ngl", $GpuLayers', content)
+        self.assertIn('"-ctk", "q8_0"', content)
+        self.assertIn('"-ctv", "q8_0"', content)
+        self.assertIn('"-fa", "on"', content)
+        self.assertIn("Holo-3.1-4B", content)
 
     @patch("os.path.exists")
     @patch("subprocess.Popen")
