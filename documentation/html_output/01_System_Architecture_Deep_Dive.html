@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniVLA: System Architecture Deep Dive</title>
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        line-height: 1.7;
+        color: #1a1a2e;
+        background: #ffffff;
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 60px 40px;
+        font-size: 14px;
+    }
+    
+    h1 {
+        font-size: 2.2em;
+        font-weight: 700;
+        color: #0f0f23;
+        margin-top: 0;
+        margin-bottom: 8px;
+        padding-bottom: 16px;
+        border-bottom: 3px solid #667eea;
+        letter-spacing: -0.5px;
+    }
+    
+    h2 {
+        font-size: 1.6em;
+        font-weight: 600;
+        color: #1a1a2e;
+        margin-top: 48px;
+        margin-bottom: 16px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    
+    h3 {
+        font-size: 1.25em;
+        font-weight: 600;
+        color: #2d3748;
+        margin-top: 32px;
+        margin-bottom: 12px;
+    }
+    
+    h4 {
+        font-size: 1.05em;
+        font-weight: 600;
+        color: #4a5568;
+        margin-top: 24px;
+        margin-bottom: 8px;
+    }
+    
+    p {
+        margin-bottom: 16px;
+        color: #2d3748;
+    }
+    
+    strong { font-weight: 600; color: #1a1a2e; }
+    
+    em { font-style: italic; color: #4a5568; }
+    
+    a { color: #667eea; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    
+    code {
+        font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+        background: #f1f5f9;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.88em;
+        color: #e53e3e;
+    }
+    
+    pre {
+        background: #1a1a2e;
+        color: #e2e8f0;
+        padding: 20px 24px;
+        border-radius: 8px;
+        overflow-x: auto;
+        margin: 16px 0 24px 0;
+        font-size: 0.85em;
+        line-height: 1.6;
+        border: 1px solid #2d3748;
+    }
+    
+    pre code {
+        background: transparent;
+        color: #e2e8f0;
+        padding: 0;
+        font-size: 1em;
+    }
+    
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 16px 0 24px 0;
+        font-size: 0.92em;
+    }
+    
+    thead th {
+        background: #667eea;
+        color: white;
+        padding: 12px 16px;
+        text-align: left;
+        font-weight: 600;
+        font-size: 0.9em;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    tbody td {
+        padding: 10px 16px;
+        border-bottom: 1px solid #e2e8f0;
+        vertical-align: top;
+    }
+    
+    tbody tr:nth-child(even) { background: #f8fafc; }
+    tbody tr:hover { background: #edf2f7; }
+    
+    ul, ol {
+        margin: 8px 0 16px 24px;
+    }
+    
+    li {
+        margin-bottom: 6px;
+        color: #2d3748;
+    }
+    
+    li code { font-size: 0.85em; }
+    
+    blockquote {
+        border-left: 4px solid #667eea;
+        background: #f0f4ff;
+        padding: 16px 20px;
+        margin: 16px 0;
+        border-radius: 0 8px 8px 0;
+        font-style: italic;
+        color: #4a5568;
+    }
+    
+    blockquote strong { color: #2d3748; }
+    
+    hr {
+        border: none;
+        border-top: 2px solid #e2e8f0;
+        margin: 40px 0;
+    }
+    
+    /* Print styles */
+    @media print {
+        body { padding: 20px; max-width: 100%; }
+        pre { background: #f5f5f5 !important; color: #333 !important; 
+              border: 1px solid #ddd; }
+        pre code { color: #333 !important; }
+        thead th { background: #333 !important; }
+        h1, h2, h3 { page-break-after: avoid; }
+        pre, table { page-break-inside: avoid; }
+    }
+    
+    .title-block {
+        text-align: center;
+        margin-bottom: 48px;
+        padding: 40px 0;
+        border-bottom: 3px solid #667eea;
+    }
+    
+    .title-block h1 {
+        border: none;
+        padding: 0;
+        margin: 0;
+        font-size: 2.5em;
+    }
+    
+    .subtitle {
+        color: #667eea;
+        font-size: 1.2em;
+        font-weight: 400;
+        margin-top: 8px;
+    }
+    
+    .footer {
+        margin-top: 60px;
+        padding-top: 20px;
+        border-top: 1px solid #e2e8f0;
+        text-align: center;
+        color: #a0aec0;
+        font-size: 0.85em;
+    }
+    </style>
+</head>
+<body>
+    <h1 id="omnivla-system-architecture-deep-dive">OmniVLA: System Architecture Deep Dive</h1>
+
+<h2 id="document-01-complete-technical-specification">Document 01 — Complete Technical Specification</h2>
+
+<hr />
+
+<h2 id="1-architectural-philosophy">1. Architectural Philosophy</h2>
+
+<p>OmniVLA's architecture is built on a single principle: <strong>"No single module should require intelligence beyond what a 4B-parameter model can reliably provide."</strong></p>
+
+<p>This means:</p>
+
+<ul>
+<li><strong>Perception</strong> is handled by deterministic APIs and lightweight CV (no LLM inference)</li>
+<li><strong>Planning</strong> is done by the LLM operating on pure text (no visual tokens)</li>
+<li><strong>Action selection</strong> is constrained by formal grammars (LLM can't hallucinate invalid actions)</li>
+<li><strong>Execution</strong> is deterministic (no LLM inference for mouse movement)</li>
+<li><strong>Verification</strong> is heuristic-based (pixel diff + semantic re-parse)</li>
+</ul>
+
+<h3 id="why-not-end-to-end-vlm">Why Not End-to-End VLM?</h3>
+
+<p>End-to-end VLMs (like Anthropic Computer Use or GPT-4o) process raw screenshots and output actions. This requires:</p>
+
+<ol>
+<li>A vision encoder (~1-2GB VRAM) to process the screenshot</li>
+<li>A large language model (~8-30GB VRAM) to reason about it</li>
+<li>Sufficient reasoning capacity to simultaneously understand, plan, and precisely locate targets</li>
+</ol>
+
+<p>With 6GB total VRAM, this is impossible. Even a quantized 3B VLM like Qwen2.5-VL-3B would consume ~4GB for the model + ~1.5GB for vision encoding + KV cache, leaving zero headroom.</p>
+
+<p><strong>Our approach</strong>: Run a text-only LLM at full capacity (~4.5GB) and handle all visual processing on CPU with zero VRAM cost.</p>
+
+<hr />
+
+<h2 id="2-complete-data-flow-specification">2. Complete Data Flow Specification</h2>
+
+<h3 id="21-per-step-pipeline">2.1 Per-Step Pipeline</h3>
+
+<p>Every action the agent takes follows this exact sequence:</p>
+
+<pre><code>  Time ──────────────────────────────────────────────────────────────►
+
+  t=0        t=50ms       t=100ms      t=200ms     t=500ms      t=1200ms
+  │          │            │            │           │            │
+  ▼          ▼            ▼            ▼           ▼            ▼
+  ┌─────┐   ┌─────┐     ┌─────┐     ┌─────────┐  ┌─────┐    ┌─────┐
+  │Capt-│   │ UIA │     │ OCR │     │ Compress│  │ LLM │    │Exec │
+  │ure  │──►│Query│────►│(opt)│────►│ State   │─►│Rsn  │───►│ute  │
+  │     │   │     │     │     │     │         │  │     │    │     │
+  └─────┘   └─────┘     └─────┘     └─────────┘  └─────┘    └─────┘
+   5ms       30-80ms     100-300ms   10ms         300-800ms   50-300ms
+   GPU:0     GPU:0       GPU:0       GPU:0        GPU:100%    GPU:0
+</code></pre>
+
+<p><strong>Total per-step latency target: 500-1500ms</strong> (dominated by LLM inference)</p>
+
+<h3 id="22-full-task-lifecycle">2.2 Full Task Lifecycle</h3>
+
+<pre><code>USER TASK: "Create a new spreadsheet in Excel and add headers for Name, Age, Email"
+
+     ┌──────────────────────────────────────────────────┐
+     │              TASK DECOMPOSER (LLM)                │
+     │                                                    │
+     │  Input: "Create a new spreadsheet..."              │
+     │  Output (GBNF-constrained JSON):                   │
+     │    {                                               │
+     │      "plan": [                                     │
+     │        {"step": 1, "goal": "Open Excel",           │
+     │         "app_hint": "Start Menu"},                  │
+     │        {"step": 2, "goal": "Create blank workbook", │
+     │         "app_hint": "Excel"},                       │
+     │        {"step": 3, "goal": "Type 'Name' in A1",    │
+     │         "app_hint": "Excel"},                       │
+     │        {"step": 4, "goal": "Press Tab",             │
+     │         "app_hint": "Excel"},                       │
+     │        {"step": 5, "goal": "Type 'Age' in B1",     │
+     │         "app_hint": "Excel"},                       │
+     │        {"step": 6, "goal": "Press Tab",             │
+     │         "app_hint": "Excel"},                       │
+     │        {"step": 7, "goal": "Type 'Email' in C1",   │
+     │         "app_hint": "Excel"}                        │
+     │      ]                                             │
+     │    }                                               │
+     └───────────────────┬──────────────────────────────┘
+                         │
+          ┌──────────────┼──────────────┐
+          │  FOR EACH SUB-GOAL:         │
+          │                              │
+          │  ┌─────────────────────┐    │
+          │  │ 1. PERCEIVE SCREEN  │    │
+          │  │    → Semantic State  │    │
+          │  └──────────┬──────────┘    │
+          │             │               │
+          │  ┌──────────▼──────────┐    │
+          │  │ 2. RECALL MEMORY   │    │
+          │  │    → Past episodes  │    │
+          │  └──────────┬──────────┘    │
+          │             │               │
+          │  ┌──────────▼──────────┐    │
+          │  │ 3. REASON ACTION   │    │
+          │  │    → Atomic action  │    │
+          │  └──────────┬──────────┘    │
+          │             │               │
+          │  ┌──────────▼──────────┐    │
+          │  │ 4. EXECUTE ACTION  │    │
+          │  │    → System input   │    │
+          │  └──────────┬──────────┘    │
+          │             │               │
+          │  ┌──────────▼──────────┐    │
+          │  │ 5. VERIFY RESULT   │    │
+          │  │    → Success/Retry  │    │
+          │  └──────────┬──────────┘    │
+          │             │               │
+          │     Success? ──► Next Goal  │
+          │     Failure? ──► Retry/     │
+          │                  Re-plan    │
+          └─────────────────────────────┘
+</code></pre>
+
+<hr />
+
+<h2 id="3-module-interface-specification">3. Module Interface Specification</h2>
+
+<h3 id="31-semanticstate-the-central-data-object">3.1 SemanticState — The Central Data Object</h3>
+
+<p>The <code>SemanticState</code> is the lingua franca of the entire pipeline. Every module produces or consumes it.</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">InteractiveElement</span><span class="p">:</span>
+    <span class="nb">id</span><span class="p">:</span> <span class="nb">int</span>              <span class="c1"># Sequential ID (1, 2, 3...)</span>
+    <span class="nb">type</span><span class="p">:</span> <span class="nb">str</span>            <span class="c1"># button, text_field, link, label, icon, tab, menu_item</span>
+    <span class="n">label</span><span class="p">:</span> <span class="nb">str</span>           <span class="c1"># Human-readable label (max 60 chars)</span>
+    <span class="n">region</span><span class="p">:</span> <span class="nb">str</span>          <span class="c1"># Spatial location: top-left, center, bottom-right, etc.</span>
+    <span class="n">bbox</span><span class="p">:</span> <span class="nb">tuple</span>          <span class="c1"># (x1, y1, x2, y2) pixel coordinates</span>
+    <span class="n">center</span><span class="p">:</span> <span class="nb">tuple</span>        <span class="c1"># (cx, cy) click target</span>
+    <span class="n">confidence</span><span class="p">:</span> <span class="nb">float</span>    <span class="c1"># Detection confidence (0.0-1.0)</span>
+    <span class="n">source</span><span class="p">:</span> <span class="nb">str</span>          <span class="c1"># &quot;uia&quot; | &quot;ocr&quot; | &quot;yolo&quot; — how it was detected</span>
+
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">SemanticState</span><span class="p">:</span>
+    <span class="n">app</span><span class="p">:</span> <span class="nb">str</span>                       <span class="c1"># Active application name</span>
+    <span class="n">window_title</span><span class="p">:</span> <span class="nb">str</span>              <span class="c1"># Full window title</span>
+    <span class="n">layout_type</span><span class="p">:</span> <span class="nb">str</span>               <span class="c1"># browser_webapp | desktop_app | dialog | menu</span>
+    <span class="n">webapp_name</span><span class="p">:</span> <span class="nb">str</span>               <span class="c1"># If browser: Gmail, Sheets, etc.</span>
+    <span class="n">elements</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">InteractiveElement</span><span class="p">]</span>  <span class="c1"># Max 20 elements</span>
+    <span class="n">visible_text_summary</span><span class="p">:</span> <span class="nb">str</span>      <span class="c1"># 1-2 sentence summary of visible text</span>
+    <span class="n">is_dialog</span><span class="p">:</span> <span class="nb">bool</span>                <span class="c1"># Is a dialog/modal open?</span>
+    <span class="n">is_menu_open</span><span class="p">:</span> <span class="nb">bool</span>             <span class="c1"># Is a context/dropdown menu visible?</span>
+    <span class="n">screen_change</span><span class="p">:</span> <span class="nb">str</span>             <span class="c1"># What changed since last capture</span>
+    <span class="n">timestamp</span><span class="p">:</span> <span class="nb">float</span>               <span class="c1"># Capture time</span>
+    <span class="n">screen_width</span><span class="p">:</span> <span class="nb">int</span>              <span class="c1"># Resolution width</span>
+    <span class="n">screen_height</span><span class="p">:</span> <span class="nb">int</span>             <span class="c1"># Resolution height</span>
+</code></pre>
+</div>
+
+<h3 id="32-token-budget-for-semantic-state">3.2 Token Budget for Semantic State</h3>
+
+<p>The state must be compressed to ~150-200 tokens for the LLM prompt. Here's the breakdown:</p>
+
+<pre><code>App: Excel                                    ← 3 tokens
+Window: Book1 - Excel                         ← 6 tokens
+Layout: desktop_app                           ← 3 tokens
+Screen: 1920x1080                             ← 5 tokens
+Text summary: Spreadsheet with columns...     ← 15 tokens
+Interactive elements:                         ← 2 tokens
+  [1] button: "File" (top-left)               ← 8 tokens × 15 elements
+  [2] tab: "Home" (top-left)                  = 120 tokens
+  [3] button: "Paste" (top-left)
+  ...
+Last change: New window opened                ← 5 tokens
+─────────────────────────────────────
+TOTAL:                                        ≈ 155 tokens
+</code></pre>
+
+<p>This leaves ~1500 tokens for the system prompt, sub-goal, memory context, and model reasoning — well within a 2048 context window.</p>
+
+<h3 id="33-module-contracts">3.3 Module Contracts</h3>
+
+<p>Each module has a strict input/output contract:</p>
+
+<table>
+<thead>
+<tr>
+  <th>Module</th>
+  <th>Input</th>
+  <th>Output</th>
+  <th>Max Latency</th>
+  <th>GPU?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>ScreenCapture</strong></td>
+  <td>Monitor index</td>
+  <td>ScreenFrame (PIL + numpy)</td>
+  <td>10ms</td>
+  <td>No</td>
+</tr>
+<tr>
+  <td><strong>UIA Extractor</strong></td>
+  <td>Window handle</td>
+  <td>List[InteractiveElement]</td>
+  <td>80ms</td>
+  <td>No</td>
+</tr>
+<tr>
+  <td><strong>OCR Engine</strong></td>
+  <td>numpy image</td>
+  <td>List[OCRResult]</td>
+  <td>300ms</td>
+  <td>No</td>
+</tr>
+<tr>
+  <td><strong>Layout Classifier</strong></td>
+  <td>Window title + OCR</td>
+  <td>LayoutInfo</td>
+  <td>5ms</td>
+  <td>No</td>
+</tr>
+<tr>
+  <td><strong>State Compressor</strong></td>
+  <td>UIA + OCR + Layout</td>
+  <td>SemanticState</td>
+  <td>10ms</td>
+  <td>No</td>
+</tr>
+<tr>
+  <td><strong>Task Decomposer</strong></td>
+  <td>Task string</td>
+  <td>List[SubGoal]</td>
+  <td>1500ms</td>
+  <td>Yes</td>
+</tr>
+<tr>
+  <td><strong>Memory Recall</strong></td>
+  <td>Goal + App context</td>
+  <td>Context string</td>
+  <td>50ms</td>
+  <td>No</td>
+</tr>
+<tr>
+  <td><strong>Action Reasoner</strong></td>
+  <td>State + Goal + Memory</td>
+  <td>AgentAction</td>
+  <td>800ms</td>
+  <td>Yes</td>
+</tr>
+<tr>
+  <td><strong>Action Router</strong></td>
+  <td>AgentAction + State</td>
+  <td>Execution result</td>
+  <td>300ms</td>
+  <td>No</td>
+</tr>
+<tr>
+  <td><strong>Screen Verifier</strong></td>
+  <td>Before/After frames</td>
+  <td>Success boolean</td>
+  <td>50ms</td>
+  <td>No</td>
+</tr>
+<tr>
+  <td><strong>Episode Store</strong></td>
+  <td>Episode data</td>
+  <td>None</td>
+  <td>30ms</td>
+  <td>No</td>
+</tr>
+</tbody>
+</table>
+
+<hr />
+
+<h2 id="4-error-handling-recovery-architecture">4. Error Handling &amp; Recovery Architecture</h2>
+
+<h3 id="41-error-taxonomy">4.1 Error Taxonomy</h3>
+
+<pre><code>ERROR TYPES:
+│
+├── PERCEPTION ERRORS
+│   ├── UIA tree empty (custom app / Electron)
+│   │   └── Fallback: OCR + heuristic element detection
+│   ├── OCR misread text
+│   │   └── Fallback: Try UIA label, or re-capture with higher resolution
+│   └── Window not found
+│       └── Fallback: Wait 1s + retry, or ask user
+│
+├── REASONING ERRORS
+│   ├── LLM selects wrong element ID
+│   │   └── Recovery: Verify via screen diff, retry with enriched context
+│   ├── LLM outputs done() prematurely
+│   │   └── Recovery: Semantic verification detects incomplete state
+│   └── LLM in reasoning loop
+│       └── Recovery: Max 5 actions per sub-goal, then re-plan
+│
+├── EXECUTION ERRORS
+│   ├── Element no longer visible (UI changed)
+│   │   └── Recovery: Re-perceive, re-reason
+│   ├── Click lands on wrong target
+│   │   └── Recovery: Screen diff + undo (Ctrl+Z) + retry
+│   └── Application crash / unresponsive
+│       └── Recovery: Wait 3s, check process list, escalate to user
+│
+└── VERIFICATION ERRORS
+    ├── Screen didn't change (action had no effect)
+    │   └── Recovery: Try alternative execution method (shortcut → UIA → click)
+    └── Unexpected screen (wrong state reached)
+        └── Recovery: Re-plan from current state
+</code></pre>
+
+<h3 id="42-recovery-flow">4.2 Recovery Flow</h3>
+
+<pre><code>┌─────────┐     ┌────────┐     ┌──────────┐
+│ Execute │────►│ Verify │────►│ Success? │
+│ Action  │     │ Result │     │          │
+└─────────┘     └────────┘     └─────┬────┘
+                                     │
+                              ┌──────┴──────┐
+                              │             │
+                           Yes│          No │
+                              │             │
+                              ▼             ▼
+                         ┌────────┐   ┌──────────┐
+                         │ Next   │   │ Retry    │
+                         │SubGoal │   │ Same     │──┐
+                         └────────┘   │ Action   │  │
+                                      └──────────┘  │
+                                           │        │
+                                      Failed 2x?    │
+                                           │        │
+                                    ┌──────┴───┐    │
+                                    │          │    │
+                                 Yes│       No │    │
+                                    │          │    │
+                                    ▼          └────┘
+                              ┌──────────┐
+                              │ Try Alt  │
+                              │ Fallback │──┐
+                              │ Method   │  │
+                              └──────────┘  │
+                                   │        │
+                              Failed?       │
+                                   │        │
+                            ┌──────┴───┐    │
+                            │          │    │
+                         Yes│       No │    │
+                            │          │    │
+                            ▼          └────┘
+                      ┌──────────┐
+                      │ Re-plan  │
+                      │ From     │
+                      │ Current  │
+                      │ State    │
+                      └────┬─────┘
+                           │
+                      Failed 3x?
+                           │
+                    ┌──────┴───┐
+                    │          │
+                 Yes│       No │
+                    │          │
+                    ▼          └──── (retry loop)
+              ┌──────────┐
+              │ Escalate │
+              │ to User  │
+              └──────────┘
+</code></pre>
+
+<hr />
+
+<h2 id="5-concurrency-threading-model">5. Concurrency &amp; Threading Model</h2>
+
+<pre><code>Main Thread (Python asyncio):
+│
+├── Agent Orchestrator Loop
+│   ├── Perception calls (sync, fast)
+│   ├── LLM inference (sync, blocking — GPU-bound)
+│   └── Execution (sync, brief)
+│
+├── Background: ChromaDB operations (async)
+├── Background: Screenshot buffer (pre-capture next frame)
+└── Background: Health monitoring (LLM server status)
+</code></pre>
+
+<p><strong>Important</strong>: The LLM inference is the bottleneck. All other operations are &lt;100ms and can run between inference calls. There is no benefit to parallelizing perception and reasoning because they are sequential dependencies.</p>
+
+<hr />
+
+<h2 id="6-security-privacy-architecture">6. Security &amp; Privacy Architecture</h2>
+
+<pre><code>┌──────────────────────────────────────────────────────────────────┐
+│                    SECURITY BOUNDARY                              │
+│                                                                    │
+│  ┌─────────┐   ┌─────────┐   ┌──────────┐   ┌──────────────┐  │
+│  │ Screen  │   │  LLM    │   │ ChromaDB │   │   Action     │  │
+│  │ Capture │   │ Server  │   │ Memory   │   │   Execution  │  │
+│  │ (local) │   │ (local) │   │ (local)  │   │   (local)    │  │
+│  └─────────┘   └─────────┘   └──────────┘   └──────────────┘  │
+│                                                                    │
+│  ✓ Zero network egress                                            │
+│  ✓ No telemetry / analytics                                      │
+│  ✓ Screenshots never leave the machine                           │
+│  ✓ All inference runs on local GPU                                │
+│  ✓ Memory database is a local file                               │
+│  ✓ No API keys required                                          │
+└──────────────────────────────────────────────────────────────────┘
+</code></pre>
+
+<h3 id="61-action-safety-guards">6.1 Action Safety Guards</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="c1"># Safety constraints built into the execution layer</span>
+<span class="n">SAFETY_RULES</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;pyautogui_failsafe&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>      <span class="c1"># Mouse to corner = abort</span>
+    <span class="s2">&quot;max_actions_per_subgoal&quot;</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span>     <span class="c1"># Prevents infinite loops</span>
+    <span class="s2">&quot;max_subgoals_per_task&quot;</span><span class="p">:</span> <span class="mi">25</span><span class="p">,</span>      <span class="c1"># Prevents runaway tasks</span>
+    <span class="s2">&quot;banned_shortcuts&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;alt+f4&quot;</span><span class="p">],</span>   <span class="c1"># Prevent closing apps accidentally</span>
+    <span class="s2">&quot;confirm_destructive&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>      <span class="c1"># Pause before delete/format operations</span>
+    <span class="s2">&quot;action_timeout&quot;</span><span class="p">:</span> <span class="mf">5.0</span><span class="p">,</span>            <span class="c1"># Max seconds to wait for UI response</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<hr />
+
+<h2 id="7-configuration-architecture">7. Configuration Architecture</h2>
+
+<div class="codehilite">
+<pre><span></span><code><span class="c1"># config.yaml — OmniVLA Configuration</span>
+<span class="nt">perception</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">primary_source</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;uia&quot;</span><span class="w">           </span><span class="c1"># uia | ocr | hybrid</span>
+<span class="w">  </span><span class="nt">ocr_engine</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;easyocr&quot;</span><span class="w">           </span><span class="c1"># easyocr | paddleocr</span>
+<span class="w">  </span><span class="nt">ocr_language</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;en&quot;</span>
+<span class="w">  </span><span class="nt">ocr_gpu</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span><span class="w">                  </span><span class="c1"># Keep CPU to save VRAM</span>
+<span class="w">  </span><span class="nt">max_elements</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">20</span><span class="w">                </span><span class="c1"># Cap element count for token budget</span>
+<span class="w">  </span><span class="nt">downscale_factor</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.5</span><span class="w">           </span><span class="c1"># OCR speed optimization</span>
+<span class="w">  </span><span class="nt">capture_monitor</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w">              </span><span class="c1"># Primary monitor</span>
+
+<span class="nt">llm</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">backend</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;llama_cpp&quot;</span><span class="w">            </span><span class="c1"># llama_cpp | ollama</span>
+<span class="w">  </span><span class="nt">base_url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;http://127.0.0.1:8080&quot;</span>
+<span class="w">  </span><span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;gemma-4-e4b-q4_k_m&quot;</span>
+<span class="w">  </span><span class="nt">context_size</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2048</span>
+<span class="w">  </span><span class="nt">max_tokens</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">512</span>
+<span class="w">  </span><span class="nt">temperature</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.2</span><span class="w">                </span><span class="c1"># Low for reliability</span>
+<span class="w">  </span><span class="nt">gpu_layers</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">-1</span><span class="w">                  </span><span class="c1"># Offload all layers to GPU</span>
+
+<span class="nt">execution</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">click_pause</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.3</span><span class="w">                </span><span class="c1"># Seconds between actions</span>
+<span class="w">  </span><span class="nt">typing_interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.02</span><span class="w">           </span><span class="c1"># Seconds between keystrokes</span>
+<span class="w">  </span><span class="nt">max_retries</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span><span class="w">                  </span><span class="c1"># Per action</span>
+<span class="w">  </span><span class="nt">action_timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5.0</span>
+<span class="w">  </span><span class="nt">use_shortcuts</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">             </span><span class="c1"># Prefer keyboard shortcuts</span>
+<span class="w">  </span><span class="nt">use_uia_invoke</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">            </span><span class="c1"># Use UIA control invocation</span>
+
+<span class="nt">memory</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">db_path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;./omnivla_memory&quot;</span>
+<span class="w">  </span><span class="nt">embedding_model</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;all-MiniLM-L6-v2&quot;</span>
+<span class="w">  </span><span class="nt">max_results</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+
+<span class="nt">safety</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">pyautogui_failsafe</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">max_steps_per_task</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">25</span>
+<span class="w">  </span><span class="nt">confirm_destructive</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">banned_shortcuts</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;alt+f4&quot;</span><span class="p p-Indicator">]</span>
+</code></pre>
+</div>
+
+<hr />
+
+<p><em>Document Version: 1.0 | Part 01 of 08</em><br />
+<em>See also: <a href="./02_Perception_Engine.md">02_Perception_Engine</a> for detailed perception implementation</em></p>
+
+    <div class="footer">
+        <p>OmniVLA Project Documentation &mdash; Generated April 2026</p>
+        <p>Confidential &mdash; Final Year Project</p>
+    </div>
+</body>
+</html>

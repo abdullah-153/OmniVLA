@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniVLA: Master Project Blueprint</title>
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        line-height: 1.7;
+        color: #1a1a2e;
+        background: #ffffff;
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 60px 40px;
+        font-size: 14px;
+    }
+    
+    h1 {
+        font-size: 2.2em;
+        font-weight: 700;
+        color: #0f0f23;
+        margin-top: 0;
+        margin-bottom: 8px;
+        padding-bottom: 16px;
+        border-bottom: 3px solid #667eea;
+        letter-spacing: -0.5px;
+    }
+    
+    h2 {
+        font-size: 1.6em;
+        font-weight: 600;
+        color: #1a1a2e;
+        margin-top: 48px;
+        margin-bottom: 16px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    
+    h3 {
+        font-size: 1.25em;
+        font-weight: 600;
+        color: #2d3748;
+        margin-top: 32px;
+        margin-bottom: 12px;
+    }
+    
+    h4 {
+        font-size: 1.05em;
+        font-weight: 600;
+        color: #4a5568;
+        margin-top: 24px;
+        margin-bottom: 8px;
+    }
+    
+    p {
+        margin-bottom: 16px;
+        color: #2d3748;
+    }
+    
+    strong { font-weight: 600; color: #1a1a2e; }
+    
+    em { font-style: italic; color: #4a5568; }
+    
+    a { color: #667eea; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    
+    code {
+        font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+        background: #f1f5f9;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.88em;
+        color: #e53e3e;
+    }
+    
+    pre {
+        background: #1a1a2e;
+        color: #e2e8f0;
+        padding: 20px 24px;
+        border-radius: 8px;
+        overflow-x: auto;
+        margin: 16px 0 24px 0;
+        font-size: 0.85em;
+        line-height: 1.6;
+        border: 1px solid #2d3748;
+    }
+    
+    pre code {
+        background: transparent;
+        color: #e2e8f0;
+        padding: 0;
+        font-size: 1em;
+    }
+    
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 16px 0 24px 0;
+        font-size: 0.92em;
+    }
+    
+    thead th {
+        background: #667eea;
+        color: white;
+        padding: 12px 16px;
+        text-align: left;
+        font-weight: 600;
+        font-size: 0.9em;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    tbody td {
+        padding: 10px 16px;
+        border-bottom: 1px solid #e2e8f0;
+        vertical-align: top;
+    }
+    
+    tbody tr:nth-child(even) { background: #f8fafc; }
+    tbody tr:hover { background: #edf2f7; }
+    
+    ul, ol {
+        margin: 8px 0 16px 24px;
+    }
+    
+    li {
+        margin-bottom: 6px;
+        color: #2d3748;
+    }
+    
+    li code { font-size: 0.85em; }
+    
+    blockquote {
+        border-left: 4px solid #667eea;
+        background: #f0f4ff;
+        padding: 16px 20px;
+        margin: 16px 0;
+        border-radius: 0 8px 8px 0;
+        font-style: italic;
+        color: #4a5568;
+    }
+    
+    blockquote strong { color: #2d3748; }
+    
+    hr {
+        border: none;
+        border-top: 2px solid #e2e8f0;
+        margin: 40px 0;
+    }
+    
+    /* Print styles */
+    @media print {
+        body { padding: 20px; max-width: 100%; }
+        pre { background: #f5f5f5 !important; color: #333 !important; 
+              border: 1px solid #ddd; }
+        pre code { color: #333 !important; }
+        thead th { background: #333 !important; }
+        h1, h2, h3 { page-break-after: avoid; }
+        pre, table { page-break-inside: avoid; }
+    }
+    
+    .title-block {
+        text-align: center;
+        margin-bottom: 48px;
+        padding: 40px 0;
+        border-bottom: 3px solid #667eea;
+    }
+    
+    .title-block h1 {
+        border: none;
+        padding: 0;
+        margin: 0;
+        font-size: 2.5em;
+    }
+    
+    .subtitle {
+        color: #667eea;
+        font-size: 1.2em;
+        font-weight: 400;
+        margin-top: 8px;
+    }
+    
+    .footer {
+        margin-top: 60px;
+        padding-top: 20px;
+        border-top: 1px solid #e2e8f0;
+        text-align: center;
+        color: #a0aec0;
+        font-size: 0.85em;
+    }
+    </style>
+</head>
+<body>
+    <h1 id="omnivla-master-project-blueprint">OmniVLA: Master Project Blueprint</h1>
+
+<h2 id="a-zero-telemetry-memory-augmented-gui-agent-for-6gb-edge-devices">A Zero-Telemetry, Memory-Augmented GUI Agent for 6GB Edge Devices</h2>
+
+<hr />
+
+<h2 id="executive-summary">Executive Summary</h2>
+
+<p>OmniVLA is a <strong>local-first, privacy-preserving GUI automation agent</strong> designed to operate complex desktop applications, websites, and workflows entirely on consumer-grade hardware (RTX 4050, 6GB VRAM). Unlike cloud-based solutions or massive VLM deployments, OmniVLA achieves reliable GUI automation through a <strong>Decoupled Cognitive Pipeline</strong> — separating perception, reasoning, and execution into specialized modules that individually stay within the capability ceiling of small local models.</p>
+
+<h3 id="the-central-thesis">The Central Thesis</h3>
+
+<blockquote>
+  <p><strong>Reliable GUI automation on 6GB VRAM is achievable — not by building a single all-knowing model, but by designing an architecture where each component operates within its competence boundary.</strong></p>
+</blockquote>
+
+<hr />
+
+<h2 id="why-existing-approaches-fail-root-cause-analysis">Why Existing Approaches Fail (Root Cause Analysis)</h2>
+
+<p>Before presenting the solution, we must precisely diagnose <em>why</em> common approaches fail with small (3-4B parameter) local models. This analysis informed every architectural decision in OmniVLA.</p>
+
+<h3 id="1-set-of-mark-som-failures">1. Set-of-Mark (SOM) Failures</h3>
+
+<table>
+<thead>
+<tr>
+  <th>Problem</th>
+  <th>Root Cause</th>
+  <th>Impact</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Model can't point to correct label</td>
+  <td>SOM markers are visual overlays — the model must correlate a tiny numbered marker with a specific UI element. 3-4B VLMs lack the spatial reasoning precision for this.</td>
+  <td>~40% click accuracy on complex UIs</td>
+</tr>
+<tr>
+  <td>Non-obvious elements get no marker</td>
+  <td>SOM relies on heuristic detection (usually YOLO/contour-based). Custom controls, canvas elements, and non-standard widgets are missed entirely.</td>
+  <td>Agent is blind to 30-50% of interactive elements</td>
+</tr>
+<tr>
+  <td>Cognitive overload</td>
+  <td>A screen with 50+ SOM markers creates an overwhelming visual grid. Small models can't discriminate among dozens of numbered bubbles.</td>
+  <td>Hallucination rate increases with element density</td>
+</tr>
+</tbody>
+</table>
+
+<p><strong>Verdict</strong>: SOM reduces the agent to a "dumb number-picker" — it removes semantic understanding and replaces it with spatial guessing.</p>
+
+<h3 id="2-ui-tree-accessibility-tree-failures">2. UI Tree / Accessibility Tree Failures</h3>
+
+<table>
+<thead>
+<tr>
+  <th>Problem</th>
+  <th>Root Cause</th>
+  <th>Impact</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Elements hidden layers deep</td>
+  <td>UI trees are hierarchical. The button you want might be <code>Window &gt; Frame &gt; Panel &gt; TabControl &gt; TabItem &gt; ScrollViewer &gt; StackPanel &gt; Button</code>.</td>
+  <td>Context explosion: 200+ tokens just to describe one button's path</td>
+</tr>
+<tr>
+  <td>Tree passing makes inference slow</td>
+  <td>A full UI tree for a complex app like Excel can have 500-2000 nodes. Even compressed, this exceeds the effective context window of a 4B model.</td>
+  <td>Inference time: 3-8 seconds per step</td>
+</tr>
+<tr>
+  <td>Tree is often incomplete</td>
+  <td>Electron apps, custom-rendered UIs, web canvases, and game engines have opaque accessibility trees.</td>
+  <td>Agent fails silently on modern apps</td>
+</tr>
+<tr>
+  <td>LLM can't navigate tree structure</td>
+  <td>Small models struggle with deeply nested JSON/XML structures. They lose track of parent-child relationships beyond 3-4 levels.</td>
+  <td>Hallucinated element references</td>
+</tr>
+</tbody>
+</table>
+
+<p><strong>Verdict</strong>: Passing raw trees makes the LLM process <em>structure</em> instead of <em>semantics</em>. It's the wrong abstraction level for a small model.</p>
+
+<h3 id="3-grid-sub-grid-failures">3. Grid / Sub-Grid Failures</h3>
+
+<table>
+<thead>
+<tr>
+  <th>Problem</th>
+  <th>Root Cause</th>
+  <th>Impact</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Model can't point to correct grid cell</td>
+  <td>Grid division is arbitrary — it has no relationship to UI element boundaries. The model must map semantic intent to geometric coordinates.</td>
+  <td>~35% correct grid selection</td>
+</tr>
+<tr>
+  <td>Sub-grid hallucination</td>
+  <td>After selecting a coarse grid, the model must select a sub-grid within it. This compounds the error: even 70% accuracy at each level yields only 49% end-to-end.</td>
+  <td>Cascading error multiplication</td>
+</tr>
+<tr>
+  <td>Elements split across grids</td>
+  <td>UI elements rarely align with grid boundaries. A button might span two cells, or a dropdown might cross four cells.</td>
+  <td>Ambiguous targeting</td>
+</tr>
+<tr>
+  <td>No semantic grounding</td>
+  <td>Like SOM, grids treat UI as geometry, not semantics. The model becomes a coordinate guesser, not an intelligent agent.</td>
+  <td>Cannot handle context-dependent actions</td>
+</tr>
+</tbody>
+</table>
+
+<p><strong>Verdict</strong>: Grid approaches compound errors at each refinement level and ignore semantic meaning entirely.</p>
+
+<h3 id="4-the-common-root-cause">4. The Common Root Cause</h3>
+
+<p>All three approaches share a <strong>single fundamental flaw</strong>:</p>
+
+<blockquote>
+  <p><strong>They force the LLM to do everything in one forward pass</strong> — perceive the screen, understand the UI semantics, plan the action, and precisely locate the target element — all simultaneously.</p>
+</blockquote>
+
+<p>A 3-4B model simply does not have the capacity for this multi-faceted reasoning in a single inference step. The solution is <strong>decomposition</strong>: break the problem into stages where each stage is within the model's competence.</p>
+
+<hr />
+
+<h2 id="the-solution-decoupled-cognitive-pipeline">The Solution: Decoupled Cognitive Pipeline</h2>
+
+<p>OmniVLA replaces the monolithic "see-and-click" paradigm with a <strong>five-stage pipeline</strong> where each stage has a narrow, well-defined responsibility:</p>
+
+<pre><code>┌──────────────────────────────────────────────────────────────────────┐
+│                    USER TASK (Natural Language)                       │
+│                "Rename the Budget sheet in Excel to Q4 2026"         │
+└──────────────────┬───────────────────────────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│  STAGE 1: TASK DECOMPOSER (LLM — Text Only)                         │
+│  Breaks high-level goal into atomic sub-goals                        │
+│  Output: ["Right-click Budget tab", "Click Rename", "Type Q4 2026"] │
+└──────────────────┬───────────────────────────────────────────────────┘
+                   │ For each sub-goal:
+                   ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│  STAGE 2: SEMANTIC PERCEPTION ENGINE (No LLM — APIs + CV)           │
+│  Extracts compressed UI state: elements, labels, types, positions    │
+│  Sources: UIA APIs → OCR fallback → YOLO fallback                   │
+│  Output: ~150-200 token JSON semantic state                         │
+└──────────────────┬───────────────────────────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│  STAGE 3: ACTION REASONER (LLM — Text Only, Constrained)            │
+│  Maps semantic state + sub-goal → single atomic action               │
+│  Uses GBNF grammar: can ONLY output valid actions                    │
+│  Output: click(element_id) | type("text") | key(shortcut)           │
+└──────────────────┬───────────────────────────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│  STAGE 4: ACTION EXECUTION LAYER (No LLM — Deterministic)           │
+│  Converts semantic action → system input                             │
+│  Fallback chain: Keyboard shortcut → UIA Invoke → PyAutoGUI click   │
+└──────────────────┬───────────────────────────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│  STAGE 5: VERIFICATION &amp; MEMORY (No LLM — Heuristic + DB)           │
+│  Verifies action effect via screen diff + semantic re-parse          │
+│  Stores successful trajectories in ChromaDB for future retrieval     │
+└──────────────────────────────────────────────────────────────────────┘
+</code></pre>
+
+<h3 id="why-this-architecture-works">Why This Architecture Works</h3>
+
+<table>
+<thead>
+<tr>
+  <th>Design Principle</th>
+  <th>Implementation</th>
+  <th>Benefit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>Separation of Concerns</strong></td>
+  <td>Each stage has ONE job</td>
+  <td>No single module is overloaded</td>
+</tr>
+<tr>
+  <td><strong>LLM sees text, not pixels</strong></td>
+  <td>Perception converts visuals → text</td>
+  <td>~200 token context instead of 1000+ visual tokens</td>
+</tr>
+<tr>
+  <td><strong>Constrained Output</strong></td>
+  <td>GBNF grammar restricts LLM output space</td>
+  <td>Structurally impossible to hallucinate malformed actions</td>
+</tr>
+<tr>
+  <td><strong>API-First Perception</strong></td>
+  <td>UIA/Win32 APIs extract elements directly</td>
+  <td>Zero LLM cost for perception on native apps</td>
+</tr>
+<tr>
+  <td><strong>Deterministic Execution</strong></td>
+  <td>Actions are executed programmatically</td>
+  <td>No coordinate guessing</td>
+</tr>
+<tr>
+  <td><strong>Memory-Augmented Learning</strong></td>
+  <td>ChromaDB stores successful trajectories</td>
+  <td>Agent improves with usage</td>
+</tr>
+</tbody>
+</table>
+
+<hr />
+
+<h2 id="document-suite-overview">Document Suite Overview</h2>
+
+<p>This documentation suite is organized into <strong>8 comprehensive guides</strong>, each covering a major subsystem or concern:</p>
+
+<table>
+<thead>
+<tr>
+  <th>#</th>
+  <th>Document</th>
+  <th>Purpose</th>
+  <th>Key Topics</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>01</td>
+  <td><a href="./01_System_Architecture_Deep_Dive.md">System Architecture</a></td>
+  <td>Overall system design and data flow</td>
+  <td>Pipeline architecture, VRAM budgeting, module interfaces</td>
+</tr>
+<tr>
+  <td>02</td>
+  <td><a href="./02_Perception_Engine.md">Perception Engine</a></td>
+  <td>How the agent "sees" the screen</td>
+  <td>UIA-first strategy, OCR/YOLO fallback, semantic compression</td>
+</tr>
+<tr>
+  <td>03</td>
+  <td><a href="./03_Task_Decomposition.md">Task Decomposition</a></td>
+  <td>Breaking complex tasks into steps</td>
+  <td>Hierarchical planning, app-aware decomposition, error recovery</td>
+</tr>
+<tr>
+  <td>04</td>
+  <td><a href="./04_Action_Reasoning.md">Action Reasoning</a></td>
+  <td>How the LLM decides what to do</td>
+  <td>Constrained decoding, GBNF grammars, prompt engineering</td>
+</tr>
+<tr>
+  <td>05</td>
+  <td><a href="./05_Execution_Layer.md">Execution Layer</a></td>
+  <td>How actions become system inputs</td>
+  <td>Shortcut routing, UIA invocation, coordinate fallback</td>
+</tr>
+<tr>
+  <td>06</td>
+  <td><a href="./06_Memory_And_Verification.md">Memory &amp; Verification</a></td>
+  <td>Learning from experience</td>
+  <td>Episodic memory, trajectory storage, screen diffing</td>
+</tr>
+<tr>
+  <td>07</td>
+  <td><a href="./07_Model_Selection_And_Optimization.md">Model Selection &amp; Optimization</a></td>
+  <td>Choosing and deploying the LLM</td>
+  <td>Gemma 4 vs Qwen 3.5, quantization, VRAM optimization</td>
+</tr>
+<tr>
+  <td>08</td>
+  <td><a href="./08_Advanced_Strategies_Research.md">Advanced Strategies &amp; Research</a></td>
+  <td>SOTA techniques and future directions</td>
+  <td>GOLD, RegionFocus, SE-GUI, GUI-Actor, ShowUI integration</td>
+</tr>
+</tbody>
+</table>
+
+<hr />
+
+<h2 id="hardware-constraints-vram-budget">Hardware Constraints &amp; VRAM Budget</h2>
+
+<p>The entire system is designed for a strict 6GB VRAM envelope:</p>
+
+<pre><code>┌─────────────────────────────────────────────────────────────────┐
+│                    RTX 4050 — 6144 MB VRAM                       │
+├──────────────────────────────┬──────────────────────────────────┤
+│  LLM (Q4_K_M quantized)     │  ~4200-4600 MB                  │
+│  KV Cache (2048 ctx)         │  ~600-800 MB                    │
+│  CUDA Overhead               │  ~200-300 MB                    │
+├──────────────────────────────┼──────────────────────────────────┤
+│  TOTAL GPU                   │  ~5200-5700 MB                  │
+│  HEADROOM                    │  ~400-900 MB                    │
+├──────────────────────────────┴──────────────────────────────────┤
+│  CPU RAM Budget                                                  │
+│  OCR Engine (EasyOCR/PaddleOCR)  │  ~400 MB                   │
+│  ChromaDB + Embeddings           │  ~300 MB                   │
+│  Screen Capture (mss + PIL)      │  ~100 MB                   │
+│  Python Runtime + Libraries      │  ~400 MB                   │
+│  TOTAL CPU                       │  ~1200 MB                  │
+└──────────────────────────────────────────────────────────────────┘
+</code></pre>
+
+<h3 id="critical-constraint-one-model-at-a-time">Critical Constraint: One Model at a Time</h3>
+
+<p>With 6GB VRAM, we <strong>cannot</strong> run a VLM (vision-language model) alongside a text LLM. This eliminates architectures like OmniParser (which requires a separate YOLO + Florence-2 on GPU) running concurrently with the reasoning LLM.</p>
+
+<p><strong>Solution</strong>: The perception pipeline runs entirely on CPU (UIA APIs + CPU-based OCR). Only the reasoning LLM occupies the GPU.</p>
+
+<hr />
+
+<h2 id="technology-stack">Technology Stack</h2>
+
+<table>
+<thead>
+<tr>
+  <th>Component</th>
+  <th>Technology</th>
+  <th>Runs On</th>
+  <th>Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>LLM Inference</strong></td>
+  <td>llama.cpp / Ollama</td>
+  <td>GPU (CUDA)</td>
+  <td>Fastest local inference, GGUF support, GBNF grammars</td>
+</tr>
+<tr>
+  <td><strong>LLM Model</strong></td>
+  <td>Gemma 4 E4B (Q4_K_M) or Qwen 3.5</td>
+  <td>GPU</td>
+  <td>Native function calling, vision-capable, edge-optimized</td>
+</tr>
+<tr>
+  <td><strong>Screen Capture</strong></td>
+  <td>mss</td>
+  <td>CPU</td>
+  <td>&lt;5ms capture, zero GPU allocation</td>
+</tr>
+<tr>
+  <td><strong>OCR</strong></td>
+  <td>EasyOCR / PaddleOCR</td>
+  <td>CPU</td>
+  <td>Accurate, CPU-friendly, multilingual</td>
+</tr>
+<tr>
+  <td><strong>UI Automation</strong></td>
+  <td>pywinauto (UIA backend)</td>
+  <td>CPU</td>
+  <td>Direct Win32/UIA API access, zero inference cost</td>
+</tr>
+<tr>
+  <td><strong>Element Detection</strong></td>
+  <td>Custom heuristics + UIA</td>
+  <td>CPU</td>
+  <td>Deterministic, no model needed</td>
+</tr>
+<tr>
+  <td><strong>Memory DB</strong></td>
+  <td>ChromaDB (persistent)</td>
+  <td>CPU</td>
+  <td>Local vector DB, no cloud dependency</td>
+</tr>
+<tr>
+  <td><strong>Embeddings</strong></td>
+  <td>all-MiniLM-L6-v2</td>
+  <td>CPU</td>
+  <td>22MB model, negligible overhead</td>
+</tr>
+<tr>
+  <td><strong>Execution</strong></td>
+  <td>pyautogui + pywinauto</td>
+  <td>CPU</td>
+  <td>System input simulation, UIA control invocation</td>
+</tr>
+<tr>
+  <td><strong>Orchestration</strong></td>
+  <td>Python asyncio</td>
+  <td>CPU</td>
+  <td>Lightweight, no framework overhead</td>
+</tr>
+</tbody>
+</table>
+
+<hr />
+
+<h2 id="project-roadmap">Project Roadmap</h2>
+
+<h3 id="phase-1-foundation-weeks-1-2">Phase 1: Foundation (Weeks 1-2)</h3>
+
+<ul>
+<li>[ ] Implement robust UIA-first perception engine</li>
+<li>[ ] Build semantic state compression to &lt;200 tokens</li>
+<li>[ ] Set up llama.cpp server with Gemma 4 E4B</li>
+<li>[ ] Implement GBNF grammar-constrained action reasoning</li>
+<li>[ ] Basic action execution via pyautogui</li>
+</ul>
+
+<h3 id="phase-2-intelligence-weeks-3-4">Phase 2: Intelligence (Weeks 3-4)</h3>
+
+<ul>
+<li>[ ] Implement task decomposer with hierarchical planning</li>
+<li>[ ] Build shortcut knowledge base for common apps</li>
+<li>[ ] Implement UIA-based direct element invocation</li>
+<li>[ ] Screen diffing and semantic verification</li>
+<li>[ ] ChromaDB episodic memory system</li>
+</ul>
+
+<h3 id="phase-3-robustness-weeks-5-6">Phase 3: Robustness (Weeks 5-6)</h3>
+
+<ul>
+<li>[ ] Hybrid UIA + OCR fallback pipeline</li>
+<li>[ ] Error recovery and re-planning logic</li>
+<li>[ ] Complex app support (Excel, browsers, IDEs)</li>
+<li>[ ] Multi-step workflow execution</li>
+<li>[ ] Performance optimization and latency reduction</li>
+</ul>
+
+<h3 id="phase-4-advanced-weeks-7-8">Phase 4: Advanced (Weeks 7-8)</h3>
+
+<ul>
+<li>[ ] GOLD-style global-to-local visual refinement</li>
+<li>[ ] RegionFocus-inspired test-time scaling</li>
+<li>[ ] QLoRA fine-tuning on GUI grounding datasets</li>
+<li>[ ] Comprehensive evaluation on real-world tasks</li>
+<li>[ ] Documentation and deployment packaging</li>
+</ul>
+
+<hr />
+
+<h2 id="success-metrics">Success Metrics</h2>
+
+<table>
+<thead>
+<tr>
+  <th>Metric</th>
+  <th>Target</th>
+  <th>Current Baseline</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>Click Accuracy</strong> (native apps)</td>
+  <td>&gt;90%</td>
+  <td>~40% (SOM-based)</td>
+</tr>
+<tr>
+  <td><strong>Click Accuracy</strong> (web apps)</td>
+  <td>&gt;80%</td>
+  <td>~35% (SOM-based)</td>
+</tr>
+<tr>
+  <td><strong>Task Completion Rate</strong> (simple)</td>
+  <td>&gt;85%</td>
+  <td>Not tested</td>
+</tr>
+<tr>
+  <td><strong>Task Completion Rate</strong> (complex)</td>
+  <td>&gt;60%</td>
+  <td>Not tested</td>
+</tr>
+<tr>
+  <td><strong>Per-Step Latency</strong></td>
+  <td>&lt;2 seconds</td>
+  <td>~4-8 seconds</td>
+</tr>
+<tr>
+  <td><strong>VRAM Usage</strong></td>
+  <td>&lt;5.5 GB</td>
+  <td>~4.6 GB (model only)</td>
+</tr>
+<tr>
+  <td><strong>Privacy</strong></td>
+  <td>100% local</td>
+  <td>100% local ✓</td>
+</tr>
+</tbody>
+</table>
+
+<hr />
+
+<h2 id="how-to-read-this-documentation">How to Read This Documentation</h2>
+
+<ol>
+<li><strong>Start here</strong> (00_Master_Blueprint) for the big picture</li>
+<li>Read <strong>01_System_Architecture_Deep_Dive</strong> for detailed data flow</li>
+<li>Read module-specific documents (02-06) for implementation details</li>
+<li>Read <strong>07_Model_Selection</strong> for LLM deployment decisions</li>
+<li>Read <strong>08_Advanced_Strategies</strong> for SOTA research integration</li>
+</ol>
+
+<p>Each document is self-contained but cross-references related documents. All documents are written to be printable as standalone PDF guides.</p>
+
+<hr />
+
+<p><em>Document Version: 1.0 | Last Updated: April 27, 2026</em><br />
+<em>Project: OmniVLA — Final Year Project</em></p>
+
+    <div class="footer">
+        <p>OmniVLA Project Documentation &mdash; Generated April 2026</p>
+        <p>Confidential &mdash; Final Year Project</p>
+    </div>
+</body>
+</html>

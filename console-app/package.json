@@ -1,0 +1,12 @@
+{
+  "name": "console-app",
+  "version": "1.0.0",
+  "description": "OmniVLA Dedicated Console App Wrapper",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "electron": "^33.0.0"
+  }
+}

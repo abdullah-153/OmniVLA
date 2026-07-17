@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniVLA: Execution Layer</title>
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        line-height: 1.7;
+        color: #1a1a2e;
+        background: #ffffff;
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 60px 40px;
+        font-size: 14px;
+    }
+    
+    h1 {
+        font-size: 2.2em;
+        font-weight: 700;
+        color: #0f0f23;
+        margin-top: 0;
+        margin-bottom: 8px;
+        padding-bottom: 16px;
+        border-bottom: 3px solid #667eea;
+        letter-spacing: -0.5px;
+    }
+    
+    h2 {
+        font-size: 1.6em;
+        font-weight: 600;
+        color: #1a1a2e;
+        margin-top: 48px;
+        margin-bottom: 16px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    
+    h3 {
+        font-size: 1.25em;
+        font-weight: 600;
+        color: #2d3748;
+        margin-top: 32px;
+        margin-bottom: 12px;
+    }
+    
+    h4 {
+        font-size: 1.05em;
+        font-weight: 600;
+        color: #4a5568;
+        margin-top: 24px;
+        margin-bottom: 8px;
+    }
+    
+    p {
+        margin-bottom: 16px;
+        color: #2d3748;
+    }
+    
+    strong { font-weight: 600; color: #1a1a2e; }
+    
+    em { font-style: italic; color: #4a5568; }
+    
+    a { color: #667eea; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    
+    code {
+        font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+        background: #f1f5f9;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.88em;
+        color: #e53e3e;
+    }
+    
+    pre {
+        background: #1a1a2e;
+        color: #e2e8f0;
+        padding: 20px 24px;
+        border-radius: 8px;
+        overflow-x: auto;
+        margin: 16px 0 24px 0;
+        font-size: 0.85em;
+        line-height: 1.6;
+        border: 1px solid #2d3748;
+    }
+    
+    pre code {
+        background: transparent;
+        color: #e2e8f0;
+        padding: 0;
+        font-size: 1em;
+    }
+    
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 16px 0 24px 0;
+        font-size: 0.92em;
+    }
+    
+    thead th {
+        background: #667eea;
+        color: white;
+        padding: 12px 16px;
+        text-align: left;
+        font-weight: 600;
+        font-size: 0.9em;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    tbody td {
+        padding: 10px 16px;
+        border-bottom: 1px solid #e2e8f0;
+        vertical-align: top;
+    }
+    
+    tbody tr:nth-child(even) { background: #f8fafc; }
+    tbody tr:hover { background: #edf2f7; }
+    
+    ul, ol {
+        margin: 8px 0 16px 24px;
+    }
+    
+    li {
+        margin-bottom: 6px;
+        color: #2d3748;
+    }
+    
+    li code { font-size: 0.85em; }
+    
+    blockquote {
+        border-left: 4px solid #667eea;
+        background: #f0f4ff;
+        padding: 16px 20px;
+        margin: 16px 0;
+        border-radius: 0 8px 8px 0;
+        font-style: italic;
+        color: #4a5568;
+    }
+    
+    blockquote strong { color: #2d3748; }
+    
+    hr {
+        border: none;
+        border-top: 2px solid #e2e8f0;
+        margin: 40px 0;
+    }
+    
+    /* Print styles */
+    @media print {
+        body { padding: 20px; max-width: 100%; }
+        pre { background: #f5f5f5 !important; color: #333 !important; 
+              border: 1px solid #ddd; }
+        pre code { color: #333 !important; }
+        thead th { background: #333 !important; }
+        h1, h2, h3 { page-break-after: avoid; }
+        pre, table { page-break-inside: avoid; }
+    }
+    
+    .title-block {
+        text-align: center;
+        margin-bottom: 48px;
+        padding: 40px 0;
+        border-bottom: 3px solid #667eea;
+    }
+    
+    .title-block h1 {
+        border: none;
+        padding: 0;
+        margin: 0;
+        font-size: 2.5em;
+    }
+    
+    .subtitle {
+        color: #667eea;
+        font-size: 1.2em;
+        font-weight: 400;
+        margin-top: 8px;
+    }
+    
+    .footer {
+        margin-top: 60px;
+        padding-top: 20px;
+        border-top: 1px solid #e2e8f0;
+        text-align: center;
+        color: #a0aec0;
+        font-size: 0.85em;
+    }
+    </style>
+</head>
+<body>
+    <h1 id="omnivla-execution-layer">OmniVLA: Execution Layer</h1>
+
+<h2 id="document-05-action-to-system-input-translation">Document 05 — Action-to-System-Input Translation</h2>
+
+<hr />
+
+<h2 id="1-execution-philosophy">1. Execution Philosophy</h2>
+
+<p>The Execution Layer is the bridge between the LLM's <strong>semantic intent</strong> and the <strong>physical system input</strong>. It must be:</p>
+
+<ol>
+<li><strong>Deterministic</strong>: Given the same action and state, always produce the same system input</li>
+<li><strong>Reliable</strong>: Prefer methods that are resolution-independent and UI-layout-agnostic</li>
+<li><strong>Defensive</strong>: Handle edge cases (element moved, window changed, app crashed)</li>
+<li><strong>Fast</strong>: Execute within 300ms including all safety checks</li>
+</ol>
+
+<hr />
+
+<h2 id="2-execution-fallback-chain">2. Execution Fallback Chain</h2>
+
+<p>The Execution Layer tries methods in order of reliability, falling back to the next if the current method fails:</p>
+
+<pre><code>┌─────────────────────────────────────────────────────────────────┐
+│                 EXECUTION PRIORITY CHAIN                         │
+│                                                                   │
+│  Priority 1: KEYBOARD SHORTCUT                                  │
+│  ┌────────────────────────────────────────────────────────┐     │
+│  │ ✓ Resolution independent                               │     │
+│  │ ✓ Layout independent                                   │     │
+│  │ ✓ Fastest execution (~10ms)                            │     │
+│  │ ✓ Works even when element is off-screen                │     │
+│  │ ✗ Only available for common operations                 │     │
+│  └────────────────────────────────────────────────────────┘     │
+│                         │                                        │
+│                    Not available?                                │
+│                         │                                        │
+│  Priority 2: UIA CONTROL INVOCATION                             │
+│  ┌────────────────────────────────────────────────────────┐     │
+│  │ ✓ Programmatic element interaction (no mouse needed)    │     │
+│  │ ✓ Resolution independent                               │     │
+│  │ ✓ Works on minimized/overlapped windows                │     │
+│  │ ✗ Only works with UIA-compatible apps                  │     │
+│  │ ✗ Requires element handle from perception              │     │
+│  └────────────────────────────────────────────────────────┘     │
+│                         │                                        │
+│                    Not available?                                │
+│                         │                                        │
+│  Priority 3: COORDINATE CLICK (PyAutoGUI)                       │
+│  ┌────────────────────────────────────────────────────────┐     │
+│  │ ✓ Universal — works on any visible element             │     │
+│  │ ✗ Requires accurate coordinates from perception        │     │
+│  │ ✗ Resolution dependent                                 │     │
+│  │ ✗ Fails if element moves or is obscured                │     │
+│  │ ✗ Requires mouse to physically move                    │     │
+│  └────────────────────────────────────────────────────────┘     │
+└─────────────────────────────────────────────────────────────────┘
+</code></pre>
+
+<hr />
+
+<h2 id="3-priority-1-keyboard-shortcuts">3. Priority 1: Keyboard Shortcuts</h2>
+
+<h3 id="31-comprehensive-shortcut-knowledge-base">3.1 Comprehensive Shortcut Knowledge Base</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="n">SHORTCUTS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="c1"># ─── Universal Windows Shortcuts ───</span>
+    <span class="s2">&quot;_global&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;copy&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;c&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;paste&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;v&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;cut&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;x&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;undo&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;z&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;redo&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;save&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;s&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;save_as&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;shift&quot;</span><span class="p">,</span> <span class="s2">&quot;s&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;select_all&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;a&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;find&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;f&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;print&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;p&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;new&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;n&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;open&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;o&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;close&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;alt&quot;</span><span class="p">,</span> <span class="s2">&quot;f4&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;switch_app&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;alt&quot;</span><span class="p">,</span> <span class="s2">&quot;tab&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;task_manager&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;shift&quot;</span><span class="p">,</span> <span class="s2">&quot;escape&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;start_menu&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;win&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;run&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;win&quot;</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;lock&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;win&quot;</span><span class="p">,</span> <span class="s2">&quot;l&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;screenshot&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;win&quot;</span><span class="p">,</span> <span class="s2">&quot;shift&quot;</span><span class="p">,</span> <span class="s2">&quot;s&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;settings&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;win&quot;</span><span class="p">,</span> <span class="s2">&quot;i&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;file_explorer&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;win&quot;</span><span class="p">,</span> <span class="s2">&quot;e&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;desktop&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;win&quot;</span><span class="p">,</span> <span class="s2">&quot;d&quot;</span><span class="p">],</span>
+    <span class="p">},</span>
+
+    <span class="c1"># ─── Chrome / Edge ───</span>
+    <span class="s2">&quot;Chrome&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;new_tab&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;t&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;close_tab&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;reopen_tab&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;shift&quot;</span><span class="p">,</span> <span class="s2">&quot;t&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;next_tab&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;tab&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;prev_tab&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;shift&quot;</span><span class="p">,</span> <span class="s2">&quot;tab&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;address_bar&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;l&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;refresh&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;f5&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;hard_refresh&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;shift&quot;</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;back&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;alt&quot;</span><span class="p">,</span> <span class="s2">&quot;left&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;forward&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;alt&quot;</span><span class="p">,</span> <span class="s2">&quot;right&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;downloads&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;j&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;history&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;h&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;bookmark&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;d&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;dev_tools&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;f12&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;zoom_in&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;=&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;zoom_out&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;-&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;zoom_reset&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;0&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;page_source&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;u&quot;</span><span class="p">],</span>
+    <span class="p">},</span>
+
+    <span class="c1"># ─── Microsoft Excel ───</span>
+    <span class="s2">&quot;Excel&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;new_workbook&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;n&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;save&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;s&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;bold&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;b&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;italic&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;i&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;underline&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;u&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;format_cells&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;1&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;insert_function&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;shift&quot;</span><span class="p">,</span> <span class="s2">&quot;f3&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;autosum&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;alt&quot;</span><span class="p">,</span> <span class="s2">&quot;=&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;find_replace&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;h&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;go_to&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;g&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;insert_row&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;shift&quot;</span><span class="p">,</span> <span class="s2">&quot;=&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;delete_row&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;-&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;select_column&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;space&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;select_row&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;shift&quot;</span><span class="p">,</span> <span class="s2">&quot;space&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;fill_down&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;d&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;fill_right&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;name_box&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;f5&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;next_sheet&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;pagedown&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;prev_sheet&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;pageup&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;insert_chart&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;alt&quot;</span><span class="p">,</span> <span class="s2">&quot;f1&quot;</span><span class="p">],</span>
+    <span class="p">},</span>
+
+    <span class="c1"># ─── VS Code ───</span>
+    <span class="s2">&quot;VS Code&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;command_palette&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;shift&quot;</span><span class="p">,</span> <span class="s2">&quot;p&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;quick_open&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;p&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;terminal&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;`&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;new_terminal&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;shift&quot;</span><span class="p">,</span> <span class="s2">&quot;`&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;sidebar&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;b&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;explorer&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;shift&quot;</span><span class="p">,</span> <span class="s2">&quot;e&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;search&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;shift&quot;</span><span class="p">,</span> <span class="s2">&quot;f&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;git&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;shift&quot;</span><span class="p">,</span> <span class="s2">&quot;g&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;debug&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;shift&quot;</span><span class="p">,</span> <span class="s2">&quot;d&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;extensions&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;shift&quot;</span><span class="p">,</span> <span class="s2">&quot;x&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;go_to_definition&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;f12&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;go_back&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;alt&quot;</span><span class="p">,</span> <span class="s2">&quot;left&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;format_document&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;shift&quot;</span><span class="p">,</span> <span class="s2">&quot;alt&quot;</span><span class="p">,</span> <span class="s2">&quot;f&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;toggle_comment&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;/&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;multi_cursor&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;alt&quot;</span><span class="p">,</span> <span class="s2">&quot;down&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;select_word&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;d&quot;</span><span class="p">],</span>
+    <span class="p">},</span>
+
+    <span class="c1"># ─── File Explorer ───</span>
+    <span class="s2">&quot;File Explorer&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;new_folder&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;shift&quot;</span><span class="p">,</span> <span class="s2">&quot;n&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;rename&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;f2&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;delete&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;delete&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;permanent_delete&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;shift&quot;</span><span class="p">,</span> <span class="s2">&quot;delete&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;alt&quot;</span><span class="p">,</span> <span class="s2">&quot;enter&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;address_bar&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;l&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;search&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;e&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;refresh&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;f5&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;back&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;alt&quot;</span><span class="p">,</span> <span class="s2">&quot;left&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;parent&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;alt&quot;</span><span class="p">,</span> <span class="s2">&quot;up&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;preview_pane&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;alt&quot;</span><span class="p">,</span> <span class="s2">&quot;p&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;details_pane&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;alt&quot;</span><span class="p">,</span> <span class="s2">&quot;shift&quot;</span><span class="p">,</span> <span class="s2">&quot;p&quot;</span><span class="p">],</span>
+    <span class="p">},</span>
+
+    <span class="c1"># ─── Notepad / Text Editors ───</span>
+    <span class="s2">&quot;Notepad&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;new&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;n&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;open&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;o&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;save&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;s&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;save_as&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;shift&quot;</span><span class="p">,</span> <span class="s2">&quot;s&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;find&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;f&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;replace&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;h&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;go_to&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;g&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;select_all&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;a&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;time_date&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;f5&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;word_wrap&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;alt&quot;</span><span class="p">,</span> <span class="s2">&quot;o&quot;</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">],</span>
+    <span class="p">},</span>
+
+    <span class="c1"># ─── Microsoft Word ───</span>
+    <span class="s2">&quot;Word&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;new&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;n&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;save&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;s&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;bold&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;b&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;italic&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;i&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;underline&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;u&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;center&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;e&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;left_align&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;l&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;right_align&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;justify&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;j&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;increase_font&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;shift&quot;</span><span class="p">,</span> <span class="s2">&quot;&gt;&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;decrease_font&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;shift&quot;</span><span class="p">,</span> <span class="s2">&quot;&lt;&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;line_spacing&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;2&quot;</span><span class="p">],</span>  <span class="c1"># double space</span>
+        <span class="s2">&quot;page_break&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;enter&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;word_count&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;shift&quot;</span><span class="p">,</span> <span class="s2">&quot;g&quot;</span><span class="p">],</span>
+    <span class="p">},</span>
+<span class="p">}</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">find_shortcut</span><span class="p">(</span><span class="n">app_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">element_label</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Look up a keyboard shortcut for an element in the current app.&quot;&quot;&quot;</span>
+    <span class="n">label_lower</span> <span class="o">=</span> <span class="n">element_label</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+
+    <span class="c1"># Check app-specific shortcuts first</span>
+    <span class="n">app_shortcuts</span> <span class="o">=</span> <span class="n">SHORTCUTS</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">app_name</span><span class="p">,</span> <span class="p">{})</span>
+    <span class="k">for</span> <span class="n">intent</span><span class="p">,</span> <span class="n">keys</span> <span class="ow">in</span> <span class="n">app_shortcuts</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">intent</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;_&quot;</span><span class="p">,</span> <span class="s2">&quot; &quot;</span><span class="p">)</span> <span class="ow">in</span> <span class="n">label_lower</span> <span class="ow">or</span> <span class="n">label_lower</span> <span class="ow">in</span> <span class="n">intent</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">keys</span>
+
+    <span class="c1"># Check global shortcuts</span>
+    <span class="k">for</span> <span class="n">intent</span><span class="p">,</span> <span class="n">keys</span> <span class="ow">in</span> <span class="n">SHORTCUTS</span><span class="p">[</span><span class="s2">&quot;_global&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">intent</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;_&quot;</span><span class="p">,</span> <span class="s2">&quot; &quot;</span><span class="p">)</span> <span class="ow">in</span> <span class="n">label_lower</span> <span class="ow">or</span> <span class="n">label_lower</span> <span class="ow">in</span> <span class="n">intent</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">keys</span>
+
+    <span class="k">return</span> <span class="kc">None</span>
+</code></pre>
+</div>
+
+<hr />
+
+<h2 id="4-priority-2-uia-control-invocation">4. Priority 2: UIA Control Invocation</h2>
+
+<h3 id="41-direct-element-invocation">4.1 Direct Element Invocation</h3>
+
+<p>When UIA elements have control patterns, we can invoke them directly without mouse movement:</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">invoke_via_uia</span><span class="p">(</span><span class="n">element_handle</span><span class="p">,</span> <span class="n">element_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Invoke a UIA element directly via its control pattern.&quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">pywinauto</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">pywinauto.controls.uiawrapper</span><span class="w"> </span><span class="kn">import</span> <span class="n">UIAWrapper</span>
+
+        <span class="n">wrapper</span> <span class="o">=</span> <span class="n">UIAWrapper</span><span class="p">(</span><span class="n">element_handle</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">element_type</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;button&quot;</span><span class="p">,</span> <span class="s2">&quot;menu_item&quot;</span><span class="p">,</span> <span class="s2">&quot;link&quot;</span><span class="p">,</span> <span class="s2">&quot;tab&quot;</span><span class="p">):</span>
+            <span class="c1"># InvokePattern — equivalent to clicking</span>
+            <span class="n">wrapper</span><span class="o">.</span><span class="n">invoke</span><span class="p">()</span>
+            <span class="k">return</span> <span class="kc">True</span>
+
+        <span class="k">elif</span> <span class="n">element_type</span> <span class="o">==</span> <span class="s2">&quot;checkbox&quot;</span><span class="p">:</span>
+            <span class="c1"># TogglePattern — check/uncheck</span>
+            <span class="n">wrapper</span><span class="o">.</span><span class="n">toggle</span><span class="p">()</span>
+            <span class="k">return</span> <span class="kc">True</span>
+
+        <span class="k">elif</span> <span class="n">element_type</span> <span class="o">==</span> <span class="s2">&quot;text_field&quot;</span><span class="p">:</span>
+            <span class="c1"># ValuePattern — set text directly</span>
+            <span class="n">wrapper</span><span class="o">.</span><span class="n">set_focus</span><span class="p">()</span>
+            <span class="k">return</span> <span class="kc">True</span>
+
+        <span class="k">elif</span> <span class="n">element_type</span> <span class="o">==</span> <span class="s2">&quot;dropdown&quot;</span><span class="p">:</span>
+            <span class="c1"># ExpandCollapsePattern — open dropdown</span>
+            <span class="n">wrapper</span><span class="o">.</span><span class="n">expand</span><span class="p">()</span>
+            <span class="k">return</span> <span class="kc">True</span>
+
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;UIA invocation failed: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">False</span>
+</code></pre>
+</div>
+
+<h3 id="42-uia-advantages">4.2 UIA Advantages</h3>
+
+<table>
+<thead>
+<tr>
+  <th>Feature</th>
+  <th>UIA Invoke</th>
+  <th>Mouse Click</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Works when window is partially covered</td>
+  <td>✓</td>
+  <td>✗</td>
+</tr>
+<tr>
+  <td>Independent of element position</td>
+  <td>✓</td>
+  <td>✗</td>
+</tr>
+<tr>
+  <td>Works at any DPI/scaling</td>
+  <td>✓</td>
+  <td>✗</td>
+</tr>
+<tr>
+  <td>No mouse cursor interference</td>
+  <td>✓</td>
+  <td>✗</td>
+</tr>
+<tr>
+  <td>Speed</td>
+  <td>~5ms</td>
+  <td>~50ms</td>
+</tr>
+<tr>
+  <td>Works on hidden elements</td>
+  <td>Sometimes</td>
+  <td>Never</td>
+</tr>
+</tbody>
+</table>
+
+<hr />
+
+<h2 id="5-priority-3-coordinate-click">5. Priority 3: Coordinate Click</h2>
+
+<h3 id="51-implementation">5.1 Implementation</h3>
+
+<p>When shortcuts and UIA are unavailable, we fall back to mouse-based clicking:</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pyautogui</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+
+<span class="n">pyautogui</span><span class="o">.</span><span class="n">FAILSAFE</span> <span class="o">=</span> <span class="kc">True</span>   <span class="c1"># Move mouse to corner = abort</span>
+<span class="n">pyautogui</span><span class="o">.</span><span class="n">PAUSE</span> <span class="o">=</span> <span class="mf">0.1</span>       <span class="c1"># Minimum pause between actions</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">click_at_coordinates</span><span class="p">(</span><span class="n">cx</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">cy</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">click_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;left&quot;</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Click at specific screen coordinates.&quot;&quot;&quot;</span>
+    <span class="c1"># Move mouse smoothly to target</span>
+    <span class="n">pyautogui</span><span class="o">.</span><span class="n">moveTo</span><span class="p">(</span><span class="n">cx</span><span class="p">,</span> <span class="n">cy</span><span class="p">,</span> <span class="n">duration</span><span class="o">=</span><span class="mf">0.15</span><span class="p">)</span>
+
+    <span class="c1"># Brief pause for hover effects</span>
+    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.05</span><span class="p">)</span>
+
+    <span class="c1"># Click</span>
+    <span class="k">if</span> <span class="n">click_type</span> <span class="o">==</span> <span class="s2">&quot;left&quot;</span><span class="p">:</span>
+        <span class="n">pyautogui</span><span class="o">.</span><span class="n">click</span><span class="p">(</span><span class="n">cx</span><span class="p">,</span> <span class="n">cy</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">click_type</span> <span class="o">==</span> <span class="s2">&quot;right&quot;</span><span class="p">:</span>
+        <span class="n">pyautogui</span><span class="o">.</span><span class="n">rightClick</span><span class="p">(</span><span class="n">cx</span><span class="p">,</span> <span class="n">cy</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">click_type</span> <span class="o">==</span> <span class="s2">&quot;double&quot;</span><span class="p">:</span>
+        <span class="n">pyautogui</span><span class="o">.</span><span class="n">doubleClick</span><span class="p">(</span><span class="n">cx</span><span class="p">,</span> <span class="n">cy</span><span class="p">)</span>
+
+    <span class="c1"># Post-click pause for UI response</span>
+    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.2</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">type_text</span><span class="p">(</span><span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">interval</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.02</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Type text character by character.&quot;&quot;&quot;</span>
+    <span class="c1"># Use pyautogui.write for ASCII text</span>
+    <span class="k">if</span> <span class="nb">all</span><span class="p">(</span><span class="nb">ord</span><span class="p">(</span><span class="n">c</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">128</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">text</span><span class="p">):</span>
+        <span class="n">pyautogui</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">interval</span><span class="o">=</span><span class="n">interval</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># For Unicode text, use clipboard paste</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">pyperclip</span>
+        <span class="n">pyperclip</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+        <span class="n">pyautogui</span><span class="o">.</span><span class="n">hotkey</span><span class="p">(</span><span class="s2">&quot;ctrl&quot;</span><span class="p">,</span> <span class="s2">&quot;v&quot;</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">press_key_combo</span><span class="p">(</span><span class="n">keys</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Press a keyboard shortcut.&quot;&quot;&quot;</span>
+    <span class="n">pyautogui</span><span class="o">.</span><span class="n">hotkey</span><span class="p">(</span><span class="o">*</span><span class="n">keys</span><span class="p">)</span>
+    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span>
+</code></pre>
+</div>
+
+<h3 id="52-click-accuracy-enhancement">5.2 Click Accuracy Enhancement</h3>
+
+<p>When using coordinate clicks, we can improve accuracy with a small "micro-snap":</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">enhanced_click</span><span class="p">(</span><span class="n">element</span><span class="p">,</span> <span class="n">frame_pixels</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Click with micro-snap correction for better accuracy.&quot;&quot;&quot;</span>
+    <span class="n">cx</span><span class="p">,</span> <span class="n">cy</span> <span class="o">=</span> <span class="n">element</span><span class="o">.</span><span class="n">center</span>
+
+    <span class="c1"># Get a small region around the predicted center</span>
+    <span class="n">margin</span> <span class="o">=</span> <span class="mi">15</span>
+    <span class="n">x1</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">cx</span> <span class="o">-</span> <span class="n">margin</span><span class="p">)</span>
+    <span class="n">y1</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">cy</span> <span class="o">-</span> <span class="n">margin</span><span class="p">)</span>
+    <span class="n">x2</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">frame_pixels</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">cx</span> <span class="o">+</span> <span class="n">margin</span><span class="p">)</span>
+    <span class="n">y2</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">frame_pixels</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">cy</span> <span class="o">+</span> <span class="n">margin</span><span class="p">)</span>
+
+    <span class="n">roi</span> <span class="o">=</span> <span class="n">frame_pixels</span><span class="p">[</span><span class="n">y1</span><span class="p">:</span><span class="n">y2</span><span class="p">,</span> <span class="n">x1</span><span class="p">:</span><span class="n">x2</span><span class="p">]</span>
+
+    <span class="c1"># Find the visual center of the element in the ROI</span>
+    <span class="c1"># (using edge detection to find the element boundary)</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">cv2</span>
+    <span class="n">gray</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">cvtColor</span><span class="p">(</span><span class="n">roi</span><span class="p">,</span> <span class="n">cv2</span><span class="o">.</span><span class="n">COLOR_RGB2GRAY</span><span class="p">)</span>
+    <span class="n">edges</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">Canny</span><span class="p">(</span><span class="n">gray</span><span class="p">,</span> <span class="mi">50</span><span class="p">,</span> <span class="mi">150</span><span class="p">)</span>
+    <span class="n">contours</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">findContours</span><span class="p">(</span><span class="n">edges</span><span class="p">,</span> <span class="n">cv2</span><span class="o">.</span><span class="n">RETR_EXTERNAL</span><span class="p">,</span> 
+                                     <span class="n">cv2</span><span class="o">.</span><span class="n">CHAIN_APPROX_SIMPLE</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">contours</span><span class="p">:</span>
+        <span class="c1"># Find the largest contour (likely the element)</span>
+        <span class="n">largest</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">contours</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">cv2</span><span class="o">.</span><span class="n">contourArea</span><span class="p">)</span>
+        <span class="n">M</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">moments</span><span class="p">(</span><span class="n">largest</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">M</span><span class="p">[</span><span class="s2">&quot;m00&quot;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="c1"># Adjust click to contour center</span>
+            <span class="n">snap_cx</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">M</span><span class="p">[</span><span class="s2">&quot;m10&quot;</span><span class="p">]</span> <span class="o">/</span> <span class="n">M</span><span class="p">[</span><span class="s2">&quot;m00&quot;</span><span class="p">])</span> <span class="o">+</span> <span class="n">x1</span>
+            <span class="n">snap_cy</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">M</span><span class="p">[</span><span class="s2">&quot;m01&quot;</span><span class="p">]</span> <span class="o">/</span> <span class="n">M</span><span class="p">[</span><span class="s2">&quot;m00&quot;</span><span class="p">])</span> <span class="o">+</span> <span class="n">y1</span>
+            <span class="n">cx</span><span class="p">,</span> <span class="n">cy</span> <span class="o">=</span> <span class="n">snap_cx</span><span class="p">,</span> <span class="n">snap_cy</span>
+
+    <span class="n">click_at_coordinates</span><span class="p">(</span><span class="n">cx</span><span class="p">,</span> <span class="n">cy</span><span class="p">)</span>
+</code></pre>
+</div>
+
+<hr />
+
+<h2 id="6-action-router-implementation">6. Action Router Implementation</h2>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">ActionRouter</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Routes semantic actions to system inputs using the fallback chain.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">execute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">action</span><span class="p">:</span> <span class="n">AgentAction</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">SemanticState</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Execute an action with automatic fallback.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">action</span><span class="o">.</span><span class="n">action_type</span> <span class="o">==</span> <span class="s2">&quot;click&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_execute_click</span><span class="p">(</span><span class="n">action</span><span class="p">,</span> <span class="n">state</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">action</span><span class="o">.</span><span class="n">action_type</span> <span class="o">==</span> <span class="s2">&quot;type&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_execute_type</span><span class="p">(</span><span class="n">action</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">action</span><span class="o">.</span><span class="n">action_type</span> <span class="o">==</span> <span class="s2">&quot;key&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_execute_key</span><span class="p">(</span><span class="n">action</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">action</span><span class="o">.</span><span class="n">action_type</span> <span class="o">==</span> <span class="s2">&quot;scroll&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_execute_scroll</span><span class="p">(</span><span class="n">action</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">action</span><span class="o">.</span><span class="n">action_type</span> <span class="o">==</span> <span class="s2">&quot;wait&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_execute_wait</span><span class="p">(</span><span class="n">action</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">action</span><span class="o">.</span><span class="n">action_type</span> <span class="o">==</span> <span class="s2">&quot;done&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;success&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s2">&quot;detail&quot;</span><span class="p">:</span> <span class="s2">&quot;Sub-goal complete&quot;</span><span class="p">}</span>
+        <span class="k">elif</span> <span class="n">action</span><span class="o">.</span><span class="n">action_type</span> <span class="o">==</span> <span class="s2">&quot;fail&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;success&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> 
+                    <span class="s2">&quot;detail&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;Agent: </span><span class="si">{</span><span class="n">action</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">}</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_execute_click</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">state</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Execute click with full fallback chain.&quot;&quot;&quot;</span>
+        <span class="n">element</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_find_element</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">action</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="n">state</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">element</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;success&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> 
+                    <span class="s2">&quot;detail&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;Element </span><span class="si">{</span><span class="n">action</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2"> not found&quot;</span><span class="p">}</span>
+
+        <span class="c1"># PRIORITY 1: Try keyboard shortcut</span>
+        <span class="n">shortcut</span> <span class="o">=</span> <span class="n">find_shortcut</span><span class="p">(</span><span class="n">state</span><span class="o">.</span><span class="n">app</span><span class="p">,</span> <span class="n">element</span><span class="o">.</span><span class="n">label</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">shortcut</span><span class="p">:</span>
+            <span class="n">press_key_combo</span><span class="p">(</span><span class="n">shortcut</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;success&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> 
+                    <span class="s2">&quot;detail&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;Shortcut </span><span class="si">{</span><span class="s1">&#39;+&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">shortcut</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="s2">&quot;shortcut&quot;</span><span class="p">}</span>
+
+        <span class="c1"># PRIORITY 2: Try UIA invocation</span>
+        <span class="k">if</span> <span class="n">element</span><span class="o">.</span><span class="n">source</span> <span class="o">==</span> <span class="s2">&quot;uia&quot;</span> <span class="ow">and</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">element</span><span class="p">,</span> <span class="s2">&quot;uia_handle&quot;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">invoke_via_uia</span><span class="p">(</span><span class="n">element</span><span class="o">.</span><span class="n">uia_handle</span><span class="p">,</span> <span class="n">element</span><span class="o">.</span><span class="n">type</span><span class="p">):</span>
+                <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;success&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> 
+                        <span class="s2">&quot;detail&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;UIA invoke &#39;</span><span class="si">{</span><span class="n">element</span><span class="o">.</span><span class="n">label</span><span class="si">}</span><span class="s2">&#39;&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="s2">&quot;uia&quot;</span><span class="p">}</span>
+
+        <span class="c1"># PRIORITY 3: Coordinate click</span>
+        <span class="n">click_at_coordinates</span><span class="p">(</span><span class="n">element</span><span class="o">.</span><span class="n">center</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">element</span><span class="o">.</span><span class="n">center</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;success&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> 
+                <span class="s2">&quot;detail&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;Clicked (</span><span class="si">{</span><span class="n">element</span><span class="o">.</span><span class="n">center</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">element</span><span class="o">.</span><span class="n">center</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="s2">&quot;coordinate&quot;</span><span class="p">}</span>
+</code></pre>
+</div>
+
+<hr />
+
+<h2 id="7-safety-mechanisms">7. Safety Mechanisms</h2>
+
+<h3 id="71-destructive-action-detection">7.1 Destructive Action Detection</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="n">DESTRUCTIVE_PATTERNS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;delete&quot;</span><span class="p">,</span> <span class="s2">&quot;remove&quot;</span><span class="p">,</span> <span class="s2">&quot;erase&quot;</span><span class="p">,</span> <span class="s2">&quot;clear all&quot;</span><span class="p">,</span> <span class="s2">&quot;format drive&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;uninstall&quot;</span><span class="p">,</span> <span class="s2">&quot;drop table&quot;</span><span class="p">,</span> <span class="s2">&quot;rm -rf&quot;</span><span class="p">,</span> <span class="s2">&quot;shutdown&quot;</span><span class="p">,</span> <span class="s2">&quot;restart&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;factory reset&quot;</span><span class="p">,</span> <span class="s2">&quot;permanent&quot;</span><span class="p">,</span> <span class="s2">&quot;overwrite&quot;</span>
+<span class="p">}</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">is_destructive</span><span class="p">(</span><span class="n">action</span><span class="p">:</span> <span class="n">AgentAction</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">SemanticState</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Check if an action might be destructive.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">action</span><span class="o">.</span><span class="n">action_type</span> <span class="o">==</span> <span class="s2">&quot;click&quot;</span><span class="p">:</span>
+        <span class="n">element</span> <span class="o">=</span> <span class="n">find_element</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">action</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="n">state</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">element</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">any</span><span class="p">(</span><span class="n">p</span> <span class="ow">in</span> <span class="n">element</span><span class="o">.</span><span class="n">label</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> 
+                      <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">DESTRUCTIVE_PATTERNS</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">action</span><span class="o">.</span><span class="n">action_type</span> <span class="o">==</span> <span class="s2">&quot;key&quot;</span><span class="p">:</span>
+        <span class="n">combo</span> <span class="o">=</span> <span class="n">action</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="n">dangerous</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;alt+f4&quot;</span><span class="p">,</span> <span class="s2">&quot;ctrl+shift+delete&quot;</span><span class="p">,</span> <span class="s2">&quot;delete&quot;</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">combo</span> <span class="ow">in</span> <span class="n">dangerous</span>
+
+    <span class="k">return</span> <span class="kc">False</span>
+</code></pre>
+</div>
+
+<h3 id="72-user-confirmation-for-destructive-actions">7.2 User Confirmation for Destructive Actions</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">execute_with_safety</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Execute action with safety checks.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">is_destructive</span><span class="p">(</span><span class="n">action</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">confirm_destructive</span><span class="p">:</span>
+            <span class="c1"># Pause and ask user</span>
+            <span class="n">console</span><span class="o">.</span><span class="n">print</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;[yellow]⚠ Destructive action detected: &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">action</span><span class="o">.</span><span class="n">action_type</span><span class="si">}</span><span class="s2">(</span><span class="si">{</span><span class="n">action</span><span class="o">.</span><span class="n">args</span><span class="si">}</span><span class="s2">)[/yellow]&quot;</span>
+            <span class="p">)</span>
+            <span class="n">response</span> <span class="o">=</span> <span class="n">console</span><span class="o">.</span><span class="n">input</span><span class="p">(</span><span class="s2">&quot;[yellow]Proceed? (y/n): [/yellow]&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">response</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">!=</span> <span class="s2">&quot;y&quot;</span><span class="p">:</span>
+                <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;success&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> 
+                        <span class="s2">&quot;detail&quot;</span><span class="p">:</span> <span class="s2">&quot;User cancelled destructive action&quot;</span><span class="p">}</span>
+
+    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">action</span><span class="p">,</span> <span class="n">state</span><span class="p">)</span>
+</code></pre>
+</div>
+
+<h3 id="73-pyautogui-failsafe">7.3 PyAutoGUI Failsafe</h3>
+
+<p>PyAutoGUI has a built-in failsafe: if the mouse cursor is moved to any corner of the screen, all PyAutoGUI functions will raise <code>FailSafeException</code>. This provides an emergency stop mechanism.</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="n">pyautogui</span><span class="o">.</span><span class="n">FAILSAFE</span> <span class="o">=</span> <span class="kc">True</span>  <span class="c1"># Always enabled</span>
+</code></pre>
+</div>
+
+<hr />
+
+<h2 id="8-execution-timing">8. Execution Timing</h2>
+
+<h3 id="81-action-timing-budget">8.1 Action Timing Budget</h3>
+
+<pre><code>Shortcut execution:        10-30ms
+UIA invocation:             5-20ms
+Coordinate click:          50-200ms (includes mouse movement)
+Text typing:               20ms × (number of characters)
+Post-action pause:          200-500ms (wait for UI response)
+─────────────────────────────────────
+Total per action:           250-700ms
+</code></pre>
+
+<h3 id="82-adaptive-pausing">8.2 Adaptive Pausing</h3>
+
+<p>Some actions need longer pauses than others:</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="n">POST_ACTION_PAUSES</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;click&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;button&quot;</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">,</span>      <span class="c1"># Normal button click</span>
+        <span class="s2">&quot;menu_item&quot;</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">,</span>   <span class="c1"># Menu items need time to expand</span>
+        <span class="s2">&quot;tab&quot;</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">,</span>         <span class="c1"># Tab switching</span>
+        <span class="s2">&quot;link&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>        <span class="c1"># Page navigation (may load)</span>
+        <span class="s2">&quot;dropdown&quot;</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">,</span>    <span class="c1"># Dropdown expansion</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;key&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="mf">0.2</span><span class="p">,</span>
+        <span class="s2">&quot;alt+f4&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>      <span class="c1"># App closing</span>
+        <span class="s2">&quot;ctrl+n&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span>      <span class="c1"># New window/document</span>
+        <span class="s2">&quot;ctrl+s&quot;</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">,</span>      <span class="c1"># Save operation</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">,</span>             <span class="c1"># Minimal pause after typing</span>
+    <span class="s2">&quot;scroll&quot;</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">,</span>           <span class="c1"># Scroll animation</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<hr />
+
+<h2 id="9-cross-application-execution">9. Cross-Application Execution</h2>
+
+<h3 id="91-app-switching">9.1 App Switching</h3>
+
+<p>When a task requires moving between applications:</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">switch_to_app</span><span class="p">(</span><span class="n">target_app</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Switch to a target application.&quot;&quot;&quot;</span>
+
+    <span class="c1"># Try Alt+Tab cycling</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">pywinauto</span>
+    <span class="n">app</span> <span class="o">=</span> <span class="n">pywinauto</span><span class="o">.</span><span class="n">Desktop</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="s2">&quot;uia&quot;</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">window</span> <span class="ow">in</span> <span class="n">app</span><span class="o">.</span><span class="n">windows</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">target_app</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="n">window</span><span class="o">.</span><span class="n">window_text</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">():</span>
+            <span class="n">window</span><span class="o">.</span><span class="n">set_focus</span><span class="p">()</span>
+            <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.5</span><span class="p">)</span>
+            <span class="k">return</span> <span class="kc">True</span>
+
+    <span class="c1"># App not found — try starting it</span>
+    <span class="k">return</span> <span class="n">start_app</span><span class="p">(</span><span class="n">target_app</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">start_app</span><span class="p">(</span><span class="n">app_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Start an application via Start Menu search.&quot;&quot;&quot;</span>
+    <span class="n">pyautogui</span><span class="o">.</span><span class="n">press</span><span class="p">(</span><span class="s2">&quot;win&quot;</span><span class="p">)</span>
+    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.5</span><span class="p">)</span>
+    <span class="n">pyautogui</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">app_name</span><span class="p">,</span> <span class="n">interval</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">1.0</span><span class="p">)</span>  <span class="c1"># Wait for search results</span>
+    <span class="n">pyautogui</span><span class="o">.</span><span class="n">press</span><span class="p">(</span><span class="s2">&quot;enter&quot;</span><span class="p">)</span>
+    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">2.0</span><span class="p">)</span>  <span class="c1"># Wait for app to start</span>
+    <span class="k">return</span> <span class="kc">True</span>
+</code></pre>
+</div>
+
+<h3 id="92-handling-app-launch-delays">9.2 Handling App Launch Delays</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">wait_for_app</span><span class="p">(</span><span class="n">app_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">10.0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Wait for an application to become ready.&quot;&quot;&quot;</span>
+    <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+
+    <span class="k">while</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span> <span class="o">&lt;</span> <span class="n">timeout</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">title</span> <span class="o">=</span> <span class="n">get_active_window_title</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">app_name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="n">title</span><span class="o">.</span><span class="n">lower</span><span class="p">():</span>
+                <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">except</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.5</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="kc">False</span>  <span class="c1"># Timeout</span>
+</code></pre>
+</div>
+
+<hr />
+
+<p><em>Document Version: 1.0 | Part 05 of 08</em><br />
+<em>See also: <a href="./06_Memory_And_Verification.md">06_Memory_And_Verification</a> for post-execution verification</em></p>
+
+    <div class="footer">
+        <p>OmniVLA Project Documentation &mdash; Generated April 2026</p>
+        <p>Confidential &mdash; Final Year Project</p>
+    </div>
+</body>
+</html>

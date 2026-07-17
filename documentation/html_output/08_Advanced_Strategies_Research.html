@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniVLA: Advanced Strategies & Research</title>
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        line-height: 1.7;
+        color: #1a1a2e;
+        background: #ffffff;
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 60px 40px;
+        font-size: 14px;
+    }
+    
+    h1 {
+        font-size: 2.2em;
+        font-weight: 700;
+        color: #0f0f23;
+        margin-top: 0;
+        margin-bottom: 8px;
+        padding-bottom: 16px;
+        border-bottom: 3px solid #667eea;
+        letter-spacing: -0.5px;
+    }
+    
+    h2 {
+        font-size: 1.6em;
+        font-weight: 600;
+        color: #1a1a2e;
+        margin-top: 48px;
+        margin-bottom: 16px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    
+    h3 {
+        font-size: 1.25em;
+        font-weight: 600;
+        color: #2d3748;
+        margin-top: 32px;
+        margin-bottom: 12px;
+    }
+    
+    h4 {
+        font-size: 1.05em;
+        font-weight: 600;
+        color: #4a5568;
+        margin-top: 24px;
+        margin-bottom: 8px;
+    }
+    
+    p {
+        margin-bottom: 16px;
+        color: #2d3748;
+    }
+    
+    strong { font-weight: 600; color: #1a1a2e; }
+    
+    em { font-style: italic; color: #4a5568; }
+    
+    a { color: #667eea; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    
+    code {
+        font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+        background: #f1f5f9;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.88em;
+        color: #e53e3e;
+    }
+    
+    pre {
+        background: #1a1a2e;
+        color: #e2e8f0;
+        padding: 20px 24px;
+        border-radius: 8px;
+        overflow-x: auto;
+        margin: 16px 0 24px 0;
+        font-size: 0.85em;
+        line-height: 1.6;
+        border: 1px solid #2d3748;
+    }
+    
+    pre code {
+        background: transparent;
+        color: #e2e8f0;
+        padding: 0;
+        font-size: 1em;
+    }
+    
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 16px 0 24px 0;
+        font-size: 0.92em;
+    }
+    
+    thead th {
+        background: #667eea;
+        color: white;
+        padding: 12px 16px;
+        text-align: left;
+        font-weight: 600;
+        font-size: 0.9em;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    tbody td {
+        padding: 10px 16px;
+        border-bottom: 1px solid #e2e8f0;
+        vertical-align: top;
+    }
+    
+    tbody tr:nth-child(even) { background: #f8fafc; }
+    tbody tr:hover { background: #edf2f7; }
+    
+    ul, ol {
+        margin: 8px 0 16px 24px;
+    }
+    
+    li {
+        margin-bottom: 6px;
+        color: #2d3748;
+    }
+    
+    li code { font-size: 0.85em; }
+    
+    blockquote {
+        border-left: 4px solid #667eea;
+        background: #f0f4ff;
+        padding: 16px 20px;
+        margin: 16px 0;
+        border-radius: 0 8px 8px 0;
+        font-style: italic;
+        color: #4a5568;
+    }
+    
+    blockquote strong { color: #2d3748; }
+    
+    hr {
+        border: none;
+        border-top: 2px solid #e2e8f0;
+        margin: 40px 0;
+    }
+    
+    /* Print styles */
+    @media print {
+        body { padding: 20px; max-width: 100%; }
+        pre { background: #f5f5f5 !important; color: #333 !important; 
+              border: 1px solid #ddd; }
+        pre code { color: #333 !important; }
+        thead th { background: #333 !important; }
+        h1, h2, h3 { page-break-after: avoid; }
+        pre, table { page-break-inside: avoid; }
+    }
+    
+    .title-block {
+        text-align: center;
+        margin-bottom: 48px;
+        padding: 40px 0;
+        border-bottom: 3px solid #667eea;
+    }
+    
+    .title-block h1 {
+        border: none;
+        padding: 0;
+        margin: 0;
+        font-size: 2.5em;
+    }
+    
+    .subtitle {
+        color: #667eea;
+        font-size: 1.2em;
+        font-weight: 400;
+        margin-top: 8px;
+    }
+    
+    .footer {
+        margin-top: 60px;
+        padding-top: 20px;
+        border-top: 1px solid #e2e8f0;
+        text-align: center;
+        color: #a0aec0;
+        font-size: 0.85em;
+    }
+    </style>
+</head>
+<body>
+    <h1 id="omnivla-advanced-strategies-research">OmniVLA: Advanced Strategies &amp; Research</h1>
+
+<h2 id="document-08-state-of-the-art-techniques-for-future-integration">Document 08 — State-of-the-Art Techniques for Future Integration</h2>
+
+<hr />
+
+<h2 id="1-overview">1. Overview</h2>
+
+<p>This document surveys cutting-edge GUI agent research (2025-2026) and maps each technique to OmniVLA's architecture. These are <strong>future enhancement paths</strong> — each can be integrated independently into the existing pipeline.</p>
+
+<hr />
+
+<h2 id="2-gold-global-overview-to-local-detail">2. GOLD: Global Overview to Local Detail</h2>
+
+<h3 id="21-what-it-is">2.1 What It Is</h3>
+
+<p>GOLD is a three-stage visual grounding framework that mimics how humans look at a screen: first a quick overview, then zoom into the relevant area.</p>
+
+<h3 id="22-how-it-works">2.2 How It Works</h3>
+
+<pre><code>Stage 1: GLOBAL PRUNING
+┌──────────────────────────────────────────┐
+│  Input: Full screenshot (1920×1080)       │
+│  Downscale to 480×270 (4x reduction)     │
+│  Pass to VLM: "Where is the Save button?" │
+│  Output: Candidate region (e.g., top-left │
+│          quadrant)                        │
+│  Cost: ~0.25× of full-resolution pass    │
+└────────────────────┬─────────────────────┘
+                     │
+Stage 2: LOCAL REFINEMENT
+┌────────────────────▼─────────────────────┐
+│  Crop the identified region (e.g.,       │
+│  480×270 from top-left quadrant)         │
+│  Pass to VLM at full resolution          │
+│  Output: Precise coordinates (342, 89)   │
+│  Cost: ~0.25× of full-resolution pass    │
+└────────────────────┬─────────────────────┘
+                     │
+Stage 3: CONTEXT FUSION
+┌────────────────────▼─────────────────────┐
+│  Combine global context (what app is     │
+│  this? what's the layout?) with local    │
+│  precision (exact coordinate)            │
+│  Output: Final grounding result          │
+└──────────────────────────────────────────┘
+
+TOTAL COST: ~0.5× of single full-resolution pass
+            (78% TFLOPs reduction)
+</code></pre>
+
+<h3 id="23-integration-with-omnivla">2.3 Integration with OmniVLA</h3>
+
+<p><strong>Where it fits</strong>: GOLD integrates into the Perception Engine as an <strong>alternative to OCR-based element detection</strong> when dealing with UIA-opaque applications.</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">GOLDPerception</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;GOLD-style global-to-local perception.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">perceive_with_gold</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">goal</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">screenshot</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Use GOLD to locate a specific element.&quot;&quot;&quot;</span>
+
+        <span class="c1"># Stage 1: Global scan (low-res)</span>
+        <span class="n">low_res</span> <span class="o">=</span> <span class="n">resize</span><span class="p">(</span><span class="n">screenshot</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">)</span>
+        <span class="n">global_result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">vlm</span><span class="o">.</span><span class="n">query</span><span class="p">(</span>
+            <span class="n">image</span><span class="o">=</span><span class="n">low_res</span><span class="p">,</span>
+            <span class="n">prompt</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Which quadrant of the screen contains: </span><span class="si">{</span><span class="n">goal</span><span class="si">}</span><span class="s2">?&quot;</span><span class="p">,</span>
+            <span class="n">max_tokens</span><span class="o">=</span><span class="mi">50</span>
+        <span class="p">)</span>
+        <span class="n">region</span> <span class="o">=</span> <span class="n">parse_region</span><span class="p">(</span><span class="n">global_result</span><span class="p">)</span>  <span class="c1"># e.g., &quot;top-left&quot;</span>
+
+        <span class="c1"># Stage 2: Local refinement (full-res crop)</span>
+        <span class="n">crop</span> <span class="o">=</span> <span class="n">extract_region</span><span class="p">(</span><span class="n">screenshot</span><span class="p">,</span> <span class="n">region</span><span class="p">)</span>
+        <span class="n">local_result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">vlm</span><span class="o">.</span><span class="n">query</span><span class="p">(</span>
+            <span class="n">image</span><span class="o">=</span><span class="n">crop</span><span class="p">,</span>
+            <span class="n">prompt</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Give exact coordinates of: </span><span class="si">{</span><span class="n">goal</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+            <span class="n">max_tokens</span><span class="o">=</span><span class="mi">50</span>
+        <span class="p">)</span>
+        <span class="n">coords</span> <span class="o">=</span> <span class="n">parse_coordinates</span><span class="p">(</span><span class="n">local_result</span><span class="p">)</span>
+
+        <span class="c1"># Stage 3: Map back to full-screen coordinates</span>
+        <span class="k">return</span> <span class="n">map_to_screen</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="n">region</span><span class="p">,</span> <span class="n">screenshot</span><span class="o">.</span><span class="n">size</span><span class="p">)</span>
+</code></pre>
+</div>
+
+<p><strong>VRAM Impact</strong>: Requires a VLM on GPU. Must use model-swapping strategy (unload text LLM → load VLM → process → swap back).</p>
+
+<p><strong>When to use</strong>: Only for UIA-opaque applications where OCR alone can't identify the target element.</p>
+
+<hr />
+
+<h2 id="3-regionfocus-visual-test-time-scaling">3. RegionFocus: Visual Test-Time Scaling</h2>
+
+<h3 id="31-what-it-is">3.1 What It Is</h3>
+
+<p>RegionFocus is an ICCV 2025 framework that treats GUI grounding as a <strong>test-time scaling problem</strong>. Instead of getting grounding right in one pass, it allows the agent to iteratively zoom and refine.</p>
+
+<h3 id="32-key-innovations">3.2 Key Innovations</h3>
+
+<ol>
+<li><strong>Iterative Zooming</strong>: If the agent is uncertain, it zooms into sub-regions until confidence is high.</li>
+<li><strong>Image-as-Map</strong>: Annotates screenshots with landmarks (pink stars) to track visited regions and avoid revisiting.</li>
+<li><strong>Plug-in Design</strong>: Works with any VLM without retraining.</li>
+</ol>
+
+<h3 id="33-how-it-works">3.3 How It Works</h3>
+
+<pre><code>Attempt 1: Full screenshot → VLM → "Click at (500, 300)" [confidence: 0.4]
+                                                           ← Low confidence!
+Attempt 2: Zoom into region around (500, 300)
+           Cropped 400×300 region → VLM → "Click at (180, 120)" [confidence: 0.8]
+                                                           ← High confidence!
+
+Map back: (500-200+180, 300-150+120) = (480, 270)
+Final click: (480, 270)
+</code></pre>
+
+<h3 id="34-integration-with-omnivla">3.4 Integration with OmniVLA</h3>
+
+<p>RegionFocus can enhance OmniVLA's fallback perception:</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">RegionFocusGrounding</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Iterative zoom-based visual grounding.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">ground</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">goal</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">screenshot</span><span class="p">,</span> <span class="n">max_zooms</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">3</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Iteratively zoom until confidence is high.&quot;&quot;&quot;</span>
+        <span class="n">current_image</span> <span class="o">=</span> <span class="n">screenshot</span>
+        <span class="n">offset_x</span><span class="p">,</span> <span class="n">offset_y</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span>
+
+        <span class="k">for</span> <span class="n">zoom_level</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_zooms</span><span class="p">):</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">vlm</span><span class="o">.</span><span class="n">query</span><span class="p">(</span>
+                <span class="n">image</span><span class="o">=</span><span class="n">current_image</span><span class="p">,</span>
+                <span class="n">prompt</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Find and return coordinates of: </span><span class="si">{</span><span class="n">goal</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+
+            <span class="n">coords</span> <span class="o">=</span> <span class="n">parse_coordinates</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+            <span class="n">confidence</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;confidence&quot;</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">confidence</span> <span class="o">&gt;</span> <span class="mf">0.7</span><span class="p">:</span>
+                <span class="c1"># High confidence — return final coordinates</span>
+                <span class="k">return</span> <span class="p">(</span><span class="n">coords</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">offset_x</span><span class="p">,</span> <span class="n">coords</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">offset_y</span><span class="p">)</span>
+
+            <span class="c1"># Low confidence — zoom in</span>
+            <span class="n">cx</span><span class="p">,</span> <span class="n">cy</span> <span class="o">=</span> <span class="n">coords</span>
+            <span class="n">crop_size</span> <span class="o">=</span> <span class="n">current_image</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">//</span> <span class="mi">2</span>
+            <span class="n">x1</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">cx</span> <span class="o">-</span> <span class="n">crop_size</span> <span class="o">//</span> <span class="mi">2</span><span class="p">)</span>
+            <span class="n">y1</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">cy</span> <span class="o">-</span> <span class="n">crop_size</span> <span class="o">//</span> <span class="mi">2</span><span class="p">)</span>
+
+            <span class="n">current_image</span> <span class="o">=</span> <span class="n">current_image</span><span class="p">[</span><span class="n">y1</span><span class="p">:</span><span class="n">y1</span><span class="o">+</span><span class="n">crop_size</span><span class="p">,</span> <span class="n">x1</span><span class="p">:</span><span class="n">x1</span><span class="o">+</span><span class="n">crop_size</span><span class="p">]</span>
+            <span class="n">offset_x</span> <span class="o">+=</span> <span class="n">x1</span>
+            <span class="n">offset_y</span> <span class="o">+=</span> <span class="n">y1</span>
+
+        <span class="c1"># Max zooms reached — use best guess</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">coords</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">offset_x</span><span class="p">,</span> <span class="n">coords</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">offset_y</span><span class="p">)</span>
+</code></pre>
+</div>
+
+<p><strong>When to use</strong>: When the target element is small or in a visually dense area where single-pass grounding fails.</p>
+
+<hr />
+
+<h2 id="4-se-gui-self-evolutionary-reinforcement-learning">4. SE-GUI: Self-Evolutionary Reinforcement Learning</h2>
+
+<h3 id="41-what-it-is">4.1 What It Is</h3>
+
+<p>SE-GUI is a NeurIPS 2025 framework that uses reinforcement learning to teach small (7B) VLMs to achieve SOTA GUI grounding. A 7B model trained with SE-GUI outperforms 72B models on ScreenSpot-Pro.</p>
+
+<h3 id="42-key-insights">4.2 Key Insights</h3>
+
+<ol>
+<li><strong>Dense Reward Signal</strong>: Instead of sparse success/failure rewards, SE-GUI uses continuous reward based on distance from target (closer = higher reward).</li>
+<li><strong>Self-Evolutionary Training</strong>: The model's own attention maps are used to filter training data, focusing on regions the model found difficult.</li>
+<li><strong>Small Data, Big Results</strong>: Only 3,000 curated training samples needed.</li>
+</ol>
+
+<h3 id="43-relevance-to-omnivla">4.3 Relevance to OmniVLA</h3>
+
+<p>SE-GUI's approach is directly applicable if we decide to fine-tune a VLM for visual grounding:</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="c1"># SE-GUI-style reward function for RL fine-tuning</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">compute_grounding_reward</span><span class="p">(</span><span class="n">predicted_coords</span><span class="p">,</span> <span class="n">target_coords</span><span class="p">,</span> 
+                              <span class="n">element_bbox</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Dense reward based on click accuracy.&quot;&quot;&quot;</span>
+
+    <span class="c1"># Distance from prediction to target center</span>
+    <span class="n">dx</span> <span class="o">=</span> <span class="n">predicted_coords</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">target_coords</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">dy</span> <span class="o">=</span> <span class="n">predicted_coords</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">target_coords</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">distance</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">dx</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">dy</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+
+    <span class="c1"># Element size (larger elements are more forgiving)</span>
+    <span class="n">element_width</span> <span class="o">=</span> <span class="n">element_bbox</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">-</span> <span class="n">element_bbox</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">element_height</span> <span class="o">=</span> <span class="n">element_bbox</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="o">-</span> <span class="n">element_bbox</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">element_radius</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">element_width</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">element_height</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span>
+
+    <span class="c1"># Reward: 1.0 if inside element, decreasing with distance</span>
+    <span class="k">if</span> <span class="n">is_inside_bbox</span><span class="p">(</span><span class="n">predicted_coords</span><span class="p">,</span> <span class="n">element_bbox</span><span class="p">):</span>
+        <span class="k">return</span> <span class="mf">1.0</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span> <span class="o">-</span> <span class="n">distance</span> <span class="o">/</span> <span class="p">(</span><span class="n">element_radius</span> <span class="o">*</span> <span class="mi">3</span><span class="p">))</span>
+</code></pre>
+</div>
+
+<p><strong>Practical impact</strong>: If we fine-tune Gemma 4 E4B with SE-GUI's approach using only 3K samples, we could dramatically improve visual grounding for the fallback perception mode.</p>
+
+<hr />
+
+<h2 id="5-gui-actor-coordinate-free-grounding">5. GUI-Actor: Coordinate-Free Grounding</h2>
+
+<h3 id="51-what-it-is">5.1 What It Is</h3>
+
+<p>GUI-Actor replaces coordinate prediction with <strong>attention-based visual pointing</strong>. Instead of asking the model "what are the (x,y) coordinates of the Save button?", it uses the model's internal attention to directly point at the visual patch corresponding to the target.</p>
+
+<h3 id="52-why-its-better-than-coordinates">5.2 Why It's Better Than Coordinates</h3>
+
+<table>
+<thead>
+<tr>
+  <th>Aspect</th>
+  <th>Coordinate Prediction</th>
+  <th>Attention-Based Pointing</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Resolution dependency</td>
+  <td>High — must match training resolution</td>
+  <td>Low — works at any resolution</td>
+</tr>
+<tr>
+  <td>Hallucination risk</td>
+  <td>Medium — can predict coordinates in empty space</td>
+  <td>Low — points at actual visual content</td>
+</tr>
+<tr>
+  <td>Precision</td>
+  <td>~15-25px error typical</td>
+  <td>~10-15px error typical</td>
+</tr>
+<tr>
+  <td>Training data needed</td>
+  <td>10K+ samples</td>
+  <td>5K+ samples</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="53-integration-concept">5.3 Integration Concept</h3>
+
+<p>This is architecturally complex (requires modifying the VLM's output head) but represents the future of GUI grounding:</p>
+
+<pre><code>Traditional: VLM → "click(532, 711)" → Denormalize → Click
+GUI-Actor:   VLM → attention_map → argmax(attention) → Click
+
+The attention map directly "highlights" the target element,
+eliminating the coordinate prediction step entirely.
+</code></pre>
+
+<p><strong>For OmniVLA</strong>: This is a Phase 4+ enhancement. Our current text-based architecture avoids the coordinate prediction problem entirely by using element IDs from UIA/OCR. GUI-Actor becomes relevant only if we switch to a full VLM-based perception mode.</p>
+
+<hr />
+
+<h2 id="6-showui-efficient-visual-token-selection">6. ShowUI: Efficient Visual Token Selection</h2>
+
+<h3 id="61-what-it-is">6.1 What It Is</h3>
+
+<p>ShowUI (NeurIPS 2024) is a 2B-parameter VLM specifically designed for GUI tasks. Its key innovation is <strong>UI-Guided Visual Token Selection</strong> — treating the screenshot as a graph and pruning redundant visual patches.</p>
+
+<h3 id="62-key-technique-token-pruning">6.2 Key Technique: Token Pruning</h3>
+
+<pre><code>Standard VLM: Screenshot (1920×1080) → 2048 visual tokens → Process all
+ShowUI:       Screenshot (1920×1080) → 2048 visual tokens → 
+              Graph-based pruning → 1400 tokens (33% reduction) → Process
+
+The pruned tokens correspond to uniform background regions,
+repeated patterns, and non-interactive areas.
+</code></pre>
+
+<h3 id="63-integration-concept">6.3 Integration Concept</h3>
+
+<p>If we ever need to pass screenshots directly to a VLM, ShowUI's token pruning technique would reduce VRAM and latency:</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">UITokenPruner</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Prune redundant visual tokens from UI screenshots.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">prune_tokens</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">visual_tokens</span><span class="p">,</span> <span class="n">screenshot_patches</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Remove tokens corresponding to uniform regions.&quot;&quot;&quot;</span>
+
+        <span class="n">keep_mask</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">visual_tokens</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">bool</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">patch</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">screenshot_patches</span><span class="p">):</span>
+            <span class="c1"># Check if patch is uniform (background, solid color)</span>
+            <span class="n">std</span> <span class="o">=</span> <span class="n">patch</span><span class="o">.</span><span class="n">std</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">std</span> <span class="o">&lt;</span> <span class="mi">10</span><span class="p">:</span>  <span class="c1"># Low variance = uniform region</span>
+                <span class="n">keep_mask</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+
+            <span class="c1"># Check if patch is near-duplicate of neighbors</span>
+            <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_neighbors</span><span class="p">(</span><span class="n">i</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">functional</span><span class="o">.</span><span class="n">cosine_similarity</span><span class="p">(</span>
+                    <span class="n">visual_tokens</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">visual_tokens</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mf">0.95</span><span class="p">:</span>
+                    <span class="n">keep_mask</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+
+        <span class="k">return</span> <span class="n">visual_tokens</span><span class="p">[</span><span class="n">keep_mask</span><span class="p">]</span>
+</code></pre>
+</div>
+
+<p><strong>For OmniVLA</strong>: Not immediately needed since our perception is text-based. But if visual grounding becomes the primary mode, this technique would make it 33% more efficient.</p>
+
+<hr />
+
+<h2 id="7-hybrid-agent-architecture-multi-agent">7. Hybrid Agent Architecture (Multi-Agent)</h2>
+
+<h3 id="71-the-industry-trend">7.1 The Industry Trend</h3>
+
+<p>The most successful GUI agents in 2026 use <strong>multi-agent architectures</strong>:</p>
+
+<pre><code>┌─────────────────────────────────────────────────────────────────┐
+│                    MULTI-AGENT ORCHESTRATION                     │
+│                                                                   │
+│  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐       │
+│  │  PLANNER     │   │  GROUNDER    │   │  CONTROLLER  │       │
+│  │  Agent       │   │  Agent       │   │  Agent       │       │
+│  │              │   │              │   │              │       │
+│  │  Task →      │   │  State →     │   │  Action →    │       │
+│  │  Sub-goals   │   │  Elements    │   │  System      │       │
+│  │              │   │              │   │  Input       │       │
+│  │  Gemma 4 E4B │   │  UIA/OCR    │   │  PyAutoGUI   │       │
+│  │  (LLM)       │   │  (No LLM)   │   │  (No LLM)    │       │
+│  └──────────────┘   └──────────────┘   └──────────────┘       │
+│                                                                   │
+│  ┌──────────────┐   ┌──────────────┐                            │
+│  │  CRITIC      │   │  MEMORY      │                            │
+│  │  Agent       │   │  Agent       │                            │
+│  │              │   │              │                            │
+│  │  Verifies    │   │  Recalls &amp;   │                            │
+│  │  outcomes    │   │  Stores      │                            │
+│  │              │   │              │                            │
+│  │  Heuristic   │   │  ChromaDB    │                            │
+│  │  (No LLM)    │   │  (No LLM)    │                            │
+│  └──────────────┘   └──────────────┘                            │
+└─────────────────────────────────────────────────────────────────┘
+</code></pre>
+
+<p><strong>OmniVLA already implements this pattern!</strong> Our Cognitive Pipeline is essentially a multi-agent system where only the Planner and Reasoner agents use the LLM, and all other agents are deterministic.</p>
+
+<h3 id="72-skill-libraries">7.2 Skill Libraries</h3>
+
+<p>Modern agents use <strong>skill libraries</strong> — pre-written, deterministic scripts for common operations:</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="n">SKILL_LIBRARY</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;open_app&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Open an application by name&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;steps&quot;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="p">{</span><span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;args&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;win&quot;</span><span class="p">]},</span>
+            <span class="p">{</span><span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;wait&quot;</span><span class="p">,</span> <span class="s2">&quot;args&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;0.5&quot;</span><span class="p">]},</span>
+            <span class="p">{</span><span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;type&quot;</span><span class="p">,</span> <span class="s2">&quot;args&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;</span><span class="si">{app_name}</span><span class="s2">&quot;</span><span class="p">]},</span>
+            <span class="p">{</span><span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;wait&quot;</span><span class="p">,</span> <span class="s2">&quot;args&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;1.0&quot;</span><span class="p">]},</span>
+            <span class="p">{</span><span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;args&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;enter&quot;</span><span class="p">]},</span>
+            <span class="p">{</span><span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;wait&quot;</span><span class="p">,</span> <span class="s2">&quot;args&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;2.0&quot;</span><span class="p">]},</span>
+        <span class="p">]</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;save_file&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Save current file in any app&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;steps&quot;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="p">{</span><span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;args&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl+s&quot;</span><span class="p">]},</span>
+            <span class="p">{</span><span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;wait&quot;</span><span class="p">,</span> <span class="s2">&quot;args&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;1.0&quot;</span><span class="p">]},</span>
+        <span class="p">]</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;copy_paste&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Copy selected text and paste it&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;steps&quot;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="p">{</span><span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;args&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl+c&quot;</span><span class="p">]},</span>
+            <span class="p">{</span><span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;wait&quot;</span><span class="p">,</span> <span class="s2">&quot;args&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;0.3&quot;</span><span class="p">]},</span>
+            <span class="p">{</span><span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;args&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl+v&quot;</span><span class="p">]},</span>
+        <span class="p">]</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;navigate_to_url&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Navigate to a URL in browser&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;steps&quot;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="p">{</span><span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;args&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;ctrl+l&quot;</span><span class="p">]},</span>
+            <span class="p">{</span><span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;wait&quot;</span><span class="p">,</span> <span class="s2">&quot;args&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;0.3&quot;</span><span class="p">]},</span>
+            <span class="p">{</span><span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;type&quot;</span><span class="p">,</span> <span class="s2">&quot;args&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;</span><span class="si">{url}</span><span class="s2">&quot;</span><span class="p">]},</span>
+            <span class="p">{</span><span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;key&quot;</span><span class="p">,</span> <span class="s2">&quot;args&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;enter&quot;</span><span class="p">]},</span>
+            <span class="p">{</span><span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;wait&quot;</span><span class="p">,</span> <span class="s2">&quot;args&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;2.0&quot;</span><span class="p">]},</span>
+        <span class="p">]</span>
+    <span class="p">},</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>When the Task Decomposer recognizes a goal that matches a skill, it can <strong>skip LLM inference</strong> and directly execute the deterministic script. This is faster, more reliable, and predictable.</p>
+
+<hr />
+
+<h2 id="8-inference-time-scaling">8. Inference-Time Scaling</h2>
+
+<h3 id="81-the-key-insight">8.1 The Key Insight</h3>
+
+<p>Recent research shows that <strong>thinking more at inference time</strong> is more effective than using a larger model. For GUI agents:</p>
+
+<ul>
+<li><strong>Chain-of-Thought</strong>: Let the model reason before acting</li>
+<li><strong>Self-Critique</strong>: After generating an action, check if it makes sense</li>
+<li><strong>Retry with Refinement</strong>: If confidence is low, try again with more context</li>
+</ul>
+
+<h3 id="82-implementation">8.2 Implementation</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">reason_with_scaling</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">goal</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">memory</span><span class="p">,</span> 
+                        <span class="n">max_attempts</span><span class="o">=</span><span class="mi">3</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Apply inference-time scaling for difficult decisions.&quot;&quot;&quot;</span>
+
+    <span class="n">best_action</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">best_confidence</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">for</span> <span class="n">attempt</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_attempts</span><span class="p">):</span>
+        <span class="c1"># Adjust temperature (lower = more deterministic)</span>
+        <span class="n">temp</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.3</span> <span class="o">-</span> <span class="n">attempt</span> <span class="o">*</span> <span class="mf">0.1</span><span class="p">)</span>
+
+        <span class="n">action</span><span class="p">,</span> <span class="n">confidence</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_reason_once</span><span class="p">(</span>
+            <span class="n">goal</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">memory</span><span class="p">,</span> <span class="n">temperature</span><span class="o">=</span><span class="n">temp</span>
+        <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">confidence</span> <span class="o">&gt;</span> <span class="n">best_confidence</span><span class="p">:</span>
+            <span class="n">best_action</span> <span class="o">=</span> <span class="n">action</span>
+            <span class="n">best_confidence</span> <span class="o">=</span> <span class="n">confidence</span>
+
+        <span class="k">if</span> <span class="n">confidence</span> <span class="o">&gt;</span> <span class="mf">0.8</span><span class="p">:</span>
+            <span class="k">break</span>  <span class="c1"># Confident enough</span>
+
+        <span class="c1"># Add self-critique for next attempt</span>
+        <span class="n">memory</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Note: Previous attempt suggested </span><span class="si">{</span><span class="n">action</span><span class="o">.</span><span class="n">action_type</span><span class="si">}</span><span class="s2">(</span><span class="si">{</span><span class="n">action</span><span class="o">.</span><span class="n">args</span><span class="si">}</span><span class="s2">) but confidence was low.&quot;</span>
+
+    <span class="k">return</span> <span class="n">best_action</span>
+</code></pre>
+</div>
+
+<h3 id="83-budget-for-scaling">8.3 Budget for Scaling</h3>
+
+<pre><code>Attempt 1: 500ms (standard inference)
+Attempt 2: 400ms (lower temperature, cached context)
+Attempt 3: 400ms (with self-critique)
+────────────────────────────────────
+Max total: 1300ms (worst case)
+Average:   600ms (most decisions are confident on attempt 1)
+</code></pre>
+
+<hr />
+
+<h2 id="9-evaluation-benchmarking">9. Evaluation &amp; Benchmarking</h2>
+
+<h3 id="91-recommended-benchmarks">9.1 Recommended Benchmarks</h3>
+
+<table>
+<thead>
+<tr>
+  <th>Benchmark</th>
+  <th>Type</th>
+  <th>What It Tests</th>
+  <th>Target Score</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>ScreenSpot</strong></td>
+  <td>Grounding</td>
+  <td>Can the agent click the right element?</td>
+  <td>&gt;70% accuracy</td>
+</tr>
+<tr>
+  <td><strong>ScreenSpot-Pro</strong></td>
+  <td>Grounding (hard)</td>
+  <td>Professional UI grounding</td>
+  <td>&gt;40% accuracy</td>
+</tr>
+<tr>
+  <td><strong>OSWorld</strong></td>
+  <td>End-to-end</td>
+  <td>Complete desktop task execution</td>
+  <td>&gt;50% success</td>
+</tr>
+<tr>
+  <td><strong>MiniWob</strong></td>
+  <td>Web tasks</td>
+  <td>Simple web interaction tasks</td>
+  <td>&gt;80% success</td>
+</tr>
+<tr>
+  <td><strong>Custom Windows</strong></td>
+  <td>End-to-end</td>
+  <td>Real Windows app automation</td>
+  <td>&gt;60% success</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="92-custom-evaluation-suite">9.2 Custom Evaluation Suite</h3>
+
+<p>Create a test suite of real Windows tasks:</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="n">EVAL_TASKS</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="c1"># Simple (1-2 steps)</span>
+    <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;Open Notepad&quot;</span><span class="p">,</span> <span class="s2">&quot;max_steps&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;Save current file&quot;</span><span class="p">,</span> <span class="s2">&quot;max_steps&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;Copy selected text&quot;</span><span class="p">,</span> <span class="s2">&quot;max_steps&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">},</span>
+
+    <span class="c1"># Medium (3-5 steps)</span>
+    <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;Open Chrome and go to google.com&quot;</span><span class="p">,</span> <span class="s2">&quot;max_steps&quot;</span><span class="p">:</span> <span class="mi">5</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;Create a new folder on Desktop named &#39;Test&#39;&quot;</span><span class="p">,</span> <span class="s2">&quot;max_steps&quot;</span><span class="p">:</span> <span class="mi">5</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;Search for &#39;hello&#39; in current document&quot;</span><span class="p">,</span> <span class="s2">&quot;max_steps&quot;</span><span class="p">:</span> <span class="mi">4</span><span class="p">},</span>
+
+    <span class="c1"># Complex (6+ steps)</span>
+    <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;Create Excel spreadsheet with Name/Age/Email headers&quot;</span><span class="p">,</span> <span class="s2">&quot;max_steps&quot;</span><span class="p">:</span> <span class="mi">10</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;Send email to test@example.com with subject &#39;Hello&#39;&quot;</span><span class="p">,</span> <span class="s2">&quot;max_steps&quot;</span><span class="p">:</span> <span class="mi">12</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;Download image from a webpage and save to Desktop&quot;</span><span class="p">,</span> <span class="s2">&quot;max_steps&quot;</span><span class="p">:</span> <span class="mi">10</span><span class="p">},</span>
+
+    <span class="c1"># Expert (cross-app, multi-phase)</span>
+    <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;Copy data from Excel A1:C5 and paste into Word doc&quot;</span><span class="p">,</span> <span class="s2">&quot;max_steps&quot;</span><span class="p">:</span> <span class="mi">15</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;Take screenshot, annotate it, and save as PNG&quot;</span><span class="p">,</span> <span class="s2">&quot;max_steps&quot;</span><span class="p">:</span> <span class="mi">12</span><span class="p">},</span>
+<span class="p">]</span>
+</code></pre>
+</div>
+
+<h3 id="93-metrics-collection">9.3 Metrics Collection</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">EvalResult</span><span class="p">:</span>
+    <span class="n">task</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">success</span><span class="p">:</span> <span class="nb">bool</span>
+    <span class="n">total_steps</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">total_time_ms</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">actions_taken</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>
+    <span class="n">errors_encountered</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>
+    <span class="n">retries</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">memory_hits</span><span class="p">:</span> <span class="nb">int</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">efficiency</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Steps used / minimum possible steps.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">total_steps</span> <span class="o">/</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">actions_taken</span><span class="p">))</span>
+</code></pre>
+</div>
+
+<hr />
+
+<h2 id="10-research-roadmap">10. Research Roadmap</h2>
+
+<h3 id="short-term-weeks-1-4">Short-term (Weeks 1-4)</h3>
+
+<ul>
+<li>[x] Core cognitive pipeline architecture</li>
+<li>[ ] UIA-first perception with OCR fallback</li>
+<li>[ ] GBNF constrained action reasoning</li>
+<li>[ ] Basic episodic memory</li>
+<li>[ ] Evaluation on simple tasks</li>
+</ul>
+
+<h3 id="medium-term-weeks-5-8">Medium-term (Weeks 5-8)</h3>
+
+<ul>
+<li>[ ] Skill library for common operations</li>
+<li>[ ] Memory-accelerated execution (skip LLM for known actions)</li>
+<li>[ ] Inference-time scaling (confidence-based retry)</li>
+<li>[ ] Complex app support (Excel, Chrome, VS Code)</li>
+<li>[ ] Full evaluation suite</li>
+</ul>
+
+<h3 id="long-term-weeks-9-12">Long-term (Weeks 9-12)</h3>
+
+<ul>
+<li>[ ] GOLD-style visual grounding for fallback perception</li>
+<li>[ ] QLoRA fine-tuning on GUI grounding data</li>
+<li>[ ] SE-GUI-inspired reinforcement fine-tuning</li>
+<li>[ ] RegionFocus iterative zoom for precision grounding</li>
+<li>[ ] Multi-app workflow automation</li>
+<li>[ ] Production hardening and deployment</li>
+</ul>
+
+<hr />
+
+<h2 id="11-key-research-papers">11. Key Research Papers</h2>
+
+<table>
+<thead>
+<tr>
+  <th>Paper</th>
+  <th>Venue</th>
+  <th>Key Contribution</th>
+  <th>Relevance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>GOLD</td>
+  <td>2025</td>
+  <td>Global-to-local grounding</td>
+  <td>Visual perception fallback</td>
+</tr>
+<tr>
+  <td>RegionFocus</td>
+  <td>ICCV 2025</td>
+  <td>Test-time visual scaling</td>
+  <td>Precision grounding</td>
+</tr>
+<tr>
+  <td>SE-GUI</td>
+  <td>NeurIPS 2025</td>
+  <td>RL for small model grounding</td>
+  <td>Fine-tuning strategy</td>
+</tr>
+<tr>
+  <td>GUI-Actor</td>
+  <td>2025</td>
+  <td>Coordinate-free grounding</td>
+  <td>Future grounding architecture</td>
+</tr>
+<tr>
+  <td>ShowUI</td>
+  <td>NeurIPS 2024</td>
+  <td>2B GUI agent, token pruning</td>
+  <td>Efficient VLM integration</td>
+</tr>
+<tr>
+  <td>SeeClick</td>
+  <td>2024</td>
+  <td>GUI grounding pre-training</td>
+  <td>Training data strategy</td>
+</tr>
+<tr>
+  <td>CogAgent</td>
+  <td>2024</td>
+  <td>18B GUI navigation</td>
+  <td>Baseline reference</td>
+</tr>
+<tr>
+  <td>OmniParser V2</td>
+  <td>Microsoft 2025</td>
+  <td>Screen parsing (YOLO+Florence)</td>
+  <td>Perception reference</td>
+</tr>
+</tbody>
+</table>
+
+<hr />
+
+<p><em>Document Version: 1.0 | Part 08 of 08</em><br />
+<em>This concludes the OmniVLA Documentation Suite.</em></p>
+
+    <div class="footer">
+        <p>OmniVLA Project Documentation &mdash; Generated April 2026</p>
+        <p>Confidential &mdash; Final Year Project</p>
+    </div>
+</body>
+</html>

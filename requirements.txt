@@ -1,0 +1,37 @@
+# OmniVLA Project Dependencies
+
+# ---------------------------------------------------------
+# Phase 1: Core Foundation (Perception & Execution)
+# ---------------------------------------------------------
+pywinauto==0.6.8        # UIA accessibility tree extraction
+pyperclip==1.8.2        # Clipboard manipulation for type actions
+keyboard==0.13.5        # Low-level keyboard hooks (if needed for fallbacks)
+requests==2.31.0        # HTTP client for communicating with llama.cpp
+openai>=2.0,<3.0        # OpenAI-compatible local and hosted VLM client
+
+# ---------------------------------------------------------
+# Phase 2: Memory System & Vector DB
+# ---------------------------------------------------------
+chromadb==0.4.24        # Episodic memory storage
+sentence-transformers==2.5.1  # Embedding generation for ChromaDB
+
+# ---------------------------------------------------------
+# Phase 3: Vision Fallbacks (OCR & Screenshots)
+# ---------------------------------------------------------
+mss==9.0.1              # High-speed screen capture
+easyocr==1.7.1          # Text extraction from images
+opencv-python==4.9.0.80 # Image manipulation and bounding boxes
+numpy==1.26.4           # Numerical operations for image arrays
+Pillow==10.2.0          # Image processing
+ultralytics==8.1.0      # YOLO models for UI element detection
+
+# ---------------------------------------------------------
+# Phase 4/Advanced: Local LLM Integration (Optional via Python)
+# ---------------------------------------------------------
+# Note: You don't need this if you are running the standalone llama-server.exe
+# llama-cpp-python==0.2.56 
+
+# ---------------------------------------------------------
+# Utilities
+# ---------------------------------------------------------
+markdown2==2.4.13       # For generating documentation PDFs

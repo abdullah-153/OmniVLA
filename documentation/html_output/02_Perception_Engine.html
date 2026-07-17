@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniVLA: Perception Engine</title>
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        line-height: 1.7;
+        color: #1a1a2e;
+        background: #ffffff;
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 60px 40px;
+        font-size: 14px;
+    }
+    
+    h1 {
+        font-size: 2.2em;
+        font-weight: 700;
+        color: #0f0f23;
+        margin-top: 0;
+        margin-bottom: 8px;
+        padding-bottom: 16px;
+        border-bottom: 3px solid #667eea;
+        letter-spacing: -0.5px;
+    }
+    
+    h2 {
+        font-size: 1.6em;
+        font-weight: 600;
+        color: #1a1a2e;
+        margin-top: 48px;
+        margin-bottom: 16px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    
+    h3 {
+        font-size: 1.25em;
+        font-weight: 600;
+        color: #2d3748;
+        margin-top: 32px;
+        margin-bottom: 12px;
+    }
+    
+    h4 {
+        font-size: 1.05em;
+        font-weight: 600;
+        color: #4a5568;
+        margin-top: 24px;
+        margin-bottom: 8px;
+    }
+    
+    p {
+        margin-bottom: 16px;
+        color: #2d3748;
+    }
+    
+    strong { font-weight: 600; color: #1a1a2e; }
+    
+    em { font-style: italic; color: #4a5568; }
+    
+    a { color: #667eea; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    
+    code {
+        font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+        background: #f1f5f9;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.88em;
+        color: #e53e3e;
+    }
+    
+    pre {
+        background: #1a1a2e;
+        color: #e2e8f0;
+        padding: 20px 24px;
+        border-radius: 8px;
+        overflow-x: auto;
+        margin: 16px 0 24px 0;
+        font-size: 0.85em;
+        line-height: 1.6;
+        border: 1px solid #2d3748;
+    }
+    
+    pre code {
+        background: transparent;
+        color: #e2e8f0;
+        padding: 0;
+        font-size: 1em;
+    }
+    
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 16px 0 24px 0;
+        font-size: 0.92em;
+    }
+    
+    thead th {
+        background: #667eea;
+        color: white;
+        padding: 12px 16px;
+        text-align: left;
+        font-weight: 600;
+        font-size: 0.9em;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    tbody td {
+        padding: 10px 16px;
+        border-bottom: 1px solid #e2e8f0;
+        vertical-align: top;
+    }
+    
+    tbody tr:nth-child(even) { background: #f8fafc; }
+    tbody tr:hover { background: #edf2f7; }
+    
+    ul, ol {
+        margin: 8px 0 16px 24px;
+    }
+    
+    li {
+        margin-bottom: 6px;
+        color: #2d3748;
+    }
+    
+    li code { font-size: 0.85em; }
+    
+    blockquote {
+        border-left: 4px solid #667eea;
+        background: #f0f4ff;
+        padding: 16px 20px;
+        margin: 16px 0;
+        border-radius: 0 8px 8px 0;
+        font-style: italic;
+        color: #4a5568;
+    }
+    
+    blockquote strong { color: #2d3748; }
+    
+    hr {
+        border: none;
+        border-top: 2px solid #e2e8f0;
+        margin: 40px 0;
+    }
+    
+    /* Print styles */
+    @media print {
+        body { padding: 20px; max-width: 100%; }
+        pre { background: #f5f5f5 !important; color: #333 !important; 
+              border: 1px solid #ddd; }
+        pre code { color: #333 !important; }
+        thead th { background: #333 !important; }
+        h1, h2, h3 { page-break-after: avoid; }
+        pre, table { page-break-inside: avoid; }
+    }
+    
+    .title-block {
+        text-align: center;
+        margin-bottom: 48px;
+        padding: 40px 0;
+        border-bottom: 3px solid #667eea;
+    }
+    
+    .title-block h1 {
+        border: none;
+        padding: 0;
+        margin: 0;
+        font-size: 2.5em;
+    }
+    
+    .subtitle {
+        color: #667eea;
+        font-size: 1.2em;
+        font-weight: 400;
+        margin-top: 8px;
+    }
+    
+    .footer {
+        margin-top: 60px;
+        padding-top: 20px;
+        border-top: 1px solid #e2e8f0;
+        text-align: center;
+        color: #a0aec0;
+        font-size: 0.85em;
+    }
+    </style>
+</head>
+<body>
+    <h1 id="omnivla-perception-engine">OmniVLA: Perception Engine</h1>
+
+<h2 id="document-02-comprehensive-perception-strategy">Document 02 — Comprehensive Perception Strategy</h2>
+
+<hr />
+
+<h2 id="1-the-perception-problem">1. The Perception Problem</h2>
+
+<p>The perception module must answer one question: <strong>"What is on the screen right now, described in ≤200 tokens?"</strong></p>
+
+<p>This is the most critical module in the entire pipeline. If perception fails, every downstream module fails. The challenge is threefold:</p>
+
+<ol>
+<li><strong>Completeness</strong>: Capture ALL interactive elements the user might need to click</li>
+<li><strong>Accuracy</strong>: Label each element correctly (button vs. label vs. text field)</li>
+<li><strong>Efficiency</strong>: Do it in &lt;150ms without touching the GPU</li>
+</ol>
+
+<h3 id="why-existing-approaches-fail-for-perception">Why Existing Approaches Fail for Perception</h3>
+
+<table>
+<thead>
+<tr>
+  <th>Approach</th>
+  <th>Failure Mode</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>Raw screenshot to VLM</strong></td>
+  <td>Requires vision encoder on GPU (~1-2GB). Can't co-exist with reasoning LLM on 6GB.</td>
+</tr>
+<tr>
+  <td><strong>YOLO object detection</strong></td>
+  <td>Misses custom UI elements. Can't detect text-only buttons. Requires training data for each UI toolkit.</td>
+</tr>
+<tr>
+  <td><strong>OCR-only</strong></td>
+  <td>Can see text but can't distinguish buttons from labels. No understanding of UI hierarchy.</td>
+</tr>
+<tr>
+  <td><strong>UI tree dump</strong></td>
+  <td>Too verbose (500+ nodes). Many elements hidden. Tree structure overwhelms small LLMs.</td>
+</tr>
+</tbody>
+</table>
+
+<p><strong>Our solution</strong>: A <strong>tiered fusion strategy</strong> that uses the right tool for each situation.</p>
+
+<hr />
+
+<h2 id="2-the-three-tier-perception-strategy">2. The Three-Tier Perception Strategy</h2>
+
+<pre><code>┌─────────────────────────────────────────────────────────────────────┐
+│                    PERCEPTION PIPELINE                               │
+│                                                                       │
+│  TIER 1: UIA (Windows UI Automation) ──── Preferred (0ms inference) │
+│     │                                                                 │
+│     ├── Returns: element names, types, bounding boxes, states       │
+│     ├── Coverage: Native Win32, WPF, UWP, most Electron apps        │
+│     └── When to use: ALWAYS try first                               │
+│     │                                                                 │
+│     ▼ If UIA returns &lt; 3 elements or tree is opaque:                │
+│                                                                       │
+│  TIER 2: OCR (EasyOCR/PaddleOCR) ──── Fallback (100-300ms)         │
+│     │                                                                 │
+│     ├── Returns: text regions, bounding boxes, confidence scores    │
+│     ├── Coverage: Universal — works on any rendered pixels          │
+│     └── When to use: When UIA is insufficient                       │
+│     │                                                                 │
+│     ▼ If specific icon/visual detection needed:                     │
+│                                                                       │
+│  TIER 3: YOLO (nano) ──── Specialized (50-100ms)                    │
+│     │                                                                 │
+│     ├── Returns: detected UI components (buttons, inputs, icons)    │
+│     ├── Coverage: Standard UI widgets only                          │
+│     └── When to use: When UIA+OCR miss visual-only elements        │
+└─────────────────────────────────────────────────────────────────────┘
+</code></pre>
+
+<hr />
+
+<h2 id="3-tier-1-uia-first-perception-detailed">3. Tier 1: UIA-First Perception (Detailed)</h2>
+
+<h3 id="31-why-uia-is-superior">3.1 Why UIA is Superior</h3>
+
+<p>Windows UI Automation (UIA) is an accessibility API that exposes the entire UI element tree of most applications. It provides:</p>
+
+<ul>
+<li><strong>Exact bounding boxes</strong> — pixel-perfect coordinates, no estimation</li>
+<li><strong>Semantic types</strong> — Button, TextBox, MenuItem, TabItem, CheckBox, etc.</li>
+<li><strong>Accessible names</strong> — The text/label of each element</li>
+<li><strong>States</strong> — Enabled, disabled, focused, selected, expanded</li>
+<li><strong>Control patterns</strong> — InvokePattern (click), ValuePattern (type), SelectionPattern (choose)</li>
+</ul>
+
+<p><strong>This means</strong>: For native Windows apps, we can identify every interactive element with zero inference cost. No model needed.</p>
+
+<h3 id="32-uia-implementation">3.2 UIA Implementation</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pywinauto</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pywinauto</span><span class="w"> </span><span class="kn">import</span> <span class="n">Desktop</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">UIAExtractor</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extract interactive elements from the active window using UIA.&quot;&quot;&quot;</span>
+
+    <span class="c1"># Element types we care about</span>
+    <span class="n">INTERACTIVE_TYPES</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;Button&quot;</span><span class="p">,</span> <span class="s2">&quot;Edit&quot;</span><span class="p">,</span> <span class="s2">&quot;ComboBox&quot;</span><span class="p">,</span> <span class="s2">&quot;CheckBox&quot;</span><span class="p">,</span> <span class="s2">&quot;RadioButton&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;MenuItem&quot;</span><span class="p">,</span> <span class="s2">&quot;TabItem&quot;</span><span class="p">,</span> <span class="s2">&quot;Hyperlink&quot;</span><span class="p">,</span> <span class="s2">&quot;ListItem&quot;</span><span class="p">,</span> <span class="s2">&quot;TreeItem&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Slider&quot;</span><span class="p">,</span> <span class="s2">&quot;Spinner&quot;</span><span class="p">,</span> <span class="s2">&quot;DataItem&quot;</span><span class="p">,</span> <span class="s2">&quot;ToolBar&quot;</span><span class="p">,</span> <span class="s2">&quot;MenuBar&quot;</span>
+    <span class="p">}</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">extract</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">max_elements</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">20</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Get interactive elements from the foreground window.&quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># Connect to the active window</span>
+            <span class="n">app</span> <span class="o">=</span> <span class="n">Desktop</span><span class="p">(</span><span class="n">backend</span><span class="o">=</span><span class="s2">&quot;uia&quot;</span><span class="p">)</span>
+            <span class="n">window</span> <span class="o">=</span> <span class="n">app</span><span class="o">.</span><span class="n">window</span><span class="p">(</span><span class="n">active_only</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+            <span class="c1"># Walk the element tree (depth-limited for performance)</span>
+            <span class="n">elements</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_walk_tree</span><span class="p">(</span><span class="n">window</span><span class="o">.</span><span class="n">wrapper_object</span><span class="p">(),</span> <span class="n">elements</span><span class="p">,</span> 
+                          <span class="n">max_depth</span><span class="o">=</span><span class="mi">6</span><span class="p">,</span> <span class="n">max_elements</span><span class="o">=</span><span class="n">max_elements</span><span class="p">)</span>
+
+            <span class="k">return</span> <span class="n">elements</span>
+
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;UIA extraction failed: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_walk_tree</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">element</span><span class="p">,</span> <span class="n">results</span><span class="p">,</span> <span class="n">depth</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> 
+                   <span class="n">max_depth</span><span class="o">=</span><span class="mi">6</span><span class="p">,</span> <span class="n">max_elements</span><span class="o">=</span><span class="mi">20</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Recursively walk the UIA tree, collecting interactive elements.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">depth</span> <span class="o">&gt;</span> <span class="n">max_depth</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">results</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">max_elements</span><span class="p">:</span>
+            <span class="k">return</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">control_type</span> <span class="o">=</span> <span class="n">element</span><span class="o">.</span><span class="n">element_info</span><span class="o">.</span><span class="n">control_type</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="n">element</span><span class="o">.</span><span class="n">element_info</span><span class="o">.</span><span class="n">name</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span>
+
+            <span class="c1"># Only collect interactive elements with visible names</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">control_type</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">INTERACTIVE_TYPES</span> 
+                <span class="ow">and</span> <span class="n">name</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> 
+                <span class="ow">and</span> <span class="n">element</span><span class="o">.</span><span class="n">is_visible</span><span class="p">()):</span>
+
+                <span class="n">rect</span> <span class="o">=</span> <span class="n">element</span><span class="o">.</span><span class="n">rectangle</span><span class="p">()</span>
+                <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+                    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_map_type</span><span class="p">(</span><span class="n">control_type</span><span class="p">),</span>
+                    <span class="s2">&quot;label&quot;</span><span class="p">:</span> <span class="n">name</span><span class="p">[:</span><span class="mi">60</span><span class="p">],</span>
+                    <span class="s2">&quot;bbox&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">rect</span><span class="o">.</span><span class="n">left</span><span class="p">,</span> <span class="n">rect</span><span class="o">.</span><span class="n">top</span><span class="p">,</span> <span class="n">rect</span><span class="o">.</span><span class="n">right</span><span class="p">,</span> <span class="n">rect</span><span class="o">.</span><span class="n">bottom</span><span class="p">),</span>
+                    <span class="s2">&quot;center&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">rect</span><span class="o">.</span><span class="n">mid_point</span><span class="p">()</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="n">rect</span><span class="o">.</span><span class="n">mid_point</span><span class="p">()</span><span class="o">.</span><span class="n">y</span><span class="p">),</span>
+                    <span class="s2">&quot;enabled&quot;</span><span class="p">:</span> <span class="n">element</span><span class="o">.</span><span class="n">is_enabled</span><span class="p">(),</span>
+                    <span class="s2">&quot;source&quot;</span><span class="p">:</span> <span class="s2">&quot;uia&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;uia_handle&quot;</span><span class="p">:</span> <span class="n">element</span><span class="o">.</span><span class="n">handle</span><span class="p">,</span>  <span class="c1"># For direct invocation</span>
+                <span class="p">})</span>
+
+            <span class="c1"># Recurse into children</span>
+            <span class="k">for</span> <span class="n">child</span> <span class="ow">in</span> <span class="n">element</span><span class="o">.</span><span class="n">children</span><span class="p">():</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_walk_tree</span><span class="p">(</span><span class="n">child</span><span class="p">,</span> <span class="n">results</span><span class="p">,</span> <span class="n">depth</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> 
+                              <span class="n">max_depth</span><span class="p">,</span> <span class="n">max_elements</span><span class="p">)</span>
+
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="k">pass</span>  <span class="c1"># Skip inaccessible elements</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_map_type</span><span class="p">(</span><span class="n">uia_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Map UIA control types to our simplified type system.&quot;&quot;&quot;</span>
+        <span class="n">mapping</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;Button&quot;</span><span class="p">:</span> <span class="s2">&quot;button&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Edit&quot;</span><span class="p">:</span> <span class="s2">&quot;text_field&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;ComboBox&quot;</span><span class="p">:</span> <span class="s2">&quot;dropdown&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;CheckBox&quot;</span><span class="p">:</span> <span class="s2">&quot;checkbox&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;RadioButton&quot;</span><span class="p">:</span> <span class="s2">&quot;radio&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;MenuItem&quot;</span><span class="p">:</span> <span class="s2">&quot;menu_item&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;TabItem&quot;</span><span class="p">:</span> <span class="s2">&quot;tab&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Hyperlink&quot;</span><span class="p">:</span> <span class="s2">&quot;link&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;ListItem&quot;</span><span class="p">:</span> <span class="s2">&quot;list_item&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;TreeItem&quot;</span><span class="p">:</span> <span class="s2">&quot;tree_item&quot;</span><span class="p">,</span>
+        <span class="p">}</span>
+        <span class="k">return</span> <span class="n">mapping</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">uia_type</span><span class="p">,</span> <span class="s2">&quot;label&quot;</span><span class="p">)</span>
+</code></pre>
+</div>
+
+<h3 id="33-uia-coverage-analysis">3.3 UIA Coverage Analysis</h3>
+
+<table>
+<thead>
+<tr>
+  <th>Application Type</th>
+  <th>UIA Coverage</th>
+  <th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>Native Win32</strong> (Notepad, Explorer, Office)</td>
+  <td>95-100%</td>
+  <td>Excellent. Full tree available.</td>
+</tr>
+<tr>
+  <td><strong>WPF Apps</strong> (Visual Studio, some modern apps)</td>
+  <td>90-95%</td>
+  <td>Very good. Deep trees.</td>
+</tr>
+<tr>
+  <td><strong>UWP/WinUI</strong> (Settings, Calculator, Store)</td>
+  <td>85-95%</td>
+  <td>Good. Some custom controls opaque.</td>
+</tr>
+<tr>
+  <td><strong>Electron</strong> (VS Code, Slack, Discord, Spotify)</td>
+  <td>60-80%</td>
+  <td>Variable. Chromium accessibility tree exposed but often shallow.</td>
+</tr>
+<tr>
+  <td><strong>Chrome/Edge Browser</strong></td>
+  <td>70-85%</td>
+  <td>Web content accessible via browser's built-in accessibility. Tab bar and toolbar fully exposed.</td>
+</tr>
+<tr>
+  <td><strong>Java Swing/AWT</strong></td>
+  <td>40-60%</td>
+  <td>Java Access Bridge required. Often incomplete.</td>
+</tr>
+<tr>
+  <td><strong>Custom Rendering</strong> (Games, CAD, Canvas)</td>
+  <td>0-10%</td>
+  <td>Opaque. Requires Tier 2/3 fallback.</td>
+</tr>
+<tr>
+  <td><strong>Remote Desktop</strong></td>
+  <td>0-5%</td>
+  <td>All rendering is pixel-based. Full vision fallback needed.</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="34-uia-performance">3.4 UIA Performance</h3>
+
+<pre><code>Benchmark: Active window with ~50 UI elements
+─────────────────────────────────────────────
+UIA tree walk (depth=6):     30-80ms
+Filter interactive elements:  5ms
+Build element list:           2ms
+─────────────────────────────────────────────
+TOTAL:                       37-87ms
+GPU VRAM used:               0 MB
+</code></pre>
+
+<hr />
+
+<h2 id="4-tier-2-ocr-fallback-detailed">4. Tier 2: OCR Fallback (Detailed)</h2>
+
+<h3 id="41-when-ocr-is-needed">4.1 When OCR is Needed</h3>
+
+<p>OCR is activated when:</p>
+
+<ol>
+<li>UIA returns fewer than 3 interactive elements for a visible window</li>
+<li>The active application is known to be UIA-opaque (e.g., games, remote desktop)</li>
+<li>The user explicitly requests visual perception mode</li>
+</ol>
+
+<h3 id="42-ocr-configuration">4.2 OCR Configuration</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">OCREngine</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;CPU-based OCR for text extraction from screenshots.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">engine</span><span class="o">=</span><span class="s2">&quot;easyocr&quot;</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="s2">&quot;en&quot;</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">engine</span> <span class="o">==</span> <span class="s2">&quot;easyocr&quot;</span><span class="p">:</span>
+            <span class="kn">import</span><span class="w"> </span><span class="nn">easyocr</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">reader</span> <span class="o">=</span> <span class="n">easyocr</span><span class="o">.</span><span class="n">Reader</span><span class="p">([</span><span class="n">lang</span><span class="p">],</span> <span class="n">gpu</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">engine</span> <span class="o">==</span> <span class="s2">&quot;paddleocr&quot;</span><span class="p">:</span>
+            <span class="kn">from</span><span class="w"> </span><span class="nn">paddleocr</span><span class="w"> </span><span class="kn">import</span> <span class="n">PaddleOCR</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">reader</span> <span class="o">=</span> <span class="n">PaddleOCR</span><span class="p">(</span><span class="n">use_angle_cls</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">lang</span><span class="o">=</span><span class="n">lang</span><span class="p">,</span> 
+                                     <span class="n">use_gpu</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">show_log</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">extract</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">image</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="mf">0.5</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Extract text with downscaling for speed.&quot;&quot;&quot;</span>
+        <span class="c1"># Downscale for speed (UI text is large, survives downscaling)</span>
+        <span class="n">small</span> <span class="o">=</span> <span class="n">resize</span><span class="p">(</span><span class="n">image</span><span class="p">,</span> <span class="n">scale</span><span class="p">)</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">reader</span><span class="o">.</span><span class="n">readtext</span><span class="p">(</span><span class="n">small</span><span class="p">)</span>
+
+        <span class="c1"># Scale coordinates back</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">scale_coords</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="mi">1</span><span class="o">/</span><span class="n">scale</span><span class="p">)</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">results</span> 
+                <span class="k">if</span> <span class="n">r</span><span class="o">.</span><span class="n">confidence</span> <span class="o">&gt;</span> <span class="mf">0.3</span><span class="p">]</span>
+</code></pre>
+</div>
+
+<h3 id="43-element-type-heuristics-from-ocr">4.3 Element Type Heuristics (from OCR)</h3>
+
+<p>When we only have OCR text and bounding boxes, we must <em>guess</em> the element type:</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="n">BUTTON_WORDS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;ok&quot;</span><span class="p">,</span> <span class="s2">&quot;cancel&quot;</span><span class="p">,</span> <span class="s2">&quot;save&quot;</span><span class="p">,</span> <span class="s2">&quot;close&quot;</span><span class="p">,</span> <span class="s2">&quot;apply&quot;</span><span class="p">,</span> <span class="s2">&quot;submit&quot;</span><span class="p">,</span> <span class="s2">&quot;send&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;next&quot;</span><span class="p">,</span> <span class="s2">&quot;back&quot;</span><span class="p">,</span> <span class="s2">&quot;yes&quot;</span><span class="p">,</span> <span class="s2">&quot;no&quot;</span><span class="p">,</span> <span class="s2">&quot;delete&quot;</span><span class="p">,</span> <span class="s2">&quot;edit&quot;</span><span class="p">,</span> <span class="s2">&quot;new&quot;</span><span class="p">,</span> <span class="s2">&quot;open&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;sign in&quot;</span><span class="p">,</span> <span class="s2">&quot;log in&quot;</span><span class="p">,</span> <span class="s2">&quot;sign up&quot;</span><span class="p">,</span> <span class="s2">&quot;search&quot;</span><span class="p">,</span> <span class="s2">&quot;compose&quot;</span><span class="p">,</span> <span class="s2">&quot;reply&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;forward&quot;</span><span class="p">,</span> <span class="s2">&quot;browse&quot;</span><span class="p">,</span> <span class="s2">&quot;upload&quot;</span><span class="p">,</span> <span class="s2">&quot;download&quot;</span><span class="p">,</span> <span class="s2">&quot;create&quot;</span><span class="p">,</span> <span class="s2">&quot;add&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;remove&quot;</span><span class="p">,</span> <span class="s2">&quot;update&quot;</span><span class="p">,</span> <span class="s2">&quot;refresh&quot;</span><span class="p">,</span> <span class="s2">&quot;print&quot;</span><span class="p">,</span> <span class="s2">&quot;copy&quot;</span><span class="p">,</span> <span class="s2">&quot;paste&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;cut&quot;</span><span class="p">,</span> <span class="s2">&quot;undo&quot;</span><span class="p">,</span> <span class="s2">&quot;redo&quot;</span><span class="p">,</span> <span class="s2">&quot;done&quot;</span><span class="p">,</span> <span class="s2">&quot;finish&quot;</span><span class="p">,</span> <span class="s2">&quot;continue&quot;</span><span class="p">,</span>
+<span class="p">}</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">guess_element_type</span><span class="p">(</span><span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">bbox</span><span class="p">,</span> <span class="n">screen_position</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="n">text_lower</span> <span class="o">=</span> <span class="n">text</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="n">width</span> <span class="o">=</span> <span class="n">bbox</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">-</span> <span class="n">bbox</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">height</span> <span class="o">=</span> <span class="n">bbox</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="o">-</span> <span class="n">bbox</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">aspect</span> <span class="o">=</span> <span class="n">width</span> <span class="o">/</span> <span class="nb">max</span><span class="p">(</span><span class="n">height</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+
+    <span class="c1"># Short text in compact box = likely button</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">text_lower</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">20</span> <span class="ow">and</span> <span class="n">height</span> <span class="o">&lt;</span> <span class="mi">50</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">text_lower</span> <span class="ow">in</span> <span class="n">BUTTON_WORDS</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;button&quot;</span>
+        <span class="k">if</span> <span class="n">aspect</span> <span class="o">&gt;</span> <span class="mf">2.0</span> <span class="ow">and</span> <span class="n">aspect</span> <span class="o">&lt;</span> <span class="mf">8.0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;button&quot;</span>  <span class="c1"># Wide-ish, short = button shape</span>
+
+    <span class="c1"># URL patterns = link</span>
+    <span class="k">if</span> <span class="n">text_lower</span><span class="o">.</span><span class="n">startswith</span><span class="p">((</span><span class="s2">&quot;http&quot;</span><span class="p">,</span> <span class="s2">&quot;www.&quot;</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="s2">&quot;link&quot;</span>
+
+    <span class="c1"># At top of screen, short text = tab</span>
+    <span class="k">if</span> <span class="n">screen_position</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&lt;</span> <span class="mi">100</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">text_lower</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">25</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;tab&quot;</span>
+
+    <span class="c1"># Tall narrow box or contains cursor-like artifacts = text field</span>
+    <span class="k">if</span> <span class="n">height</span> <span class="o">&gt;</span> <span class="mi">25</span> <span class="ow">and</span> <span class="n">width</span> <span class="o">&gt;</span> <span class="mi">150</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">text_lower</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">5</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;text_field&quot;</span>
+
+    <span class="c1"># Single character or icon-like = icon</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">text_lower</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;icon&quot;</span>
+
+    <span class="k">return</span> <span class="s2">&quot;label&quot;</span>
+</code></pre>
+</div>
+
+<h3 id="44-ocr-performance">4.4 OCR Performance</h3>
+
+<pre><code>Benchmark: 1920x1080 screenshot
+─────────────────────────────────────────────
+Full resolution OCR:         400-800ms  (too slow)
+Half resolution OCR:         150-350ms  (acceptable)
+Quarter resolution OCR:      80-150ms   (fast, may miss small text)
+─────────────────────────────────────────────
+Recommendation: 0.5x scale (half resolution)
+GPU VRAM used:               0 MB (CPU only)
+</code></pre>
+
+<hr />
+
+<h2 id="5-tier-3-yolo-detection-optional">5. Tier 3: YOLO Detection (Optional)</h2>
+
+<h3 id="51-when-yolo-adds-value">5.1 When YOLO Adds Value</h3>
+
+<p>YOLO is useful for detecting <strong>visual-only</strong> UI elements that have no text:</p>
+
+<ul>
+<li>Close/minimize/maximize buttons (the × ○ □ window controls)</li>
+<li>Icon-only toolbar buttons (no text labels)</li>
+<li>Image thumbnails that are clickable</li>
+<li>Scrollbars, sliders, and other non-text controls</li>
+</ul>
+
+<h3 id="52-model-selection">5.2 Model Selection</h3>
+
+<table>
+<thead>
+<tr>
+  <th>Model</th>
+  <th>Size</th>
+  <th>Latency (CPU)</th>
+  <th>Accuracy</th>
+  <th>Recommendation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>YOLOv10-nano</td>
+  <td>5.4 MB</td>
+  <td>30-50ms</td>
+  <td>Good for standard widgets</td>
+  <td>✅ Best for our use case</td>
+</tr>
+<tr>
+  <td>YOLOv8-nano</td>
+  <td>6.2 MB</td>
+  <td>35-55ms</td>
+  <td>Similar to v10</td>
+  <td>Alternative</td>
+</tr>
+<tr>
+  <td>YOLOv10-small</td>
+  <td>16 MB</td>
+  <td>80-120ms</td>
+  <td>Better accuracy</td>
+  <td>If nano is insufficient</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="53-custom-training-considerations">5.3 Custom Training Considerations</h3>
+
+<p>Pre-trained YOLO models are trained on natural images, not UI screenshots. For best results:</p>
+
+<ul>
+<li>Fine-tune on UI element datasets (OmniAct, Rico, SeeClick-Pretrain)</li>
+<li>Target classes: <code>button</code>, <code>input</code>, <code>icon</code>, <code>checkbox</code>, <code>dropdown</code>, <code>scrollbar</code>, <code>slider</code></li>
+<li>Training data: ~5000 annotated UI screenshots (available from HuggingFace)</li>
+</ul>
+
+<hr />
+
+<h2 id="6-fusion-strategy-combining-tiers">6. Fusion Strategy: Combining Tiers</h2>
+
+<h3 id="61-element-deduplication">6.1 Element Deduplication</h3>
+
+<p>When multiple tiers detect the same element, we need to merge them:</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">fuse_elements</span><span class="p">(</span><span class="n">uia_elements</span><span class="p">,</span> <span class="n">ocr_elements</span><span class="p">,</span> <span class="n">yolo_elements</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Merge elements from all sources, removing duplicates.&quot;&quot;&quot;</span>
+    <span class="n">all_elements</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="c1"># UIA elements are highest priority</span>
+    <span class="n">all_elements</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">uia_elements</span><span class="p">)</span>
+
+    <span class="c1"># Add OCR elements that don&#39;t overlap with UIA</span>
+    <span class="k">for</span> <span class="n">ocr_el</span> <span class="ow">in</span> <span class="n">ocr_elements</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">bbox_overlap</span><span class="p">(</span><span class="n">ocr_el</span><span class="o">.</span><span class="n">bbox</span><span class="p">,</span> <span class="n">uia_el</span><span class="o">.</span><span class="n">bbox</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mf">0.5</span> 
+                   <span class="k">for</span> <span class="n">uia_el</span> <span class="ow">in</span> <span class="n">uia_elements</span><span class="p">):</span>
+            <span class="n">all_elements</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ocr_el</span><span class="p">)</span>
+
+    <span class="c1"># Add YOLO elements that don&#39;t overlap with existing</span>
+    <span class="k">for</span> <span class="n">yolo_el</span> <span class="ow">in</span> <span class="n">yolo_elements</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">bbox_overlap</span><span class="p">(</span><span class="n">yolo_el</span><span class="o">.</span><span class="n">bbox</span><span class="p">,</span> <span class="n">el</span><span class="o">.</span><span class="n">bbox</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mf">0.5</span> 
+                   <span class="k">for</span> <span class="n">el</span> <span class="ow">in</span> <span class="n">all_elements</span><span class="p">):</span>
+            <span class="n">all_elements</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">yolo_el</span><span class="p">)</span>
+
+    <span class="c1"># Sort by reading order (top-to-bottom, left-to-right)</span>
+    <span class="n">all_elements</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">e</span><span class="p">:</span> <span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">bbox</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">//</span> <span class="mi">30</span><span class="p">,</span> <span class="n">e</span><span class="o">.</span><span class="n">bbox</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
+
+    <span class="c1"># Assign sequential IDs</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">el</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">all_elements</span><span class="p">):</span>
+        <span class="n">el</span><span class="o">.</span><span class="n">id</span> <span class="o">=</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span>
+
+    <span class="k">return</span> <span class="n">all_elements</span><span class="p">[:</span><span class="mi">20</span><span class="p">]</span>  <span class="c1"># Cap at 20 for token budget</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">bbox_overlap</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute IoU (Intersection over Union) of two bounding boxes.&quot;&quot;&quot;</span>
+    <span class="n">x1</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">b</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="n">y1</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">b</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+    <span class="n">x2</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">b</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+    <span class="n">y2</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="n">b</span><span class="p">[</span><span class="mi">3</span><span class="p">])</span>
+
+    <span class="n">intersection</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">x2</span><span class="o">-</span><span class="n">x1</span><span class="p">)</span> <span class="o">*</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">y2</span><span class="o">-</span><span class="n">y1</span><span class="p">)</span>
+    <span class="n">area_a</span> <span class="o">=</span> <span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="o">-</span><span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">*</span> <span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span><span class="o">-</span><span class="n">a</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+    <span class="n">area_b</span> <span class="o">=</span> <span class="p">(</span><span class="n">b</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="o">-</span><span class="n">b</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">*</span> <span class="p">(</span><span class="n">b</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span><span class="o">-</span><span class="n">b</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+    <span class="n">union</span> <span class="o">=</span> <span class="n">area_a</span> <span class="o">+</span> <span class="n">area_b</span> <span class="o">-</span> <span class="n">intersection</span>
+
+    <span class="k">return</span> <span class="n">intersection</span> <span class="o">/</span> <span class="nb">max</span><span class="p">(</span><span class="n">union</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+</code></pre>
+</div>
+
+<h3 id="62-adaptive-tier-selection">6.2 Adaptive Tier Selection</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">perceive</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SemanticState</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Adaptive perception: use the cheapest tier that provides sufficient coverage.&quot;&quot;&quot;</span>
+
+    <span class="c1"># Always start with UIA</span>
+    <span class="n">uia_elements</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">uia</span><span class="o">.</span><span class="n">extract</span><span class="p">(</span><span class="n">max_elements</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">uia_elements</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">5</span><span class="p">:</span>
+        <span class="c1"># UIA provided good coverage — skip OCR</span>
+        <span class="n">elements</span> <span class="o">=</span> <span class="n">uia_elements</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;UIA-only perception: </span><span class="si">%d</span><span class="s2"> elements&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">elements</span><span class="p">))</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># UIA insufficient — activate OCR</span>
+        <span class="n">frame</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">capture</span><span class="o">.</span><span class="n">capture</span><span class="p">()</span>
+        <span class="n">ocr_results</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ocr</span><span class="o">.</span><span class="n">extract_downscaled</span><span class="p">(</span><span class="n">frame</span><span class="o">.</span><span class="n">pixels</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
+        <span class="n">ocr_elements</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_build_elements_from_ocr</span><span class="p">(</span><span class="n">ocr_results</span><span class="p">)</span>
+        <span class="n">elements</span> <span class="o">=</span> <span class="n">fuse_elements</span><span class="p">(</span><span class="n">uia_elements</span><span class="p">,</span> <span class="n">ocr_elements</span><span class="p">,</span> <span class="p">[])</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Hybrid perception: </span><span class="si">%d</span><span class="s2"> UIA + </span><span class="si">%d</span><span class="s2"> OCR = </span><span class="si">%d</span><span class="s2"> elements&quot;</span><span class="p">,</span>
+                    <span class="nb">len</span><span class="p">(</span><span class="n">uia_elements</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">ocr_elements</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">elements</span><span class="p">))</span>
+
+    <span class="c1"># Build and return semantic state</span>
+    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_build_state</span><span class="p">(</span><span class="n">elements</span><span class="p">)</span>
+</code></pre>
+</div>
+
+<hr />
+
+<h2 id="7-semantic-state-compression">7. Semantic State Compression</h2>
+
+<h3 id="71-region-based-spatial-encoding">7.1 Region-Based Spatial Encoding</h3>
+
+<p>Instead of raw pixel coordinates, we encode spatial positions as human-readable regions:</p>
+
+<pre><code>┌────────────┬────────────┬────────────┐
+│  top-left  │ top-center │ top-right  │
+│            │            │            │
+├────────────┼────────────┼────────────┤
+│center-left │   center   │center-right│
+│            │            │            │
+├────────────┼────────────┼────────────┤
+│bottom-left │bottom-center│bottom-right│
+│            │            │            │
+└────────────┴────────────┴────────────┘
+</code></pre>
+
+<p>This saves tokens: <code>(345, 78)</code> → <code>top-left</code> (saves ~3 tokens per element × 20 elements = 60 tokens saved).</p>
+
+<h3 id="72-final-output-format">7.2 Final Output Format</h3>
+
+<pre><code>App: Excel
+Window: Book1 - Excel  
+Layout: desktop_app
+Screen: 1920x1080
+NOTE: No dialog or menu open.
+Text summary: Spreadsheet visible with cells A1-G20. Ribbon shows Home tab.
+Interactive elements:
+  [1] tab: "File" (top-left)
+  [2] tab: "Home" (top-left)
+  [3] tab: "Insert" (top-left)
+  [4] button: "Paste" (top-left)
+  [5] button: "Cut" (top-left)
+  [6] dropdown: "Font" (top-center)
+  [7] text_field: "A1" (top-left)
+  [8] button: "Bold" (top-center)
+  [9] button: "Italic" (top-center)
+  [10] text_field: "Name Box" (top-left)
+Last change: Application just opened
+</code></pre>
+
+<p><strong>Token count</strong>: ~140 tokens — well within budget.</p>
+
+<hr />
+
+<h2 id="8-edge-cases-solutions">8. Edge Cases &amp; Solutions</h2>
+
+<h3 id="81-dynamic-content">8.1 Dynamic Content</h3>
+
+<p><strong>Problem</strong>: Web pages and apps with dynamic content (loading spinners, animations, lazy-loaded elements).</p>
+
+<p><strong>Solution</strong>: </p>
+
+<ul>
+<li>Implement a "stability check": capture twice with 300ms gap, compare. If SSIM &gt; 0.95, content is stable.</li>
+<li>If content is still loading (spinner detected via OCR or YOLO), wait up to 3 seconds before proceiving.</li>
+</ul>
+
+<h3 id="82-multi-monitor">8.2 Multi-Monitor</h3>
+
+<p><strong>Problem</strong>: User might have multiple monitors.</p>
+
+<p><strong>Solution</strong>: </p>
+
+<ul>
+<li>Always capture the monitor containing the active window.</li>
+<li>Use <code>mss</code> monitor enumeration + Win32 <code>MonitorFromWindow</code> to identify the correct monitor.</li>
+</ul>
+
+<h3 id="83-high-dpi-scaling">8.3 High-DPI / Scaling</h3>
+
+<p><strong>Problem</strong>: Windows DPI scaling (125%, 150%, 200%) causes coordinate mismatches.</p>
+
+<p><strong>Solution</strong>:</p>
+
+<ul>
+<li>Use DPI-aware APIs: call <code>SetProcessDPIAware()</code> at startup.</li>
+<li>UIA bounding boxes are already in physical pixels (DPI-adjusted).</li>
+<li>OCR coordinates from <code>mss</code> captures are also in physical pixels.</li>
+</ul>
+
+<h3 id="84-overlapping-elements">8.4 Overlapping Elements</h3>
+
+<p><strong>Problem</strong>: Dropdown menus, tooltips, and popups overlay main content.</p>
+
+<p><strong>Solution</strong>:</p>
+
+<ul>
+<li>Detect overlays via UIA (popup/tooltip elements have special properties).</li>
+<li>When a menu is detected, only report menu items as interactive elements.</li>
+<li>Set <code>is_menu_open: true</code> or <code>is_dialog: true</code> flag so the LLM knows to interact with the overlay.</li>
+</ul>
+
+<hr />
+
+<h2 id="9-performance-optimization">9. Performance Optimization</h2>
+
+<h3 id="91-lazy-ocr-loading">9.1 Lazy OCR Loading</h3>
+
+<p>OCR models (EasyOCR/PaddleOCR) take ~5 seconds to load on first use. Pre-load at agent startup:</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="c1"># At startup, trigger lazy load</span>
+<span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">ocr</span><span class="o">.</span><span class="n">_ensure_loaded</span><span class="p">,</span> <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+</code></pre>
+</div>
+
+<h3 id="92-frame-caching">9.2 Frame Caching</h3>
+
+<p>Don't re-capture the screen if less than 100ms has passed since the last capture. Cache the frame and re-use it.</p>
+
+<h3 id="93-roi-region-of-interest-capture">9.3 ROI (Region of Interest) Capture</h3>
+
+<p>For sub-goal-specific perception, only capture and OCR the relevant region:</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="c1"># If we know we&#39;re looking for an element in the toolbar:</span>
+<span class="n">toolbar_frame</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">capture</span><span class="o">.</span><span class="n">capture_region</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1920</span><span class="p">,</span> <span class="mi">120</span><span class="p">)</span>
+<span class="n">ocr_results</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ocr</span><span class="o">.</span><span class="n">extract</span><span class="p">(</span><span class="n">toolbar_frame</span><span class="o">.</span><span class="n">pixels</span><span class="p">)</span>
+</code></pre>
+</div>
+
+<p>This reduces OCR time by 60-80% for localized tasks.</p>
+
+<hr />
+
+<p><em>Document Version: 1.0 | Part 02 of 08</em><br />
+<em>See also: <a href="./03_Task_Decomposition.md">03_Task_Decomposition</a> for planning logic</em></p>
+
+    <div class="footer">
+        <p>OmniVLA Project Documentation &mdash; Generated April 2026</p>
+        <p>Confidential &mdash; Final Year Project</p>
+    </div>
+</body>
+</html>

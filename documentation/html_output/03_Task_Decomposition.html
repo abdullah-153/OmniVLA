@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniVLA: Task Decomposition</title>
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        line-height: 1.7;
+        color: #1a1a2e;
+        background: #ffffff;
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 60px 40px;
+        font-size: 14px;
+    }
+    
+    h1 {
+        font-size: 2.2em;
+        font-weight: 700;
+        color: #0f0f23;
+        margin-top: 0;
+        margin-bottom: 8px;
+        padding-bottom: 16px;
+        border-bottom: 3px solid #667eea;
+        letter-spacing: -0.5px;
+    }
+    
+    h2 {
+        font-size: 1.6em;
+        font-weight: 600;
+        color: #1a1a2e;
+        margin-top: 48px;
+        margin-bottom: 16px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    
+    h3 {
+        font-size: 1.25em;
+        font-weight: 600;
+        color: #2d3748;
+        margin-top: 32px;
+        margin-bottom: 12px;
+    }
+    
+    h4 {
+        font-size: 1.05em;
+        font-weight: 600;
+        color: #4a5568;
+        margin-top: 24px;
+        margin-bottom: 8px;
+    }
+    
+    p {
+        margin-bottom: 16px;
+        color: #2d3748;
+    }
+    
+    strong { font-weight: 600; color: #1a1a2e; }
+    
+    em { font-style: italic; color: #4a5568; }
+    
+    a { color: #667eea; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    
+    code {
+        font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+        background: #f1f5f9;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.88em;
+        color: #e53e3e;
+    }
+    
+    pre {
+        background: #1a1a2e;
+        color: #e2e8f0;
+        padding: 20px 24px;
+        border-radius: 8px;
+        overflow-x: auto;
+        margin: 16px 0 24px 0;
+        font-size: 0.85em;
+        line-height: 1.6;
+        border: 1px solid #2d3748;
+    }
+    
+    pre code {
+        background: transparent;
+        color: #e2e8f0;
+        padding: 0;
+        font-size: 1em;
+    }
+    
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 16px 0 24px 0;
+        font-size: 0.92em;
+    }
+    
+    thead th {
+        background: #667eea;
+        color: white;
+        padding: 12px 16px;
+        text-align: left;
+        font-weight: 600;
+        font-size: 0.9em;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    tbody td {
+        padding: 10px 16px;
+        border-bottom: 1px solid #e2e8f0;
+        vertical-align: top;
+    }
+    
+    tbody tr:nth-child(even) { background: #f8fafc; }
+    tbody tr:hover { background: #edf2f7; }
+    
+    ul, ol {
+        margin: 8px 0 16px 24px;
+    }
+    
+    li {
+        margin-bottom: 6px;
+        color: #2d3748;
+    }
+    
+    li code { font-size: 0.85em; }
+    
+    blockquote {
+        border-left: 4px solid #667eea;
+        background: #f0f4ff;
+        padding: 16px 20px;
+        margin: 16px 0;
+        border-radius: 0 8px 8px 0;
+        font-style: italic;
+        color: #4a5568;
+    }
+    
+    blockquote strong { color: #2d3748; }
+    
+    hr {
+        border: none;
+        border-top: 2px solid #e2e8f0;
+        margin: 40px 0;
+    }
+    
+    /* Print styles */
+    @media print {
+        body { padding: 20px; max-width: 100%; }
+        pre { background: #f5f5f5 !important; color: #333 !important; 
+              border: 1px solid #ddd; }
+        pre code { color: #333 !important; }
+        thead th { background: #333 !important; }
+        h1, h2, h3 { page-break-after: avoid; }
+        pre, table { page-break-inside: avoid; }
+    }
+    
+    .title-block {
+        text-align: center;
+        margin-bottom: 48px;
+        padding: 40px 0;
+        border-bottom: 3px solid #667eea;
+    }
+    
+    .title-block h1 {
+        border: none;
+        padding: 0;
+        margin: 0;
+        font-size: 2.5em;
+    }
+    
+    .subtitle {
+        color: #667eea;
+        font-size: 1.2em;
+        font-weight: 400;
+        margin-top: 8px;
+    }
+    
+    .footer {
+        margin-top: 60px;
+        padding-top: 20px;
+        border-top: 1px solid #e2e8f0;
+        text-align: center;
+        color: #a0aec0;
+        font-size: 0.85em;
+    }
+    </style>
+</head>
+<body>
+    <h1 id="omnivla-task-decomposition">OmniVLA: Task Decomposition</h1>
+
+<h2 id="document-03-intelligent-multi-step-planning">Document 03 — Intelligent Multi-Step Planning</h2>
+
+<hr />
+
+<h2 id="1-the-planning-problem">1. The Planning Problem</h2>
+
+<p>Complex user requests like <em>"Create a pivot table in Excel from the sales data, then email it to the team"</em> require <strong>dozens of individual UI actions</strong>. A small LLM cannot reliably plan AND execute all these actions simultaneously.</p>
+
+<p><strong>Solution</strong>: Separate planning from execution. The Task Decomposer converts high-level goals into ordered sequences of atomic sub-goals. Each sub-goal maps to 1-3 UI actions.</p>
+
+<hr />
+
+<h2 id="2-decomposition-architecture">2. Decomposition Architecture</h2>
+
+<pre><code>┌──────────────────────────────────────────────────────────────────┐
+│                    TASK DECOMPOSER                                │
+│                                                                    │
+│  Input:  "Create a pivot table from sales data and email it"     │
+│                                                                    │
+│  Step 1: Check memory for similar past task                      │
+│  Step 2: Generate plan via LLM (GBNF-constrained JSON)          │
+│  Step 3: Validate plan coherence                                 │
+│  Step 4: Enrich with app-specific knowledge                     │
+│                                                                    │
+│  Output: [                                                        │
+│    {step: 1, goal: "Click on cell A1 in the data range",         │
+│     app: "Excel", category: "navigation"},                        │
+│    {step: 2, goal: "Select entire data range with Ctrl+Shift+End",│
+│     app: "Excel", category: "selection"},                         │
+│    {step: 3, goal: "Click Insert tab in ribbon",                 │
+│     app: "Excel", category: "navigation"},                        │
+│    {step: 4, goal: "Click PivotTable button",                    │
+│     app: "Excel", category: "action"},                            │
+│    {step: 5, goal: "Click OK in PivotTable dialog",              │
+│     app: "Excel", category: "confirmation"},                      │
+│    ...                                                            │
+│  ]                                                                │
+└──────────────────────────────────────────────────────────────────┘
+</code></pre>
+
+<hr />
+
+<h2 id="3-the-decomposition-prompt">3. The Decomposition Prompt</h2>
+
+<p>The prompt is the most critical element. It must:</p>
+
+<ul>
+<li>Teach the model to think in atomic UI operations</li>
+<li>Prevent over-decomposition (too many tiny steps)</li>
+<li>Prevent under-decomposition (steps that require multiple clicks)</li>
+<li>Include app-awareness (different apps have different workflows)</li>
+</ul>
+
+<h3 id="31-system-prompt">3.1 System Prompt</h3>
+
+<pre><code>You are a task planner for a Windows desktop automation agent.
+
+Your job is to decompose user requests into ATOMIC sub-goals.
+Each sub-goal should correspond to ONE observable UI action:
+- One click on a specific UI element
+- One keyboard shortcut
+- One text entry into a field
+- One scroll action
+
+RULES:
+1. Each step = ONE UI action. "Click the File menu" is one step.
+   "Open a new document" might be 2-3 steps (File → New → Blank).
+2. Be SPECIFIC. Say "Click the 'Compose' button" not "Open compose".
+3. Include which application each step targets.
+4. Use keyboard shortcuts when they're faster and more reliable.
+   Example: "Save file" → "Press Ctrl+S" instead of "Click File → Save".
+5. For text entry, specify the EXACT text to type.
+6. Maximum 15 steps. If the task needs more, break it into phases.
+7. Consider the STARTING STATE. If the app isn't open, include 
+   steps to open it.
+8. Group related micro-actions. "Click cell A1" is one step, not
+   "Move mouse to A1" + "Click left button".
+
+OUTPUT FORMAT: JSON with a "plan" array.
+</code></pre>
+
+<h3 id="32-user-prompt-template">3.2 User Prompt Template</h3>
+
+<pre><code>Break this task into atomic steps:
+
+TASK: {user_task}
+
+CURRENT APP: {active_app}  (or "Desktop" if no app is focused)
+
+Output the plan as JSON:
+</code></pre>
+
+<h3 id="33-gbnf-grammar-for-plan-output">3.3 GBNF Grammar for Plan Output</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">root </span><span class="err">::</span><span class="o">=</span> <span class="s2">&quot;{&quot;</span> <span class="k">ws </span><span class="s2">&quot;\&quot;</span><span class="k">plan</span><span class="err">\</span><span class="s2">&quot;:&quot;</span> <span class="k">ws </span><span class="s2">&quot;[&quot;</span> <span class="k">ws plan-items ws </span><span class="s2">&quot;]&quot;</span> <span class="k">ws </span><span class="s2">&quot;}&quot;</span>
+
+<span class="k">plan-items </span><span class="err">::=</span> <span class="k">plan-item </span><span class="p">(</span><span class="s2">&quot;,&quot;</span> <span class="k">ws plan-item</span><span class="p">)</span><span class="err">*</span>
+
+<span class="k">plan-item </span><span class="err">::=</span> <span class="s2">&quot;{&quot;</span> <span class="k">ws</span>
+    <span class="s2">&quot;\&quot;</span><span class="k">step</span><span class="err">\</span><span class="s2">&quot;:&quot;</span> <span class="k">ws step-number </span><span class="s2">&quot;,&quot;</span> <span class="k">ws</span>
+    <span class="s2">&quot;\&quot;</span><span class="k">goal</span><span class="err">\</span><span class="s2">&quot;:&quot;</span> <span class="k">ws </span><span class="s2">&quot;\&quot;&quot; goal-text &quot;</span><span class="err">\</span><span class="s2">&quot;&quot;</span> <span class="s2">&quot;,&quot;</span> <span class="k">ws</span>
+    <span class="s2">&quot;\&quot;</span><span class="k">app_hint</span><span class="err">\</span><span class="s2">&quot;:&quot;</span> <span class="k">ws </span><span class="s2">&quot;\&quot;&quot; app-name &quot;</span><span class="err">\</span><span class="s2">&quot;&quot;</span>
+    <span class="k">ws </span><span class="s2">&quot;}&quot;</span>
+
+<span class="k">step-number </span><span class="err">::=</span> <span class="p">[</span><span class="err">1</span><span class="o">-</span><span class="err">9</span><span class="p">]</span> <span class="p">[</span><span class="err">0</span><span class="o">-</span><span class="err">9</span><span class="p">]</span><span class="ni">?</span>
+<span class="ni">goal-text ::= [^&quot;]{5,200}</span>
+<span class="ni">app-name ::= [A-Za-z ]{2,30}</span>
+<span class="ni">ws ::= &quot; &quot;?</span>
+</code></pre>
+</div>
+
+<p>This grammar ensures the LLM <strong>can only</strong> produce valid JSON plans. No hallucinated formats possible.</p>
+
+<hr />
+
+<h2 id="4-app-aware-decomposition">4. App-Aware Decomposition</h2>
+
+<p>Different applications have different interaction paradigms. The decomposer should be aware of these patterns:</p>
+
+<h3 id="41-shortcut-knowledge-base">4.1 Shortcut Knowledge Base</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="n">APP_PATTERNS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;Excel&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;save&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+S&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;new_workbook&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+N&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;undo&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+Z&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;redo&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+Y&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;copy&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+C&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;paste&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+V&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;select_all&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+A&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;find&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+F&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;find_replace&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+H&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;bold&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+B&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;italic&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+I&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;insert_row&quot;</span><span class="p">:</span> <span class="s2">&quot;Right-click row header → Click Insert&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;insert_column&quot;</span><span class="p">:</span> <span class="s2">&quot;Right-click column header → Click Insert&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;format_cells&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+1&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;new_sheet&quot;</span><span class="p">:</span> <span class="s2">&quot;Click + button next to sheet tabs&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;rename_sheet&quot;</span><span class="p">:</span> <span class="s2">&quot;Double-click sheet tab&quot;</span><span class="p">,</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;Chrome&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;new_tab&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+T&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;close_tab&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+W&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;address_bar&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+L&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;search&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+L, then type search query&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;refresh&quot;</span><span class="p">:</span> <span class="s2">&quot;Press F5&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;back&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Alt+Left&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;forward&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Alt+Right&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;developer_tools&quot;</span><span class="p">:</span> <span class="s2">&quot;Press F12&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;downloads&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+J&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;history&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+H&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;bookmarks&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+D&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;print&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+P&quot;</span><span class="p">,</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;VS Code&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;command_palette&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+Shift+P&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;save&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+S&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;open_file&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+O&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;open_terminal&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+`&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;find&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+F&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;find_replace&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+H&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;go_to_line&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+G&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;toggle_sidebar&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+B&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;new_file&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+N&quot;</span><span class="p">,</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;File Explorer&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;new_folder&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+Shift+N&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;rename&quot;</span><span class="p">:</span> <span class="s2">&quot;Press F2&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;delete&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Delete&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;copy&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+C&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;paste&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+V&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;address_bar&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+L&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;search&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+E&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Alt+Enter&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;select_all&quot;</span><span class="p">:</span> <span class="s2">&quot;Press Ctrl+A&quot;</span><span class="p">,</span>
+    <span class="p">},</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<h3 id="42-enrichment-pass">4.2 Enrichment Pass</h3>
+
+<p>After the LLM generates the raw plan, an enrichment pass replaces verbose click sequences with shortcuts:</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">enrich_plan</span><span class="p">(</span><span class="n">plan</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">SubGoal</span><span class="p">],</span> <span class="n">active_app</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">SubGoal</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Replace click-based steps with shortcuts where possible.&quot;&quot;&quot;</span>
+    <span class="n">shortcuts</span> <span class="o">=</span> <span class="n">APP_PATTERNS</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">active_app</span><span class="p">,</span> <span class="p">{})</span>
+
+    <span class="n">enriched</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">goal</span> <span class="ow">in</span> <span class="n">plan</span><span class="p">:</span>
+        <span class="n">goal_lower</span> <span class="o">=</span> <span class="n">goal</span><span class="o">.</span><span class="n">goal</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+
+        <span class="c1"># Check if this step can be replaced with a shortcut</span>
+        <span class="n">replaced</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">for</span> <span class="n">intent</span><span class="p">,</span> <span class="n">shortcut</span> <span class="ow">in</span> <span class="n">shortcuts</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">intent</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;_&quot;</span><span class="p">,</span> <span class="s2">&quot; &quot;</span><span class="p">)</span> <span class="ow">in</span> <span class="n">goal_lower</span><span class="p">:</span>
+                <span class="n">goal</span><span class="o">.</span><span class="n">goal</span> <span class="o">=</span> <span class="n">shortcut</span>
+                <span class="n">replaced</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="k">break</span>
+
+        <span class="n">enriched</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">goal</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">enriched</span>
+</code></pre>
+</div>
+
+<hr />
+
+<h2 id="5-hierarchical-decomposition">5. Hierarchical Decomposition</h2>
+
+<p>For very complex tasks, a single decomposition pass might produce too many steps. We use <strong>hierarchical decomposition</strong>:</p>
+
+<h3 id="51-two-level-planning">5.1 Two-Level Planning</h3>
+
+<pre><code>Level 1: PHASES (high-level milestones)
+  Phase 1: "Prepare the data in Excel"
+  Phase 2: "Create the pivot table"
+  Phase 3: "Email the result"
+
+Level 2: STEPS (atomic UI actions within each phase)
+  Phase 1:
+    Step 1.1: "Open Excel"
+    Step 1.2: "Open the sales data file"
+    Step 1.3: "Select data range A1:F100"
+    ...
+</code></pre>
+
+<h3 id="52-when-to-use-hierarchical-decomposition">5.2 When to Use Hierarchical Decomposition</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">decompose</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">task</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">SubGoal</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Decide between flat and hierarchical decomposition.&quot;&quot;&quot;</span>
+
+    <span class="c1"># Estimate task complexity</span>
+    <span class="n">complexity_indicators</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s2">&quot;and then&quot;</span><span class="p">,</span>      <span class="c1"># Multi-phase</span>
+        <span class="s2">&quot;after that&quot;</span><span class="p">,</span>    <span class="c1"># Sequential phases</span>
+        <span class="s2">&quot;multiple&quot;</span><span class="p">,</span>      <span class="c1"># Multiple targets</span>
+        <span class="s2">&quot;each&quot;</span><span class="p">,</span>          <span class="c1"># Iteration required</span>
+        <span class="s2">&quot;all&quot;</span><span class="p">,</span>           <span class="c1"># Batch operation</span>
+        <span class="s2">&quot;spreadsheet&quot;</span><span class="p">,</span>   <span class="c1"># Complex app</span>
+        <span class="s2">&quot;pivot&quot;</span><span class="p">,</span>         <span class="c1"># Complex operation</span>
+        <span class="s2">&quot;email&quot;</span><span class="p">,</span>         <span class="c1"># Cross-app operation</span>
+    <span class="p">]</span>
+
+    <span class="n">complexity</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="mi">1</span> <span class="k">for</span> <span class="n">ind</span> <span class="ow">in</span> <span class="n">complexity_indicators</span> 
+                     <span class="k">if</span> <span class="n">ind</span> <span class="ow">in</span> <span class="n">task</span><span class="o">.</span><span class="n">lower</span><span class="p">())</span>
+
+    <span class="k">if</span> <span class="n">complexity</span> <span class="o">&gt;=</span> <span class="mi">3</span><span class="p">:</span>
+        <span class="c1"># Complex task → hierarchical decomposition</span>
+        <span class="n">phases</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_decompose_phases</span><span class="p">(</span><span class="n">task</span><span class="p">)</span>
+        <span class="n">all_steps</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">phase</span> <span class="ow">in</span> <span class="n">phases</span><span class="p">:</span>
+            <span class="n">steps</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_decompose_steps</span><span class="p">(</span><span class="n">phase</span><span class="p">)</span>
+            <span class="n">all_steps</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">steps</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">all_steps</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># Simple task → flat decomposition</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_decompose_steps</span><span class="p">(</span><span class="n">task</span><span class="p">)</span>
+</code></pre>
+</div>
+
+<hr />
+
+<h2 id="6-dynamic-re-planning">6. Dynamic Re-Planning</h2>
+
+<p>The initial plan is a <em>prediction</em>. The actual UI may differ from what the LLM expected. When verification detects an unexpected state, the decomposer is called again to re-plan from the current state.</p>
+
+<h3 id="61-re-planning-trigger">6.1 Re-Planning Trigger</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">handle_unexpected_state</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">current_state</span><span class="p">,</span> <span class="n">expected_outcome</span><span class="p">,</span> 
+                            <span class="n">remaining_goals</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Re-plan when the current state doesn&#39;t match expectations.&quot;&quot;&quot;</span>
+
+    <span class="n">re_plan_prompt</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">    The agent was executing a plan but encountered an unexpected state.</span>
+
+<span class="s2">    ORIGINAL REMAINING GOALS:</span>
+<span class="s2">    </span><span class="si">{</span><span class="n">format_goals</span><span class="p">(</span><span class="n">remaining_goals</span><span class="p">)</span><span class="si">}</span>
+
+<span class="s2">    CURRENT SCREEN STATE:</span>
+<span class="s2">    </span><span class="si">{</span><span class="n">current_state</span><span class="o">.</span><span class="n">to_prompt_string</span><span class="p">()</span><span class="si">}</span>
+
+<span class="s2">    UNEXPECTED SITUATION:</span>
+<span class="s2">    The last action did not produce the expected result.</span>
+
+<span class="s2">    Generate a NEW plan from the current state to achieve</span>
+<span class="s2">    the remaining goals. You may need to adapt the approach.</span>
+<span class="s2">    &quot;&quot;&quot;</span>
+
+    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">decompose</span><span class="p">(</span><span class="n">re_plan_prompt</span><span class="p">)</span>
+</code></pre>
+</div>
+
+<h3 id="62-re-planning-budget">6.2 Re-Planning Budget</h3>
+
+<p>To prevent infinite re-planning loops:</p>
+
+<ul>
+<li>Maximum 3 re-plans per task</li>
+<li>Maximum 25 total steps across all plans</li>
+<li>If all re-plans fail, escalate to user</li>
+</ul>
+
+<hr />
+
+<h2 id="7-example-decompositions">7. Example Decompositions</h2>
+
+<h3 id="71-simple-task">7.1 Simple Task</h3>
+
+<p><strong>User</strong>: "Save this document"</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;plan&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;step&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;goal&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Press Ctrl+S&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;app_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Current App&quot;</span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<h3 id="72-medium-task">7.2 Medium Task</h3>
+
+<p><strong>User</strong>: "Open Chrome and search for weather in New York"</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;plan&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;step&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;goal&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Press Windows key&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;app_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Desktop&quot;</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;step&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;goal&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Type &#39;Chrome&#39;&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;app_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Start Menu&quot;</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;step&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;goal&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Press Enter to open Chrome&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;app_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Start Menu&quot;</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;step&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;goal&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Press Ctrl+L to focus address bar&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;app_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Chrome&quot;</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;step&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;goal&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Type &#39;weather in New York&#39;&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;app_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Chrome&quot;</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;step&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">6</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;goal&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Press Enter to search&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;app_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Chrome&quot;</span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<h3 id="73-complex-task">7.3 Complex Task</h3>
+
+<p><strong>User</strong>: "Create a new Excel spreadsheet with columns for Name, Email, and Department, then save it as employees.xlsx on the Desktop"</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;plan&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;step&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;goal&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Press Windows key&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;app_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Desktop&quot;</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;step&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;goal&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Type &#39;Excel&#39;&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;app_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Start Menu&quot;</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;step&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;goal&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Press Enter to open Excel&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;app_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Start Menu&quot;</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;step&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;goal&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Click &#39;Blank workbook&#39;&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;app_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Excel&quot;</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;step&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;goal&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Type &#39;Name&#39; in cell A1&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;app_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Excel&quot;</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;step&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">6</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;goal&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Press Tab to move to B1&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;app_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Excel&quot;</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;step&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">7</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;goal&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Type &#39;Email&#39;&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;app_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Excel&quot;</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;step&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">8</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;goal&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Press Tab to move to C1&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;app_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Excel&quot;</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;step&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">9</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;goal&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Type &#39;Department&#39;&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;app_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Excel&quot;</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;step&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;goal&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Press Ctrl+S to save&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;app_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Excel&quot;</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;step&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">11</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;goal&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Navigate to Desktop in save dialog&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;app_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Excel&quot;</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;step&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">12</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;goal&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Type &#39;employees&#39; in filename field&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;app_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Excel&quot;</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;step&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">13</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;goal&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Click Save button&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;app_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Excel&quot;</span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<hr />
+
+<h2 id="8-validation-error-prevention">8. Validation &amp; Error Prevention</h2>
+
+<h3 id="81-plan-coherence-checks">8.1 Plan Coherence Checks</h3>
+
+<p>After decomposition, validate the plan before execution:</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">validate_plan</span><span class="p">(</span><span class="n">plan</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">SubGoal</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Check plan for common issues. Returns list of warnings.&quot;&quot;&quot;</span>
+    <span class="n">warnings</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="c1"># Check for empty steps</span>
+    <span class="k">for</span> <span class="n">g</span> <span class="ow">in</span> <span class="n">plan</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">g</span><span class="o">.</span><span class="n">goal</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Step </span><span class="si">{</span><span class="n">g</span><span class="o">.</span><span class="n">step</span><span class="si">}</span><span class="s2"> has empty goal&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Check for duplicate consecutive steps</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">plan</span><span class="p">)):</span>
+        <span class="k">if</span> <span class="n">plan</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">goal</span> <span class="o">==</span> <span class="n">plan</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">goal</span><span class="p">:</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Steps </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2"> and </span><span class="si">{</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2"> are identical&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Check step count</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">plan</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">15</span><span class="p">:</span>
+        <span class="n">warnings</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;Plan has &gt;15 steps — consider breaking into phases&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Check for app transitions without wait</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">plan</span><span class="p">)):</span>
+        <span class="k">if</span> <span class="n">plan</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">app_hint</span> <span class="o">!=</span> <span class="n">plan</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">app_hint</span><span class="p">:</span>
+            <span class="c1"># App switch detected — should we add a wait?</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">w</span> <span class="ow">in</span> <span class="n">plan</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">goal</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> 
+                      <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;wait&quot;</span><span class="p">,</span> <span class="s2">&quot;press&quot;</span><span class="p">,</span> <span class="s2">&quot;key&quot;</span><span class="p">]):</span>
+                <span class="n">warnings</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;Step </span><span class="si">{</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2"> switches to </span><span class="si">{</span><span class="n">plan</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">app_hint</span><span class="si">}</span><span class="s2"> &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;— may need wait for app to load&quot;</span>
+                <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">warnings</span>
+</code></pre>
+</div>
+
+<hr />
+
+<h2 id="9-memory-enhanced-planning">9. Memory-Enhanced Planning</h2>
+
+<p>Before generating a new plan, the decomposer queries episodic memory for similar past tasks:</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">decompose_with_memory</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">task</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">SubGoal</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate plan using past successful trajectories as examples.&quot;&quot;&quot;</span>
+
+    <span class="c1"># Query memory for similar past tasks</span>
+    <span class="n">past_trajectory</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">memory</span><span class="o">.</span><span class="n">recall</span><span class="p">(</span><span class="n">task</span><span class="p">,</span> <span class="n">n_results</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">past_trajectory</span><span class="p">:</span>
+        <span class="c1"># Include past trajectory as a few-shot example</span>
+        <span class="n">memory_context</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">        SIMILAR PAST TASK (successful):</span>
+<span class="s2">        Task: </span><span class="si">{</span><span class="n">past_trajectory</span><span class="o">.</span><span class="n">task</span><span class="si">}</span>
+<span class="s2">        Steps taken: </span><span class="si">{</span><span class="n">format_trajectory</span><span class="p">(</span><span class="n">past_trajectory</span><span class="p">)</span><span class="si">}</span>
+
+<span class="s2">        Use this as reference but adapt to the current task.</span>
+<span class="s2">        &quot;&quot;&quot;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">memory_context</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+
+    <span class="c1"># Generate plan with memory context</span>
+    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_llm_decompose</span><span class="p">(</span><span class="n">task</span><span class="p">,</span> <span class="n">memory_context</span><span class="p">)</span>
+</code></pre>
+</div>
+
+<p>This allows the agent to <strong>learn from experience</strong>: if a similar task was completed successfully before, the decomposer uses that trajectory as a template.</p>
+
+<hr />
+
+<p><em>Document Version: 1.0 | Part 03 of 08</em><br />
+<em>See also: <a href="./04_Action_Reasoning.md">04_Action_Reasoning</a> for per-step decision making</em></p>
+
+    <div class="footer">
+        <p>OmniVLA Project Documentation &mdash; Generated April 2026</p>
+        <p>Confidential &mdash; Final Year Project</p>
+    </div>
+</body>
+</html>

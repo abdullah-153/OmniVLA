@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniVLA: Model Selection & Optimization</title>
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        line-height: 1.7;
+        color: #1a1a2e;
+        background: #ffffff;
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 60px 40px;
+        font-size: 14px;
+    }
+    
+    h1 {
+        font-size: 2.2em;
+        font-weight: 700;
+        color: #0f0f23;
+        margin-top: 0;
+        margin-bottom: 8px;
+        padding-bottom: 16px;
+        border-bottom: 3px solid #667eea;
+        letter-spacing: -0.5px;
+    }
+    
+    h2 {
+        font-size: 1.6em;
+        font-weight: 600;
+        color: #1a1a2e;
+        margin-top: 48px;
+        margin-bottom: 16px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    
+    h3 {
+        font-size: 1.25em;
+        font-weight: 600;
+        color: #2d3748;
+        margin-top: 32px;
+        margin-bottom: 12px;
+    }
+    
+    h4 {
+        font-size: 1.05em;
+        font-weight: 600;
+        color: #4a5568;
+        margin-top: 24px;
+        margin-bottom: 8px;
+    }
+    
+    p {
+        margin-bottom: 16px;
+        color: #2d3748;
+    }
+    
+    strong { font-weight: 600; color: #1a1a2e; }
+    
+    em { font-style: italic; color: #4a5568; }
+    
+    a { color: #667eea; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    
+    code {
+        font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+        background: #f1f5f9;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.88em;
+        color: #e53e3e;
+    }
+    
+    pre {
+        background: #1a1a2e;
+        color: #e2e8f0;
+        padding: 20px 24px;
+        border-radius: 8px;
+        overflow-x: auto;
+        margin: 16px 0 24px 0;
+        font-size: 0.85em;
+        line-height: 1.6;
+        border: 1px solid #2d3748;
+    }
+    
+    pre code {
+        background: transparent;
+        color: #e2e8f0;
+        padding: 0;
+        font-size: 1em;
+    }
+    
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 16px 0 24px 0;
+        font-size: 0.92em;
+    }
+    
+    thead th {
+        background: #667eea;
+        color: white;
+        padding: 12px 16px;
+        text-align: left;
+        font-weight: 600;
+        font-size: 0.9em;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    tbody td {
+        padding: 10px 16px;
+        border-bottom: 1px solid #e2e8f0;
+        vertical-align: top;
+    }
+    
+    tbody tr:nth-child(even) { background: #f8fafc; }
+    tbody tr:hover { background: #edf2f7; }
+    
+    ul, ol {
+        margin: 8px 0 16px 24px;
+    }
+    
+    li {
+        margin-bottom: 6px;
+        color: #2d3748;
+    }
+    
+    li code { font-size: 0.85em; }
+    
+    blockquote {
+        border-left: 4px solid #667eea;
+        background: #f0f4ff;
+        padding: 16px 20px;
+        margin: 16px 0;
+        border-radius: 0 8px 8px 0;
+        font-style: italic;
+        color: #4a5568;
+    }
+    
+    blockquote strong { color: #2d3748; }
+    
+    hr {
+        border: none;
+        border-top: 2px solid #e2e8f0;
+        margin: 40px 0;
+    }
+    
+    /* Print styles */
+    @media print {
+        body { padding: 20px; max-width: 100%; }
+        pre { background: #f5f5f5 !important; color: #333 !important; 
+              border: 1px solid #ddd; }
+        pre code { color: #333 !important; }
+        thead th { background: #333 !important; }
+        h1, h2, h3 { page-break-after: avoid; }
+        pre, table { page-break-inside: avoid; }
+    }
+    
+    .title-block {
+        text-align: center;
+        margin-bottom: 48px;
+        padding: 40px 0;
+        border-bottom: 3px solid #667eea;
+    }
+    
+    .title-block h1 {
+        border: none;
+        padding: 0;
+        margin: 0;
+        font-size: 2.5em;
+    }
+    
+    .subtitle {
+        color: #667eea;
+        font-size: 1.2em;
+        font-weight: 400;
+        margin-top: 8px;
+    }
+    
+    .footer {
+        margin-top: 60px;
+        padding-top: 20px;
+        border-top: 1px solid #e2e8f0;
+        text-align: center;
+        color: #a0aec0;
+        font-size: 0.85em;
+    }
+    </style>
+</head>
+<body>
+    <h1 id="omnivla-model-selection-optimization">OmniVLA: Model Selection &amp; Optimization</h1>
+
+<h2 id="document-07-llm-deployment-on-6gb-vram">Document 07 — LLM Deployment on 6GB VRAM</h2>
+
+<hr />
+
+<h2 id="1-the-model-constraint">1. The Model Constraint</h2>
+
+<p>The RTX 4050 has <strong>6144 MB</strong> of VRAM. After CUDA overhead (~200-300MB), we have <strong>~5800MB</strong> for the model, KV cache, and any other GPU operations. This is our hard ceiling.</p>
+
+<h3 id="what-must-fit-in-vram">What Must Fit in VRAM</h3>
+
+<pre><code>Model weights (quantized):     ~4000-4600 MB
+KV Cache (context window):    ~500-800 MB
+CUDA runtime overhead:         ~200-300 MB
+────────────────────────────────────────────
+TOTAL:                         ~4700-5700 MB
+AVAILABLE:                     6144 MB
+HEADROOM:                      ~400-1400 MB
+</code></pre>
+
+<p><strong>Key insight</strong>: We can afford ONE model at a time, quantized to Q4_K_M or Q4_K_S. We cannot run a separate vision encoder alongside it.</p>
+
+<hr />
+
+<h2 id="2-model-candidates">2. Model Candidates</h2>
+
+<h3 id="21-gemma-4-e4b-google-deepmind">2.1 Gemma 4 E4B (Google DeepMind)</h3>
+
+<table>
+<thead>
+<tr>
+  <th>Property</th>
+  <th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>Architecture</strong></td>
+  <td>Mixture of Experts (MoE), 4B active parameters</td>
+</tr>
+<tr>
+  <td><strong>Total Parameters</strong></td>
+  <td>~12B (but only 4B active per token)</td>
+</tr>
+<tr>
+  <td><strong>Context Window</strong></td>
+  <td>8K (native), can extend to 32K</td>
+</tr>
+<tr>
+  <td><strong>Vision</strong></td>
+  <td>✓ Native multimodal (image input)</td>
+</tr>
+<tr>
+  <td><strong>Function Calling</strong></td>
+  <td>✓ Native structured output</td>
+</tr>
+<tr>
+  <td><strong>Quantized Size (Q4_K_M)</strong></td>
+  <td>~4.2-4.6 GB</td>
+</tr>
+<tr>
+  <td><strong>KV Cache (2K context)</strong></td>
+  <td>~600 MB</td>
+</tr>
+<tr>
+  <td><strong>Total VRAM</strong></td>
+  <td>~5.0-5.4 GB</td>
+</tr>
+<tr>
+  <td><strong>Release Date</strong></td>
+  <td>April 2026</td>
+</tr>
+<tr>
+  <td><strong>GGUF Available</strong></td>
+  <td>✓ via llama.cpp</td>
+</tr>
+<tr>
+  <td><strong>Ollama</strong></td>
+  <td><code>ollama run gemma4:e4b</code></td>
+</tr>
+</tbody>
+</table>
+
+<p><strong>Strengths</strong>:</p>
+
+<ul>
+<li>MoE architecture = better reasoning per VRAM dollar</li>
+<li>Native function calling = reliable structured output</li>
+<li>Edge-optimized = specifically designed for laptops/mobile</li>
+<li>Strong instruction following at 4B active params</li>
+</ul>
+
+<p><strong>Weaknesses</strong>:</p>
+
+<ul>
+<li>MoE models can be slower (expert routing overhead)</li>
+<li>Relatively new — community tooling still maturing</li>
+<li>Vision encoder adds VRAM cost if used for screenshots</li>
+</ul>
+
+<p><strong>Verdict for OmniVLA</strong>: ✅ <strong>Primary recommendation</strong>. The MoE architecture gives better reasoning than a dense 4B model, and native function calling aligns perfectly with our GBNF-constrained action output.</p>
+
+<h3 id="22-qwen-35-alibaba">2.2 Qwen 3.5 (Alibaba)</h3>
+
+<table>
+<thead>
+<tr>
+  <th>Property</th>
+  <th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>Architecture</strong></td>
+  <td>Dense/MoE variants, Gated Delta Networks</td>
+</tr>
+<tr>
+  <td><strong>Relevant Sizes</strong></td>
+  <td>0.8B, 2B, 4B (dense), 35B-A3B (MoE)</td>
+</tr>
+<tr>
+  <td><strong>Context Window</strong></td>
+  <td>256K (native!)</td>
+</tr>
+<tr>
+  <td><strong>Vision</strong></td>
+  <td>✓ Multimodal variants available</td>
+</tr>
+<tr>
+  <td><strong>Function Calling</strong></td>
+  <td>✓ Supported</td>
+</tr>
+<tr>
+  <td><strong>Quantized Size (4B, Q4_K_M)</strong></td>
+  <td>~2.8-3.2 GB</td>
+</tr>
+<tr>
+  <td><strong>VRAM with KV Cache</strong></td>
+  <td>~3.5-4.5 GB</td>
+</tr>
+<tr>
+  <td><strong>Release Date</strong></td>
+  <td>Early 2026</td>
+</tr>
+<tr>
+  <td><strong>GGUF Available</strong></td>
+  <td>✓ via llama.cpp / Ollama</td>
+</tr>
+<tr>
+  <td><strong>Ollama</strong></td>
+  <td><code>ollama run qwen3.5:4b</code></td>
+</tr>
+</tbody>
+</table>
+
+<p><strong>Strengths</strong>:</p>
+
+<ul>
+<li>Massive native context window (256K) — useful for complex state descriptions</li>
+<li>Multiple size options (can use 2B for speed, 4B for accuracy)</li>
+<li>Excellent agentic capabilities in benchmarks</li>
+<li>Mature ecosystem with extensive fine-tuning support</li>
+</ul>
+
+<p><strong>Weaknesses</strong>:</p>
+
+<ul>
+<li>Dense 4B model has less reasoning capacity than Gemma 4 E4B (MoE)</li>
+<li>The 35B-A3B MoE variant might be too large for 6GB</li>
+<li>Less optimized for edge devices compared to Gemma 4 E4B</li>
+</ul>
+
+<p><strong>Verdict for OmniVLA</strong>: ✅ <strong>Strong alternative</strong>. Use Qwen 3.5-4B if Gemma 4 E4B proves unreliable, or use Qwen 3.5-2B for maximum speed when reasoning complexity is low.</p>
+
+<h3 id="23-comparison-matrix">2.3 Comparison Matrix</h3>
+
+<table>
+<thead>
+<tr>
+  <th>Feature</th>
+  <th>Gemma 4 E4B</th>
+  <th>Qwen 3.5-4B</th>
+  <th>Qwen 3.5-2B</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Active Parameters</td>
+  <td>4B (MoE)</td>
+  <td>4B (dense)</td>
+  <td>2B (dense)</td>
+</tr>
+<tr>
+  <td>VRAM (Q4_K_M + 2K ctx)</td>
+  <td>~5.2 GB</td>
+  <td>~4.0 GB</td>
+  <td>~2.8 GB</td>
+</tr>
+<tr>
+  <td>Reasoning Quality</td>
+  <td>⭐⭐⭐⭐</td>
+  <td>⭐⭐⭐</td>
+  <td>⭐⭐</td>
+</tr>
+<tr>
+  <td>Speed (tokens/s)</td>
+  <td>~25-35</td>
+  <td>~30-40</td>
+  <td>~50-70</td>
+</tr>
+<tr>
+  <td>Function Calling</td>
+  <td>⭐⭐⭐⭐⭐</td>
+  <td>⭐⭐⭐⭐</td>
+  <td>⭐⭐⭐</td>
+</tr>
+<tr>
+  <td>Context Window</td>
+  <td>8K</td>
+  <td>256K</td>
+  <td>256K</td>
+</tr>
+<tr>
+  <td>Edge Optimization</td>
+  <td>⭐⭐⭐⭐⭐</td>
+  <td>⭐⭐⭐</td>
+  <td>⭐⭐⭐</td>
+</tr>
+<tr>
+  <td>Community/Tooling</td>
+  <td>⭐⭐⭐</td>
+  <td>⭐⭐⭐⭐⭐</td>
+  <td>⭐⭐⭐⭐⭐</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="24-recommendation">2.4 Recommendation</h3>
+
+<pre><code>PRIMARY:   Gemma 4 E4B (Q4_K_M)   — Best reasoning, native function calling
+FALLBACK:  Qwen 3.5-4B (Q4_K_M)   — If Gemma proves unreliable
+SPEED:     Qwen 3.5-2B (Q4_K_M)   — For latency-critical tasks
+</code></pre>
+
+<hr />
+
+<h2 id="3-quantization-guide">3. Quantization Guide</h2>
+
+<h3 id="31-quantization-formats">3.1 Quantization Formats</h3>
+
+<table>
+<thead>
+<tr>
+  <th>Format</th>
+  <th>Bits</th>
+  <th>Size Reduction</th>
+  <th>Quality Loss</th>
+  <th>Recommendation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>F16</strong></td>
+  <td>16</td>
+  <td>1x (baseline)</td>
+  <td>0%</td>
+  <td>Too large for 6GB</td>
+</tr>
+<tr>
+  <td><strong>Q8_0</strong></td>
+  <td>8</td>
+  <td>2x</td>
+  <td>&lt;1%</td>
+  <td>Marginal fit, reduced context</td>
+</tr>
+<tr>
+  <td><strong>Q6_K</strong></td>
+  <td>6</td>
+  <td>2.7x</td>
+  <td>~1%</td>
+  <td>Good quality, tight fit</td>
+</tr>
+<tr>
+  <td><strong>Q5_K_M</strong></td>
+  <td>5</td>
+  <td>3.2x</td>
+  <td>~2%</td>
+  <td>Good balance</td>
+</tr>
+<tr>
+  <td><strong>Q4_K_M</strong></td>
+  <td>4</td>
+  <td>4x</td>
+  <td>~3%</td>
+  <td>✅ <strong>Best for 6GB</strong></td>
+</tr>
+<tr>
+  <td><strong>Q4_K_S</strong></td>
+  <td>4</td>
+  <td>4x</td>
+  <td>~4%</td>
+  <td>Slightly smaller than Q4_K_M</td>
+</tr>
+<tr>
+  <td><strong>Q3_K_M</strong></td>
+  <td>3</td>
+  <td>5.3x</td>
+  <td>~5-8%</td>
+  <td>If Q4 is too large</td>
+</tr>
+<tr>
+  <td><strong>Q2_K</strong></td>
+  <td>2</td>
+  <td>8x</td>
+  <td>~15%+</td>
+  <td>Unacceptable quality loss</td>
+</tr>
+</tbody>
+</table>
+
+<p><strong>Q4_K_M</strong> is the sweet spot: it reduces model size by 4x with only ~3% quality degradation. This is where most of the SOTA local deployment happens.</p>
+
+<h3 id="32-getting-gguf-models">3.2 Getting GGUF Models</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="c1"># Option 1: Ollama (simplest)</span>
+ollama<span class="w"> </span>pull<span class="w"> </span>gemma4:e4b-q4_k_m
+
+<span class="c1"># Option 2: Download from HuggingFace</span>
+<span class="c1"># Search for: &quot;gemma-4-e4b GGUF&quot; or &quot;qwen3.5-4b GGUF&quot;</span>
+<span class="c1"># Recommended sources: bartowski, unsloth, mradermacher</span>
+
+<span class="c1"># Option 3: Quantize yourself</span>
+pip<span class="w"> </span>install<span class="w"> </span>llama-cpp-python
+python<span class="w"> </span>-m<span class="w"> </span>llama_cpp.convert<span class="w"> </span>--outtype<span class="w"> </span>q4_k_m<span class="w"> </span>model.safetensors
+</code></pre>
+</div>
+
+<hr />
+
+<h2 id="4-inference-server-configuration">4. Inference Server Configuration</h2>
+
+<h3 id="41-llamacpp-server">4.1 llama.cpp Server</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="c1"># Start llama.cpp server with optimal settings for 6GB VRAM</span>
+./llama-server<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--model<span class="w"> </span>gemma-4-e4b-q4_k_m.gguf<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--n-gpu-layers<span class="w"> </span>-1<span class="w"> </span><span class="se">\ </span><span class="w">          </span><span class="c1"># Offload ALL layers to GPU</span>
+<span class="w">    </span>--ctx-size<span class="w"> </span><span class="m">2048</span><span class="w"> </span><span class="se">\ </span><span class="w">             </span><span class="c1"># Context window (balance vs VRAM)</span>
+<span class="w">    </span>--batch-size<span class="w"> </span><span class="m">512</span><span class="w"> </span><span class="se">\ </span><span class="w">            </span><span class="c1"># Batch size for prompt processing</span>
+<span class="w">    </span>--n-predict<span class="w"> </span><span class="m">512</span><span class="w"> </span><span class="se">\ </span><span class="w">             </span><span class="c1"># Max generation tokens</span>
+<span class="w">    </span>--port<span class="w"> </span><span class="m">8080</span><span class="w"> </span><span class="se">\ </span><span class="w">                 </span><span class="c1"># API port</span>
+<span class="w">    </span>--host<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="se">\ </span><span class="w">           </span><span class="c1"># Local only (security)</span>
+<span class="w">    </span>--flash-attn<span class="w"> </span><span class="se">\ </span><span class="w">               </span><span class="c1"># Flash attention (faster, less VRAM)</span>
+<span class="w">    </span>--mmap<span class="w"> </span><span class="se">\ </span><span class="w">                     </span><span class="c1"># Memory-map model file</span>
+<span class="w">    </span>--threads<span class="w"> </span><span class="m">4</span><span class="w"> </span><span class="se">\ </span><span class="w">                </span><span class="c1"># CPU threads for KV cache ops</span>
+<span class="w">    </span>--cont-batching<span class="w">                </span><span class="c1"># Continuous batching</span>
+</code></pre>
+</div>
+
+<h3 id="42-ollama-configuration">4.2 Ollama Configuration</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="c1"># Set environment for optimal 6GB VRAM usage</span>
+<span class="nb">set</span><span class="w"> </span><span class="nv">OLLAMA_FLASH_ATTENTION</span><span class="o">=</span><span class="m">1</span>
+<span class="nb">set</span><span class="w"> </span><span class="nv">OLLAMA_NUM_GPU</span><span class="o">=</span><span class="m">999</span><span class="w">           </span><span class="c1"># Use all GPU layers</span>
+
+<span class="c1"># Create a custom modelfile for OmniVLA</span>
+cat<span class="w"> </span>&gt;<span class="w"> </span>Modelfile<span class="w"> </span><span class="s">&lt;&lt; &#39;EOF&#39;</span>
+<span class="s">FROM gemma4:e4b-q4_k_m</span>
+
+<span class="s">PARAMETER num_ctx 2048</span>
+<span class="s">PARAMETER temperature 0.2</span>
+<span class="s">PARAMETER top_p 0.9</span>
+<span class="s">PARAMETER repeat_penalty 1.1</span>
+<span class="s">PARAMETER num_predict 512</span>
+
+<span class="s">SYSTEM &quot;&quot;&quot;You are a GUI automation agent operating on Windows...&quot;&quot;&quot;</span>
+<span class="s">EOF</span>
+
+ollama<span class="w"> </span>create<span class="w"> </span>omnivla<span class="w"> </span>-f<span class="w"> </span>Modelfile
+ollama<span class="w"> </span>run<span class="w"> </span>omnivla
+</code></pre>
+</div>
+
+<h3 id="43-api-integration">4.3 API Integration</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">LLMClient</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Client for local LLM inference via llama.cpp or Ollama API.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">base_url</span><span class="o">=</span><span class="s2">&quot;http://127.0.0.1:8080&quot;</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">base_url</span> <span class="o">=</span> <span class="n">base_url</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">chat</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">messages</span><span class="p">,</span> <span class="n">grammar</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> 
+             <span class="n">max_tokens</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span> <span class="n">temperature</span><span class="o">=</span><span class="mf">0.2</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Send a chat completion request.&quot;&quot;&quot;</span>
+        <span class="n">payload</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;messages&quot;</span><span class="p">:</span> <span class="n">messages</span><span class="p">,</span>
+            <span class="s2">&quot;max_tokens&quot;</span><span class="p">:</span> <span class="n">max_tokens</span><span class="p">,</span>
+            <span class="s2">&quot;temperature&quot;</span><span class="p">:</span> <span class="n">temperature</span><span class="p">,</span>
+            <span class="s2">&quot;stream&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="p">}</span>
+
+        <span class="k">if</span> <span class="n">grammar</span><span class="p">:</span>
+            <span class="n">payload</span><span class="p">[</span><span class="s2">&quot;grammar&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">grammar</span>  <span class="c1"># GBNF grammar constraint</span>
+
+        <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">post</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">base_url</span><span class="si">}</span><span class="s2">/v1/chat/completions&quot;</span><span class="p">,</span>
+            <span class="n">json</span><span class="o">=</span><span class="n">payload</span><span class="p">,</span>
+            <span class="n">timeout</span><span class="o">=</span><span class="mi">30</span>
+        <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">response</span><span class="o">.</span><span class="n">json</span><span class="p">()[</span><span class="s2">&quot;choices&quot;</span><span class="p">][</span><span class="mi">0</span><span class="p">][</span><span class="s2">&quot;message&quot;</span><span class="p">][</span><span class="s2">&quot;content&quot;</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">health_check</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check if the LLM server is running.&quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">r</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">base_url</span><span class="si">}</span><span class="s2">/health&quot;</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">r</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">200</span>
+        <span class="k">except</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+</code></pre>
+</div>
+
+<hr />
+
+<h2 id="5-vram-optimization-techniques">5. VRAM Optimization Techniques</h2>
+
+<h3 id="51-kv-cache-quantization">5.1 KV Cache Quantization</h3>
+
+<p>The KV cache can consume significant VRAM at longer context lengths:</p>
+
+<pre><code>KV Cache VRAM = 2 × n_layers × n_heads × head_dim × ctx_length × bytes_per_element
+
+For Gemma 4 E4B (Q4_K_M) at 2048 context:
+  ~600-800 MB in FP16
+  ~300-400 MB with Q8 KV cache quantization (llama.cpp supports this)
+</code></pre>
+
+<p>Enable KV cache quantization:</p>
+
+<div class="codehilite">
+<pre><span></span><code>./llama-server<span class="w"> </span>--cache-type-k<span class="w"> </span>q8_0<span class="w"> </span>--cache-type-v<span class="w"> </span>q8_0<span class="w"> </span>...
+</code></pre>
+</div>
+
+<p>This saves ~300-400MB of VRAM with minimal quality impact.</p>
+
+<h3 id="52-context-window-tuning">5.2 Context Window Tuning</h3>
+
+<p>Our architecture is designed to use minimal context. Typical usage:</p>
+
+<pre><code>System prompt:     ~150 tokens
+User prompt:       ~220 tokens  (state + goal + memory)
+Generation:        ~50 tokens   (THINK + ACTION)
+────────────────────────────────
+Total:             ~420 tokens
+
+Context window:    2048 tokens (conservative, VRAM-friendly)
+</code></pre>
+
+<p>We're using only ~20% of our 2048-token context window. This means:</p>
+
+<ul>
+<li>KV cache VRAM is minimal</li>
+<li>We could reduce context to 1024 to save even more VRAM</li>
+<li>Or increase to 4096 if we need richer state descriptions</li>
+</ul>
+
+<h3 id="53-flash-attention">5.3 Flash Attention</h3>
+
+<p>Flash Attention reduces VRAM usage for attention computation:</p>
+
+<ul>
+<li><strong>Without Flash Attention</strong>: O(n²) memory for attention matrix</li>
+<li><strong>With Flash Attention</strong>: O(n) memory — massive savings at long context</li>
+</ul>
+
+<p>Both <code>llama.cpp</code> and <code>vllm</code> support Flash Attention. Always enable it.</p>
+
+<h3 id="54-vram-monitoring">5.4 VRAM Monitoring</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">subprocess</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">get_vram_usage</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get current GPU VRAM usage.&quot;&quot;&quot;</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+        <span class="p">[</span><span class="s2">&quot;nvidia-smi&quot;</span><span class="p">,</span> <span class="s2">&quot;--query-gpu=memory.used,memory.total,memory.free&quot;</span><span class="p">,</span>
+         <span class="s2">&quot;--format=csv,noheader,nounits&quot;</span><span class="p">],</span>
+        <span class="n">capture_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="kc">True</span>
+    <span class="p">)</span>
+
+    <span class="n">used</span><span class="p">,</span> <span class="n">total</span><span class="p">,</span> <span class="n">free</span> <span class="o">=</span> <span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">)]</span>
+
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;used_mb&quot;</span><span class="p">:</span> <span class="n">used</span><span class="p">,</span>
+        <span class="s2">&quot;total_mb&quot;</span><span class="p">:</span> <span class="n">total</span><span class="p">,</span>
+        <span class="s2">&quot;free_mb&quot;</span><span class="p">:</span> <span class="n">free</span><span class="p">,</span>
+        <span class="s2">&quot;utilization&quot;</span><span class="p">:</span> <span class="n">used</span> <span class="o">/</span> <span class="n">total</span> <span class="o">*</span> <span class="mi">100</span>
+    <span class="p">}</span>
+</code></pre>
+</div>
+
+<hr />
+
+<h2 id="6-text-only-vs-vision-mode">6. Text-Only vs Vision Mode</h2>
+
+<h3 id="61-why-text-only-is-default">6.1 Why Text-Only is Default</h3>
+
+<p>In OmniVLA's architecture, the LLM operates in <strong>text-only mode</strong> by default. Screenshots are processed by the perception engine (CPU), and only a text summary is passed to the LLM.</p>
+
+<p><strong>Advantages of text-only</strong>:</p>
+
+<ul>
+<li>No vision encoder VRAM cost (~1-2GB saved)</li>
+<li>Faster inference (no image token processing)</li>
+<li>Smaller context window needed</li>
+<li>Works with any text LLM (not limited to VLMs)</li>
+</ul>
+
+<h3 id="62-when-to-use-vision-mode">6.2 When to Use Vision Mode</h3>
+
+<p>Vision mode (passing screenshot to a VLM) should be used ONLY when:</p>
+
+<ol>
+<li>UIA + OCR perception completely fails (custom rendering, games)</li>
+<li>The task requires visual understanding (e.g., "click the blue icon")</li>
+<li>The user explicitly requests visual grounding</li>
+</ol>
+
+<h3 id="63-vision-mode-architecture">6.3 Vision Mode Architecture</h3>
+
+<p>If vision mode is needed, we must:</p>
+
+<ol>
+<li><strong>Unload the text LLM</strong> from VRAM</li>
+<li><strong>Load a VLM</strong> (e.g., Qwen2.5-VL-2B or Gemma 4 E4B with vision)</li>
+<li><strong>Run visual grounding</strong> on the screenshot</li>
+<li><strong>Unload the VLM</strong> and re-load the text LLM</li>
+</ol>
+
+<p>This "model swapping" takes ~2-3 seconds but is necessary due to VRAM constraints.</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">ModelManager</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Manages model loading/unloading for 6GB VRAM constraint.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">switch_to_vision_model</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Swap text LLM for VLM.&quot;&quot;&quot;</span>
+        <span class="c1"># 1. Unload current model</span>
+        <span class="n">requests</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">base_url</span><span class="si">}</span><span class="s2">/v1/model/unload&quot;</span><span class="p">)</span>
+
+        <span class="c1"># 2. Load VLM</span>
+        <span class="n">requests</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">base_url</span><span class="si">}</span><span class="s2">/v1/model/load&quot;</span><span class="p">,</span> <span class="n">json</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;gemma-4-e4b-vision.gguf&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;n_gpu_layers&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span>
+            <span class="s2">&quot;ctx_size&quot;</span><span class="p">:</span> <span class="mi">2048</span>
+        <span class="p">})</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">switch_to_text_model</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Swap VLM back to text LLM.&quot;&quot;&quot;</span>
+        <span class="n">requests</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">base_url</span><span class="si">}</span><span class="s2">/v1/model/unload&quot;</span><span class="p">)</span>
+        <span class="n">requests</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">base_url</span><span class="si">}</span><span class="s2">/v1/model/load&quot;</span><span class="p">,</span> <span class="n">json</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="s2">&quot;gemma-4-e4b-text.gguf&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;n_gpu_layers&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span>
+            <span class="s2">&quot;ctx_size&quot;</span><span class="p">:</span> <span class="mi">2048</span>
+        <span class="p">})</span>
+</code></pre>
+</div>
+
+<hr />
+
+<h2 id="7-fine-tuning-strategy-advanced">7. Fine-Tuning Strategy (Advanced)</h2>
+
+<h3 id="71-when-fine-tuning-helps">7.1 When Fine-Tuning Helps</h3>
+
+<p>The base model may not be ideal for GUI action selection. Fine-tuning on GUI-specific data can improve:</p>
+
+<ul>
+<li>Action selection accuracy (matching goal to correct element)</li>
+<li>Understanding of UI-specific terminology</li>
+<li>Preference for keyboard shortcuts</li>
+<li>Correct use of the GBNF-constrained output format</li>
+</ul>
+
+<h3 id="72-training-data">7.2 Training Data</h3>
+
+<table>
+<thead>
+<tr>
+  <th>Dataset</th>
+  <th>Samples</th>
+  <th>Type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Custom OmniVLA traces</td>
+  <td>500+</td>
+  <td>(state → goal → action) tuples from real usage</td>
+</tr>
+<tr>
+  <td>ScreenSpot</td>
+  <td>~1,200</td>
+  <td>GUI grounding (instruction → click point)</td>
+</tr>
+<tr>
+  <td>OmniAct</td>
+  <td>~9,800</td>
+  <td>Desktop/Web screenshots + actions</td>
+</tr>
+<tr>
+  <td>ShareGPT (reasoning)</td>
+  <td>~5,000</td>
+  <td>General instruction-following (prevent catastrophic forgetting)</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="73-qlora-configuration">7.3 QLoRA Configuration</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="c1"># Fine-tune on Kaggle/Colab with QLoRA</span>
+<span class="n">training_config</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;base_model&quot;</span><span class="p">:</span> <span class="s2">&quot;google/gemma-4-e4b&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;quantization&quot;</span><span class="p">:</span> <span class="s2">&quot;4bit&quot;</span><span class="p">,</span>  <span class="c1"># NF4</span>
+    <span class="s2">&quot;lora_rank&quot;</span><span class="p">:</span> <span class="mi">64</span><span class="p">,</span>
+    <span class="s2">&quot;lora_alpha&quot;</span><span class="p">:</span> <span class="mi">128</span><span class="p">,</span>
+    <span class="s2">&quot;lora_targets&quot;</span><span class="p">:</span> <span class="s2">&quot;all&quot;</span><span class="p">,</span>   <span class="c1"># Target all linear layers</span>
+    <span class="s2">&quot;learning_rate&quot;</span><span class="p">:</span> <span class="mf">1e-4</span><span class="p">,</span>
+    <span class="s2">&quot;epochs&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
+    <span class="s2">&quot;batch_size&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+    <span class="s2">&quot;gradient_accumulation&quot;</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span>
+    <span class="s2">&quot;max_length&quot;</span><span class="p">:</span> <span class="mi">2048</span><span class="p">,</span>
+    <span class="s2">&quot;bf16&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="s2">&quot;dataset_ratio&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;gui_actions&quot;</span><span class="p">:</span> <span class="mf">0.4</span><span class="p">,</span>      <span class="c1"># 40% GUI-specific</span>
+        <span class="s2">&quot;gui_grounding&quot;</span><span class="p">:</span> <span class="mf">0.2</span><span class="p">,</span>    <span class="c1"># 20% visual grounding</span>
+        <span class="s2">&quot;general_reasoning&quot;</span><span class="p">:</span> <span class="mf">0.4</span>  <span class="c1"># 40% general (prevent forgetting)</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<h3 id="74-converting-fine-tuned-model-to-gguf">7.4 Converting Fine-Tuned Model to GGUF</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="c1"># After fine-tuning, export to GGUF</span>
+python<span class="w"> </span>-m<span class="w"> </span>llama_cpp.convert_lora_to_gguf<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--base<span class="w"> </span>gemma-4-e4b.gguf<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--lora<span class="w"> </span>fine_tuned_adapter/<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--output<span class="w"> </span>omnivla-gui-lora.gguf
+
+<span class="c1"># Or merge and quantize</span>
+python<span class="w"> </span>-m<span class="w"> </span>llama_cpp.merge_lora<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--base<span class="w"> </span>gemma-4-e4b-fp16.gguf<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--lora<span class="w"> </span>fine_tuned_adapter/<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--output<span class="w"> </span>omnivla-merged-fp16.gguf
+
+python<span class="w"> </span>-m<span class="w"> </span>llama_cpp.quantize<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>omnivla-merged-fp16.gguf<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>omnivla-merged-q4_k_m.gguf<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>q4_k_m
+</code></pre>
+</div>
+
+<hr />
+
+<h2 id="8-inference-performance-benchmarks">8. Inference Performance Benchmarks</h2>
+
+<h3 id="expected-performance-on-rtx-4050">Expected Performance on RTX 4050</h3>
+
+<table>
+<thead>
+<tr>
+  <th>Model</th>
+  <th>Quantization</th>
+  <th>Prompt Processing</th>
+  <th>Generation</th>
+  <th>Total per Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Gemma 4 E4B</td>
+  <td>Q4_K_M</td>
+  <td>~100ms (400 tokens)</td>
+  <td>~400-600ms (50 tokens)</td>
+  <td>~500-700ms</td>
+</tr>
+<tr>
+  <td>Qwen 3.5-4B</td>
+  <td>Q4_K_M</td>
+  <td>~80ms (400 tokens)</td>
+  <td>~350-500ms (50 tokens)</td>
+  <td>~430-580ms</td>
+</tr>
+<tr>
+  <td>Qwen 3.5-2B</td>
+  <td>Q4_K_M</td>
+  <td>~50ms (400 tokens)</td>
+  <td>~200-350ms (50 tokens)</td>
+  <td>~250-400ms</td>
+</tr>
+</tbody>
+</table>
+
+<p><strong>Note</strong>: These are estimates. Actual performance depends on GPU clock speed, thermal throttling, and system load.</p>
+
+<hr />
+
+<p><em>Document Version: 1.0 | Part 07 of 08</em><br />
+<em>See also: <a href="./08_Advanced_Strategies_Research.md">08_Advanced_Strategies_Research</a> for SOTA integration</em></p>
+
+    <div class="footer">
+        <p>OmniVLA Project Documentation &mdash; Generated April 2026</p>
+        <p>Confidential &mdash; Final Year Project</p>
+    </div>
+</body>
+</html>

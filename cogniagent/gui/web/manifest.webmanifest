@@ -1,0 +1,17 @@
+{
+  "name": "OmniVLA Command Center",
+  "short_name": "OmniVLA",
+  "description": "A supervised, local-first desktop-agent control plane.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fafafa",
+  "theme_color": "#fafafa",
+  "icons": [
+    {
+      "src": "/assets/icons/omnivla-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

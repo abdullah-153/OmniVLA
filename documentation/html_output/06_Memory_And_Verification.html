@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniVLA: Memory & Verification</title>
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        line-height: 1.7;
+        color: #1a1a2e;
+        background: #ffffff;
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 60px 40px;
+        font-size: 14px;
+    }
+    
+    h1 {
+        font-size: 2.2em;
+        font-weight: 700;
+        color: #0f0f23;
+        margin-top: 0;
+        margin-bottom: 8px;
+        padding-bottom: 16px;
+        border-bottom: 3px solid #667eea;
+        letter-spacing: -0.5px;
+    }
+    
+    h2 {
+        font-size: 1.6em;
+        font-weight: 600;
+        color: #1a1a2e;
+        margin-top: 48px;
+        margin-bottom: 16px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    
+    h3 {
+        font-size: 1.25em;
+        font-weight: 600;
+        color: #2d3748;
+        margin-top: 32px;
+        margin-bottom: 12px;
+    }
+    
+    h4 {
+        font-size: 1.05em;
+        font-weight: 600;
+        color: #4a5568;
+        margin-top: 24px;
+        margin-bottom: 8px;
+    }
+    
+    p {
+        margin-bottom: 16px;
+        color: #2d3748;
+    }
+    
+    strong { font-weight: 600; color: #1a1a2e; }
+    
+    em { font-style: italic; color: #4a5568; }
+    
+    a { color: #667eea; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    
+    code {
+        font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+        background: #f1f5f9;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.88em;
+        color: #e53e3e;
+    }
+    
+    pre {
+        background: #1a1a2e;
+        color: #e2e8f0;
+        padding: 20px 24px;
+        border-radius: 8px;
+        overflow-x: auto;
+        margin: 16px 0 24px 0;
+        font-size: 0.85em;
+        line-height: 1.6;
+        border: 1px solid #2d3748;
+    }
+    
+    pre code {
+        background: transparent;
+        color: #e2e8f0;
+        padding: 0;
+        font-size: 1em;
+    }
+    
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 16px 0 24px 0;
+        font-size: 0.92em;
+    }
+    
+    thead th {
+        background: #667eea;
+        color: white;
+        padding: 12px 16px;
+        text-align: left;
+        font-weight: 600;
+        font-size: 0.9em;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    tbody td {
+        padding: 10px 16px;
+        border-bottom: 1px solid #e2e8f0;
+        vertical-align: top;
+    }
+    
+    tbody tr:nth-child(even) { background: #f8fafc; }
+    tbody tr:hover { background: #edf2f7; }
+    
+    ul, ol {
+        margin: 8px 0 16px 24px;
+    }
+    
+    li {
+        margin-bottom: 6px;
+        color: #2d3748;
+    }
+    
+    li code { font-size: 0.85em; }
+    
+    blockquote {
+        border-left: 4px solid #667eea;
+        background: #f0f4ff;
+        padding: 16px 20px;
+        margin: 16px 0;
+        border-radius: 0 8px 8px 0;
+        font-style: italic;
+        color: #4a5568;
+    }
+    
+    blockquote strong { color: #2d3748; }
+    
+    hr {
+        border: none;
+        border-top: 2px solid #e2e8f0;
+        margin: 40px 0;
+    }
+    
+    /* Print styles */
+    @media print {
+        body { padding: 20px; max-width: 100%; }
+        pre { background: #f5f5f5 !important; color: #333 !important; 
+              border: 1px solid #ddd; }
+        pre code { color: #333 !important; }
+        thead th { background: #333 !important; }
+        h1, h2, h3 { page-break-after: avoid; }
+        pre, table { page-break-inside: avoid; }
+    }
+    
+    .title-block {
+        text-align: center;
+        margin-bottom: 48px;
+        padding: 40px 0;
+        border-bottom: 3px solid #667eea;
+    }
+    
+    .title-block h1 {
+        border: none;
+        padding: 0;
+        margin: 0;
+        font-size: 2.5em;
+    }
+    
+    .subtitle {
+        color: #667eea;
+        font-size: 1.2em;
+        font-weight: 400;
+        margin-top: 8px;
+    }
+    
+    .footer {
+        margin-top: 60px;
+        padding-top: 20px;
+        border-top: 1px solid #e2e8f0;
+        text-align: center;
+        color: #a0aec0;
+        font-size: 0.85em;
+    }
+    </style>
+</head>
+<body>
+    <h1 id="omnivla-memory-verification">OmniVLA: Memory &amp; Verification</h1>
+
+<h2 id="document-06-episodic-memory-and-action-verification">Document 06 — Episodic Memory and Action Verification</h2>
+
+<hr />
+
+<h2 id="1-why-memory-matters">1. Why Memory Matters</h2>
+
+<p>Without memory, the agent starts from zero every session. It re-learns that "Compose" is element 1 in Gmail every single time. Memory transforms the agent from a <strong>stateless tool</strong> into a <strong>learning system</strong>.</p>
+
+<h3 id="memory-benefits">Memory Benefits</h3>
+
+<table>
+<thead>
+<tr>
+  <th>Without Memory</th>
+  <th>With Memory</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Every task starts cold</td>
+  <td>Past successes inform current actions</td>
+</tr>
+<tr>
+  <td>Same mistakes repeated</td>
+  <td>Known failures are avoided</td>
+</tr>
+<tr>
+  <td>No adaptation to user workflow</td>
+  <td>Agent learns user's app preferences</td>
+</tr>
+<tr>
+  <td>Full LLM reasoning every step</td>
+  <td>Memory-matched steps skip reasoning</td>
+</tr>
+<tr>
+  <td>~800ms per action</td>
+  <td>~100ms for memory-matched actions</td>
+</tr>
+</tbody>
+</table>
+
+<hr />
+
+<h2 id="2-episodic-memory-architecture">2. Episodic Memory Architecture</h2>
+
+<h3 id="21-what-is-an-episode">2.1 What is an Episode?</h3>
+
+<p>An <strong>episode</strong> is a single (state → action → result) tuple:</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Episode</span><span class="p">:</span>
+    <span class="c1"># Context</span>
+    <span class="n">task</span><span class="p">:</span> <span class="nb">str</span>               <span class="c1"># &quot;Send email to john@example.com&quot;</span>
+    <span class="n">app_context</span><span class="p">:</span> <span class="nb">str</span>        <span class="c1"># &quot;Gmail&quot;</span>
+    <span class="n">goal</span><span class="p">:</span> <span class="nb">str</span>               <span class="c1"># &quot;Click Compose button&quot;</span>
+
+    <span class="c1"># Action taken</span>
+    <span class="n">action_type</span><span class="p">:</span> <span class="nb">str</span>        <span class="c1"># &quot;click&quot;</span>
+    <span class="n">action_args</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>  <span class="c1"># [&quot;1&quot;]</span>
+    <span class="n">action_method</span><span class="p">:</span> <span class="nb">str</span>      <span class="c1"># &quot;shortcut&quot; | &quot;uia&quot; | &quot;coordinate&quot;</span>
+
+    <span class="c1"># Result</span>
+    <span class="n">success</span><span class="p">:</span> <span class="nb">bool</span>           <span class="c1"># True</span>
+    <span class="n">state_summary</span><span class="p">:</span> <span class="nb">str</span>      <span class="c1"># &quot;Gmail inbox, Compose button visible&quot;</span>
+    <span class="n">outcome</span><span class="p">:</span> <span class="nb">str</span>            <span class="c1"># &quot;Compose window opened&quot;</span>
+
+    <span class="c1"># Metadata</span>
+    <span class="n">timestamp</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">execution_time_ms</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">retry_count</span><span class="p">:</span> <span class="nb">int</span>
+</code></pre>
+</div>
+
+<h3 id="22-storage-architecture">2.2 Storage Architecture</h3>
+
+<pre><code>┌─────────────────────────────────────────────────────────────────┐
+│                    EPISODIC MEMORY SYSTEM                         │
+│                                                                    │
+│  ┌────────────────────┐    ┌────────────────────────────────┐   │
+│  │   ChromaDB          │    │   Embedding Model              │   │
+│  │   (Persistent)      │    │   all-MiniLM-L6-v2             │   │
+│  │                     │    │   22MB, CPU-only                │   │
+│  │   Collection:       │    │                                │   │
+│  │   "episodes"        │◄───│   Text → 384-dim vector        │   │
+│  │                     │    │                                │   │
+│  │   ~50ms query time  │    │   ~5ms per embedding           │   │
+│  └────────────────────┘    └────────────────────────────────┘   │
+│                                                                    │
+│  Storage: ~1KB per episode                                       │
+│  Capacity: 100,000+ episodes in &lt;100MB                           │
+│  Location: ./omnivla_memory/ (local directory)                   │
+└─────────────────────────────────────────────────────────────────┘
+</code></pre>
+
+<h3 id="23-document-format">2.3 Document Format</h3>
+
+<p>Each episode is stored as a searchable text document with structured metadata:</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">store</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">episode</span><span class="p">:</span> <span class="n">Episode</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Store a successful episode.&quot;&quot;&quot;</span>
+    <span class="c1"># The document text is what gets embedded for similarity search</span>
+    <span class="n">document</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;App: </span><span class="si">{</span><span class="n">episode</span><span class="o">.</span><span class="n">app_context</span><span class="si">}</span><span class="s2"> | &quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;Goal: </span><span class="si">{</span><span class="n">episode</span><span class="o">.</span><span class="n">goal</span><span class="si">}</span><span class="s2"> | &quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;Action: </span><span class="si">{</span><span class="n">episode</span><span class="o">.</span><span class="n">action_type</span><span class="si">}</span><span class="s2">(</span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">episode</span><span class="o">.</span><span class="n">action_args</span><span class="p">)</span><span class="si">}</span><span class="s2">) | &quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;State: </span><span class="si">{</span><span class="n">episode</span><span class="o">.</span><span class="n">state_summary</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Metadata for filtering and retrieval</span>
+    <span class="n">metadata</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="n">episode</span><span class="o">.</span><span class="n">task</span><span class="p">,</span>
+        <span class="s2">&quot;app&quot;</span><span class="p">:</span> <span class="n">episode</span><span class="o">.</span><span class="n">app_context</span><span class="p">,</span>
+        <span class="s2">&quot;goal&quot;</span><span class="p">:</span> <span class="n">episode</span><span class="o">.</span><span class="n">goal</span><span class="p">,</span>
+        <span class="s2">&quot;action_type&quot;</span><span class="p">:</span> <span class="n">episode</span><span class="o">.</span><span class="n">action_type</span><span class="p">,</span>
+        <span class="s2">&quot;action_args&quot;</span><span class="p">:</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">episode</span><span class="o">.</span><span class="n">action_args</span><span class="p">),</span>
+        <span class="s2">&quot;action_method&quot;</span><span class="p">:</span> <span class="n">episode</span><span class="o">.</span><span class="n">action_method</span><span class="p">,</span>
+        <span class="s2">&quot;success&quot;</span><span class="p">:</span> <span class="n">episode</span><span class="o">.</span><span class="n">success</span><span class="p">,</span>
+        <span class="s2">&quot;timestamp&quot;</span><span class="p">:</span> <span class="n">episode</span><span class="o">.</span><span class="n">timestamp</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="c1"># Unique ID based on timestamp</span>
+    <span class="n">doc_id</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;ep_</span><span class="si">{</span><span class="nb">int</span><span class="p">(</span><span class="n">episode</span><span class="o">.</span><span class="n">timestamp</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">1000</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+
+    <span class="bp">self</span><span class="o">.</span><span class="n">_collection</span><span class="o">.</span><span class="n">add</span><span class="p">(</span>
+        <span class="n">documents</span><span class="o">=</span><span class="p">[</span><span class="n">document</span><span class="p">],</span>
+        <span class="n">metadatas</span><span class="o">=</span><span class="p">[</span><span class="n">metadata</span><span class="p">],</span>
+        <span class="n">ids</span><span class="o">=</span><span class="p">[</span><span class="n">doc_id</span><span class="p">]</span>
+    <span class="p">)</span>
+</code></pre>
+</div>
+
+<hr />
+
+<h2 id="3-memory-retrieval">3. Memory Retrieval</h2>
+
+<h3 id="31-recall-pipeline">3.1 Recall Pipeline</h3>
+
+<pre><code>Current State:
+  App: Gmail
+  Goal: "Click the Compose button"
+                │
+                ▼
+        ┌───────────────┐
+        │ Build Query   │  "App: Gmail | Goal: Click Compose"
+        └───────┬───────┘
+                │
+                ▼
+        ┌───────────────┐
+        │ Embed Query   │  [0.12, -0.34, 0.87, ...]  (384-dim)
+        └───────┬───────┘
+                │
+                ▼
+        ┌───────────────┐
+        │ ChromaDB      │  Find top-3 similar episodes
+        │ Similarity    │  Filter: success=True, app=Gmail
+        │ Search        │
+        └───────┬───────┘
+                │
+                ▼
+        ┌───────────────┐
+        │ Format for    │  "Previously: click(1) succeeded 
+        │ LLM Prompt    │   for 'Click Compose' in Gmail"
+        └───────────────┘
+</code></pre>
+
+<h3 id="32-recall-implementation">3.2 Recall Implementation</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">recall</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">goal</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">app_context</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="p">,</span> 
+           <span class="n">n_results</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">3</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Retrieve relevant past experiences.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_available</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">_collection</span><span class="o">.</span><span class="n">count</span><span class="p">()</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;&quot;</span>
+
+    <span class="n">query</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;App: </span><span class="si">{</span><span class="n">app_context</span><span class="si">}</span><span class="s2"> | Goal: </span><span class="si">{</span><span class="n">goal</span><span class="si">}</span><span class="s2">&quot;</span>
+
+    <span class="n">results</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_collection</span><span class="o">.</span><span class="n">query</span><span class="p">(</span>
+        <span class="n">query_texts</span><span class="o">=</span><span class="p">[</span><span class="n">query</span><span class="p">],</span>
+        <span class="n">n_results</span><span class="o">=</span><span class="nb">min</span><span class="p">(</span><span class="n">n_results</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_collection</span><span class="o">.</span><span class="n">count</span><span class="p">()),</span>
+        <span class="n">where</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;success&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>  <span class="c1"># Only retrieve successful episodes</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">results</span><span class="p">[</span><span class="s2">&quot;documents&quot;</span><span class="p">][</span><span class="mi">0</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="s2">&quot;&quot;</span>
+
+    <span class="c1"># Format as prompt context</span>
+    <span class="n">memories</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">doc</span><span class="p">,</span> <span class="n">meta</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s2">&quot;documents&quot;</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> 
+                          <span class="n">results</span><span class="p">[</span><span class="s2">&quot;metadatas&quot;</span><span class="p">][</span><span class="mi">0</span><span class="p">]):</span>
+        <span class="n">action_args</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;action_args&quot;</span><span class="p">,</span> <span class="s2">&quot;[]&quot;</span><span class="p">))</span>
+        <span class="n">memories</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Previously: for goal &#39;</span><span class="si">{</span><span class="n">meta</span><span class="p">[</span><span class="s1">&#39;goal&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&#39; in </span><span class="si">{</span><span class="n">meta</span><span class="p">[</span><span class="s1">&#39;app&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">, &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;action </span><span class="si">{</span><span class="n">meta</span><span class="p">[</span><span class="s1">&#39;action_type&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">(</span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">action_args</span><span class="p">)</span><span class="si">}</span><span class="s2">) &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;succeeded.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="s2">&quot; | &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">memories</span><span class="p">[:</span><span class="mi">3</span><span class="p">])</span>
+</code></pre>
+</div>
+
+<h3 id="33-memory-accelerated-execution">3.3 Memory-Accelerated Execution</h3>
+
+<p>When memory returns a high-confidence match, we can <strong>skip LLM inference entirely</strong>:</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">reason_with_memory</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">goal</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">memory_context</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Try memory shortcut before LLM reasoning.&quot;&quot;&quot;</span>
+
+    <span class="c1"># Check for exact memory match</span>
+    <span class="n">exact_match</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">memory</span><span class="o">.</span><span class="n">exact_recall</span><span class="p">(</span><span class="n">goal</span><span class="p">,</span> <span class="n">state</span><span class="o">.</span><span class="n">app</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">exact_match</span> <span class="ow">and</span> <span class="n">exact_match</span><span class="o">.</span><span class="n">confidence</span> <span class="o">&gt;</span> <span class="mf">0.95</span><span class="p">:</span>
+        <span class="c1"># High-confidence memory hit — skip LLM</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Memory hit! Replaying: </span><span class="si">%s</span><span class="s2">(</span><span class="si">%s</span><span class="s2">)&quot;</span><span class="p">,</span> 
+                    <span class="n">exact_match</span><span class="o">.</span><span class="n">action_type</span><span class="p">,</span> <span class="n">exact_match</span><span class="o">.</span><span class="n">action_args</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">AgentAction</span><span class="p">(</span>
+            <span class="n">action_type</span><span class="o">=</span><span class="n">exact_match</span><span class="o">.</span><span class="n">action_type</span><span class="p">,</span>
+            <span class="n">args</span><span class="o">=</span><span class="n">exact_match</span><span class="o">.</span><span class="n">action_args</span><span class="p">,</span>
+            <span class="n">thought</span><span class="o">=</span><span class="s2">&quot;Replaying from memory&quot;</span><span class="p">,</span>
+            <span class="n">raw</span><span class="o">=</span><span class="s2">&quot;MEMORY_REPLAY&quot;</span>
+        <span class="p">)</span>
+
+    <span class="c1"># No confident match — use LLM with memory as context</span>
+    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">reasoner</span><span class="o">.</span><span class="n">reason</span><span class="p">(</span><span class="n">goal</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">memory_context</span><span class="p">)</span>
+</code></pre>
+</div>
+
+<p>This can reduce per-step latency from ~800ms to ~100ms for known actions.</p>
+
+<hr />
+
+<h2 id="4-trajectory-learning">4. Trajectory Learning</h2>
+
+<h3 id="41-full-trajectory-storage">4.1 Full Trajectory Storage</h3>
+
+<p>Beyond individual episodes, we store entire task trajectories:</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Trajectory</span><span class="p">:</span>
+    <span class="n">task</span><span class="p">:</span> <span class="nb">str</span>                    <span class="c1"># Original user request</span>
+    <span class="n">episodes</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Episode</span><span class="p">]</span>      <span class="c1"># Ordered sequence of episodes</span>
+    <span class="n">total_time_ms</span><span class="p">:</span> <span class="nb">int</span>           <span class="c1"># Total execution time</span>
+    <span class="n">success</span><span class="p">:</span> <span class="nb">bool</span>                <span class="c1"># Did the overall task succeed?</span>
+    <span class="n">app_sequence</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>      <span class="c1"># Apps used in order</span>
+</code></pre>
+</div>
+
+<h3 id="42-trajectory-matching">4.2 Trajectory Matching</h3>
+
+<p>For complex multi-step tasks, trajectory matching provides a template:</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">recall_trajectory</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">task</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Trajectory</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Find a past trajectory similar to the current task.&quot;&quot;&quot;</span>
+
+    <span class="n">query</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Task: </span><span class="si">{</span><span class="n">task</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trajectory_collection</span><span class="o">.</span><span class="n">query</span><span class="p">(</span>
+        <span class="n">query_texts</span><span class="o">=</span><span class="p">[</span><span class="n">query</span><span class="p">],</span>
+        <span class="n">n_results</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">where</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;success&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">results</span><span class="p">[</span><span class="s2">&quot;documents&quot;</span><span class="p">][</span><span class="mi">0</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="n">deserialize_trajectory</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s2">&quot;documents&quot;</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span>
+    <span class="k">return</span> <span class="kc">None</span>
+</code></pre>
+</div>
+
+<p>This enables <strong>one-shot task learning</strong>: after successfully completing a task once, the agent can replay the trajectory with minimal reasoning.</p>
+
+<hr />
+
+<h2 id="5-action-verification">5. Action Verification</h2>
+
+<h3 id="51-why-verification-matters">5.1 Why Verification Matters</h3>
+
+<p>Without verification, the agent is "fire and forget" — it executes actions blindly and hopes they worked. This leads to silent failures that compound through multi-step tasks.</p>
+
+<h3 id="52-three-layer-verification">5.2 Three-Layer Verification</h3>
+
+<pre><code>Layer 1: SCREEN DIFF (Fast, Coarse)
+┌────────────────────────────────────────────────────────┐
+│ Compare before/after screenshots using pixel diff      │
+│ If &lt;1% pixels changed → action probably had no effect  │
+│ If &gt;30% pixels changed → major state transition        │
+│ Time: ~5ms                                             │
+└────────────────────────────────────────────────────────┘
+           │
+           ▼
+Layer 2: SEMANTIC VERIFICATION (Medium, Precise)
+┌────────────────────────────────────────────────────────┐
+│ Re-run perception after action                         │
+│ Compare old state vs new state semantically            │
+│ Check: did the expected outcome occur?                 │
+│ Time: ~150ms                                           │
+└────────────────────────────────────────────────────────┘
+           │
+           ▼
+Layer 3: GOAL VERIFICATION (Slow, Deep)
+┌────────────────────────────────────────────────────────┐
+│ Ask the LLM: "Given the new state, is the sub-goal    │
+│ now complete?"                                         │
+│ Used only when semantic verification is ambiguous      │
+│ Time: ~500ms                                           │
+└────────────────────────────────────────────────────────┘
+</code></pre>
+
+<h3 id="53-screen-diff-implementation">5.3 Screen Diff Implementation</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">compute_screen_diff</span><span class="p">(</span><span class="n">before_frame</span><span class="p">,</span> <span class="n">after_frame</span><span class="p">,</span> 
+                        <span class="n">threshold</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">30</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Compare two screenshots and return diff metrics.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">before_frame</span><span class="o">.</span><span class="n">shape</span> <span class="o">!=</span> <span class="n">after_frame</span><span class="o">.</span><span class="n">shape</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;changed&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s2">&quot;diff_ratio&quot;</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> 
+                <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Resolution changed&quot;</span><span class="p">}</span>
+
+    <span class="c1"># Pixel-wise difference</span>
+    <span class="n">diff</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">before_frame</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span> <span class="o">-</span> <span class="n">after_frame</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">))</span>
+    <span class="n">changed_pixels</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">diff</span> <span class="o">&gt;</span> <span class="n">threshold</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+    <span class="n">diff_ratio</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">changed_pixels</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span> <span class="o">/</span> <span class="n">changed_pixels</span><span class="o">.</span><span class="n">size</span>
+
+    <span class="c1"># Classify the change</span>
+    <span class="k">if</span> <span class="n">diff_ratio</span> <span class="o">&lt;</span> <span class="mf">0.01</span><span class="p">:</span>
+        <span class="n">description</span> <span class="o">=</span> <span class="s2">&quot;No visible change&quot;</span>
+        <span class="n">changed</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="k">elif</span> <span class="n">diff_ratio</span> <span class="o">&lt;</span> <span class="mf">0.05</span><span class="p">:</span>
+        <span class="n">description</span> <span class="o">=</span> <span class="s2">&quot;Minor change (tooltip, cursor, highlight)&quot;</span>
+        <span class="n">changed</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="k">elif</span> <span class="n">diff_ratio</span> <span class="o">&lt;</span> <span class="mf">0.15</span><span class="p">:</span>
+        <span class="n">description</span> <span class="o">=</span> <span class="s2">&quot;Moderate change (menu opened, element selected)&quot;</span>
+        <span class="n">changed</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="k">elif</span> <span class="n">diff_ratio</span> <span class="o">&lt;</span> <span class="mf">0.50</span><span class="p">:</span>
+        <span class="n">description</span> <span class="o">=</span> <span class="s2">&quot;Significant change (dialog opened, page scrolled)&quot;</span>
+        <span class="n">changed</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">description</span> <span class="o">=</span> <span class="s2">&quot;Major change (new window, page navigation)&quot;</span>
+        <span class="n">changed</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;changed&quot;</span><span class="p">:</span> <span class="n">changed</span><span class="p">,</span>
+        <span class="s2">&quot;diff_ratio&quot;</span><span class="p">:</span> <span class="n">diff_ratio</span><span class="p">,</span>
+        <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="n">description</span>
+    <span class="p">}</span>
+</code></pre>
+</div>
+
+<h3 id="54-semantic-verification">5.4 Semantic Verification</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">verify_semantically</span><span class="p">(</span><span class="n">old_state</span><span class="p">,</span> <span class="n">new_state</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> 
+                        <span class="n">expected_outcome</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Check if the action produced the expected semantic change.&quot;&quot;&quot;</span>
+
+    <span class="c1"># Check for new elements that suggest success</span>
+    <span class="n">old_labels</span> <span class="o">=</span> <span class="p">{</span><span class="n">e</span><span class="o">.</span><span class="n">label</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">old_state</span><span class="o">.</span><span class="n">elements</span><span class="p">}</span>
+    <span class="n">new_labels</span> <span class="o">=</span> <span class="p">{</span><span class="n">e</span><span class="o">.</span><span class="n">label</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">new_state</span><span class="o">.</span><span class="n">elements</span><span class="p">}</span>
+
+    <span class="n">new_elements</span> <span class="o">=</span> <span class="n">new_labels</span> <span class="o">-</span> <span class="n">old_labels</span>
+    <span class="n">removed_elements</span> <span class="o">=</span> <span class="n">old_labels</span> <span class="o">-</span> <span class="n">new_labels</span>
+
+    <span class="c1"># Action-specific verification</span>
+    <span class="k">if</span> <span class="n">action</span><span class="o">.</span><span class="n">action_type</span> <span class="o">==</span> <span class="s2">&quot;click&quot;</span><span class="p">:</span>
+        <span class="c1"># After clicking a menu item, new items should appear</span>
+        <span class="k">if</span> <span class="s2">&quot;menu&quot;</span> <span class="ow">in</span> <span class="n">action</span><span class="o">.</span><span class="n">thought</span><span class="o">.</span><span class="n">lower</span><span class="p">():</span>
+            <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">new_elements</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span>
+
+        <span class="c1"># After clicking a tab, the tab should be active</span>
+        <span class="k">if</span> <span class="s2">&quot;tab&quot;</span> <span class="ow">in</span> <span class="n">action</span><span class="o">.</span><span class="n">thought</span><span class="o">.</span><span class="n">lower</span><span class="p">():</span>
+            <span class="k">return</span> <span class="n">new_state</span><span class="o">.</span><span class="n">layout_type</span> <span class="o">!=</span> <span class="n">old_state</span><span class="o">.</span><span class="n">layout_type</span> <span class="ow">or</span> \
+                   <span class="nb">len</span><span class="p">(</span><span class="n">new_elements</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span>
+
+    <span class="k">elif</span> <span class="n">action</span><span class="o">.</span><span class="n">action_type</span> <span class="o">==</span> <span class="s2">&quot;type&quot;</span><span class="p">:</span>
+        <span class="c1"># After typing, the text should appear somewhere</span>
+        <span class="n">typed_text</span> <span class="o">=</span> <span class="n">action</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">return</span> <span class="nb">any</span><span class="p">(</span><span class="n">typed_text</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="n">e</span><span class="o">.</span><span class="n">label</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> 
+                  <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">new_state</span><span class="o">.</span><span class="n">elements</span><span class="p">)</span>
+
+    <span class="c1"># Fallback: any visible change counts as potential success</span>
+    <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">new_elements</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">removed_elements</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span>
+</code></pre>
+</div>
+
+<hr />
+
+<h2 id="6-failure-detection-recovery">6. Failure Detection &amp; Recovery</h2>
+
+<h3 id="61-failure-indicators">6.1 Failure Indicators</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">detect_failure</span><span class="p">(</span><span class="n">diff_result</span><span class="p">,</span> <span class="n">old_state</span><span class="p">,</span> <span class="n">new_state</span><span class="p">,</span> 
+                   <span class="n">action</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Detect if an action failed. Returns failure reason or None.&quot;&quot;&quot;</span>
+
+    <span class="c1"># No screen change after action</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">diff_result</span><span class="p">[</span><span class="s2">&quot;changed&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">action</span><span class="o">.</span><span class="n">action_type</span> <span class="o">!=</span> <span class="s2">&quot;wait&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;No visible screen change after action&quot;</span>
+
+    <span class="c1"># Unexpected dialog appeared</span>
+    <span class="k">if</span> <span class="n">new_state</span><span class="o">.</span><span class="n">is_dialog</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">old_state</span><span class="o">.</span><span class="n">is_dialog</span><span class="p">:</span>
+        <span class="n">dialog_text</span> <span class="o">=</span> <span class="n">new_state</span><span class="o">.</span><span class="n">visible_text_summary</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">w</span> <span class="ow">in</span> <span class="n">dialog_text</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;error&quot;</span><span class="p">,</span> <span class="s2">&quot;warning&quot;</span><span class="p">,</span> <span class="s2">&quot;failed&quot;</span><span class="p">]):</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;Error dialog appeared: </span><span class="si">{</span><span class="n">new_state</span><span class="o">.</span><span class="n">visible_text_summary</span><span class="si">}</span><span class="s2">&quot;</span>
+
+    <span class="c1"># Application crashed</span>
+    <span class="k">if</span> <span class="n">new_state</span><span class="o">.</span><span class="n">app</span> <span class="o">!=</span> <span class="n">old_state</span><span class="o">.</span><span class="n">app</span> <span class="ow">and</span> \
+       <span class="n">old_state</span><span class="o">.</span><span class="n">app</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">new_state</span><span class="o">.</span><span class="n">window_title</span><span class="p">:</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;Application may have crashed: was </span><span class="si">{</span><span class="n">old_state</span><span class="o">.</span><span class="n">app</span><span class="si">}</span><span class="s2">, now </span><span class="si">{</span><span class="n">new_state</span><span class="o">.</span><span class="n">app</span><span class="si">}</span><span class="s2">&quot;</span>
+
+    <span class="k">return</span> <span class="kc">None</span>  <span class="c1"># No failure detected</span>
+</code></pre>
+</div>
+
+<h3 id="62-recovery-strategies">6.2 Recovery Strategies</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">RecoveryManager</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Manages error recovery with escalating strategies.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">recover</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">failure_reason</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">action</span><span class="p">:</span> <span class="n">AgentAction</span><span class="p">,</span>
+                <span class="n">state</span><span class="p">:</span> <span class="n">SemanticState</span><span class="p">,</span> <span class="n">attempt</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Determine recovery strategy.&quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">attempt</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="c1"># Strategy 1: Simple retry</span>
+            <span class="k">return</span> <span class="s2">&quot;retry_same&quot;</span>
+
+        <span class="k">elif</span> <span class="n">attempt</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="c1"># Strategy 2: Try alternative execution method</span>
+            <span class="k">if</span> <span class="n">action</span><span class="o">.</span><span class="n">action_type</span> <span class="o">==</span> <span class="s2">&quot;click&quot;</span><span class="p">:</span>
+                <span class="k">return</span> <span class="s2">&quot;try_alternative_method&quot;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="s2">&quot;retry_same&quot;</span>
+
+        <span class="k">elif</span> <span class="n">attempt</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="c1"># Strategy 3: Re-perceive and re-reason</span>
+            <span class="k">return</span> <span class="s2">&quot;re_perceive_and_reason&quot;</span>
+
+        <span class="k">elif</span> <span class="n">attempt</span> <span class="o">==</span> <span class="mi">4</span><span class="p">:</span>
+            <span class="c1"># Strategy 4: Re-plan from current state</span>
+            <span class="k">return</span> <span class="s2">&quot;re_plan&quot;</span>
+
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Strategy 5: Give up and ask user</span>
+            <span class="k">return</span> <span class="s2">&quot;escalate_to_user&quot;</span>
+</code></pre>
+</div>
+
+<hr />
+
+<h2 id="7-memory-maintenance">7. Memory Maintenance</h2>
+
+<h3 id="71-garbage-collection">7.1 Garbage Collection</h3>
+
+<p>Over time, the memory database grows. We need to prune stale entries:</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">cleanup_memory</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">max_age_days</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">30</span><span class="p">,</span> 
+                   <span class="n">max_episodes</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10000</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Remove old or low-value episodes.&quot;&quot;&quot;</span>
+    <span class="n">cutoff</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="p">(</span><span class="n">max_age_days</span> <span class="o">*</span> <span class="mi">86400</span><span class="p">)</span>
+
+    <span class="c1"># Remove old failed episodes (failures are less useful over time)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_collection</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span>
+        <span class="n">where</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;$and&quot;</span><span class="p">:</span> <span class="p">[</span>
+                <span class="p">{</span><span class="s2">&quot;success&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
+                <span class="p">{</span><span class="s2">&quot;timestamp&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;$lt&quot;</span><span class="p">:</span> <span class="n">cutoff</span><span class="p">}}</span>
+            <span class="p">]</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+
+    <span class="c1"># If still too many, remove oldest entries</span>
+    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_collection</span><span class="o">.</span><span class="n">count</span><span class="p">()</span> <span class="o">&gt;</span> <span class="n">max_episodes</span><span class="p">:</span>
+        <span class="c1"># Keep the most recent max_episodes</span>
+        <span class="n">all_ids</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_collection</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+            <span class="n">include</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;metadatas&quot;</span><span class="p">]</span>
+        <span class="p">)</span>
+        <span class="n">sorted_by_time</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span>
+            <span class="nb">zip</span><span class="p">(</span><span class="n">all_ids</span><span class="p">[</span><span class="s2">&quot;ids&quot;</span><span class="p">],</span> <span class="n">all_ids</span><span class="p">[</span><span class="s2">&quot;metadatas&quot;</span><span class="p">]),</span>
+            <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;timestamp&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">to_remove</span> <span class="o">=</span> <span class="p">[</span><span class="nb">id</span> <span class="k">for</span> <span class="nb">id</span><span class="p">,</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">sorted_by_time</span><span class="p">[:</span><span class="o">-</span><span class="n">max_episodes</span><span class="p">]]</span>
+        <span class="k">if</span> <span class="n">to_remove</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_collection</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">ids</span><span class="o">=</span><span class="n">to_remove</span><span class="p">)</span>
+</code></pre>
+</div>
+
+<h3 id="72-memory-consolidation">7.2 Memory Consolidation</h3>
+
+<p>Group similar episodes into consolidated memories:</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">consolidate</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Merge similar episodes into consolidated action patterns.&quot;&quot;&quot;</span>
+    <span class="c1"># Group by (app, goal_type)</span>
+    <span class="n">groups</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
+
+    <span class="n">all_episodes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_collection</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+        <span class="n">include</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;metadatas&quot;</span><span class="p">,</span> <span class="s2">&quot;documents&quot;</span><span class="p">]</span>
+    <span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">meta</span> <span class="ow">in</span> <span class="n">all_episodes</span><span class="p">[</span><span class="s2">&quot;metadatas&quot;</span><span class="p">]:</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="p">(</span><span class="n">meta</span><span class="p">[</span><span class="s2">&quot;app&quot;</span><span class="p">],</span> <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;action_type&quot;</span><span class="p">])</span>
+        <span class="n">groups</span><span class="p">[</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">meta</span><span class="p">)</span>
+
+    <span class="c1"># For each group, identify the most reliable action</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">app</span><span class="p">,</span> <span class="n">action_type</span><span class="p">),</span> <span class="n">episodes</span> <span class="ow">in</span> <span class="n">groups</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">successful</span> <span class="o">=</span> <span class="p">[</span><span class="n">e</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">episodes</span> <span class="k">if</span> <span class="n">e</span><span class="p">[</span><span class="s2">&quot;success&quot;</span><span class="p">]]</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">successful</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="c1"># This action pattern is reliable — boost its weight</span>
+            <span class="c1"># (Implementation: store as a &quot;consolidated&quot; episode)</span>
+            <span class="k">pass</span>
+</code></pre>
+</div>
+
+<hr />
+
+<h2 id="8-memory-driven-optimization">8. Memory-Driven Optimization</h2>
+
+<h3 id="81-shortcut-discovery">8.1 Shortcut Discovery</h3>
+
+<p>The memory system can discover patterns that suggest adding new shortcuts:</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">discover_shortcuts</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Identify frequent actions that could be shortcut-accelerated.&quot;&quot;&quot;</span>
+    <span class="n">all_episodes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_collection</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">include</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;metadatas&quot;</span><span class="p">])</span>
+
+    <span class="c1"># Count action frequencies by (app, goal)</span>
+    <span class="n">freq</span> <span class="o">=</span> <span class="n">Counter</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">meta</span> <span class="ow">in</span> <span class="n">all_episodes</span><span class="p">[</span><span class="s2">&quot;metadatas&quot;</span><span class="p">]:</span>
+        <span class="k">if</span> <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;success&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;action_method&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;coordinate&quot;</span><span class="p">:</span>
+            <span class="n">freq</span><span class="p">[(</span><span class="n">meta</span><span class="p">[</span><span class="s2">&quot;app&quot;</span><span class="p">],</span> <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;goal&quot;</span><span class="p">])]</span> <span class="o">+=</span> <span class="mi">1</span>
+
+    <span class="c1"># Suggest shortcuts for frequent coordinate-click actions</span>
+    <span class="n">suggestions</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">app</span><span class="p">,</span> <span class="n">goal</span><span class="p">),</span> <span class="n">count</span> <span class="ow">in</span> <span class="n">freq</span><span class="o">.</span><span class="n">most_common</span><span class="p">(</span><span class="mi">10</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">count</span> <span class="o">&gt;=</span> <span class="mi">5</span><span class="p">:</span>
+            <span class="n">suggestions</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+                <span class="s2">&quot;app&quot;</span><span class="p">:</span> <span class="n">app</span><span class="p">,</span>
+                <span class="s2">&quot;goal&quot;</span><span class="p">:</span> <span class="n">goal</span><span class="p">,</span>
+                <span class="s2">&quot;frequency&quot;</span><span class="p">:</span> <span class="n">count</span><span class="p">,</span>
+                <span class="s2">&quot;suggestion&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;Consider adding a keyboard shortcut &quot;</span>
+                             <span class="sa">f</span><span class="s2">&quot;for &#39;</span><span class="si">{</span><span class="n">goal</span><span class="si">}</span><span class="s2">&#39; in </span><span class="si">{</span><span class="n">app</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">})</span>
+
+    <span class="k">return</span> <span class="n">suggestions</span>
+</code></pre>
+</div>
+
+<hr />
+
+<p><em>Document Version: 1.0 | Part 06 of 08</em><br />
+<em>See also: <a href="./07_Model_Selection_And_Optimization.md">07_Model_Selection_And_Optimization</a> for LLM deployment</em></p>
+
+    <div class="footer">
+        <p>OmniVLA Project Documentation &mdash; Generated April 2026</p>
+        <p>Confidential &mdash; Final Year Project</p>
+    </div>
+</body>
+</html>

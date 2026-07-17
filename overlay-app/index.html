@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OmniVLA Run Status</title>
+    <link rel="stylesheet" href="index.css" />
+  </head>
+  <body>
+    <section class="run-beacon" id="run-beacon" aria-live="polite">
+      <header class="beacon-header">
+        <span class="mark" aria-hidden="true">▲</span>
+        <span class="beacon-name">OmniVLA</span>
+        <span class="beacon-divider">/</span>
+        <span class="beacon-state" id="beacon-state">Working</span>
+      </header>
+      <div class="beacon-main">
+        <span class="step-label" id="step-label">Step 0</span>
+        <p id="action-text">Preparing a runbook…</p>
+      </div>
+      <div class="progress-track" aria-hidden="true"><span id="progress-fill"></span></div>
+      <section class="hitl-panel" id="hitl-panel" hidden>
+        <p class="hitl-question" id="hitl-question">Human input is required.</p>
+        <div class="hitl-controls">
+          <input id="hitl-input" maxlength="2000" placeholder="Provide a response…" />
+          <button id="hitl-submit" type="button">Continue</button>
+        </div>
+      </section>
+      <footer class="beacon-controls">
+        <span id="model-label">Local model</span>
+        <div>
+          <button id="pause-button" type="button">Pause</button>
+          <button id="stop-button" type="button">Stop</button>
+        </div>
+      </footer>
+    </section>
+    <script>
+      const beacon = document.querySelector('#run-beacon');
+      const stateLabel = document.querySelector('#beacon-state');
+      const stepLabel = document.querySelector('#step-label');
+      const actionText = document.querySelector('#action-text');
+      const progressFill = document.querySelector('#progress-fill');
+      const hitlPanel = document.querySelector('#hitl-panel');
+      const hitlQuestion = document.querySelector('#hitl-question');
+      const hitlInput = document.querySelector('#hitl-input');
+      const hitlSubmit = document.querySelector('#hitl-submit');
+      const pauseButton = document.querySelector('#pause-button');
+      const stopButton = document.querySelector('#stop-button');
+      const modelLabel = document.querySelector('#model-label');
+
+      let paused = false;
+
+      const api = (path, options = {}) =>
+        fetch('http://127.0.0.1:8000' + path, { cache: 'no-store', ...options });
+
+      const setInteractive = (enabled) => {
+        if (window.overlayAPI) window.overlayAPI.setIgnoreMouseEvents(!enabled, !enabled);
+      };
+
+      beacon.addEventListener('mouseenter', () => setInteractive(true));
+      beacon.addEventListener('mouseleave', () => {
+        if (!hitlPanel.hidden) return;
+        setInteractive(false);
+      });
+
+      pauseButton.addEventListener('click', () => {
+        api(paused ? '/api/resume' : '/api/pause', { method: 'POST', body: '{}' })
+          .then(() => undefined)
+          .catch(() => undefined);
+      });
+
+      stopButton.addEventListener('click', () => {
+        api('/api/stop', { method: 'POST', body: '{}' })
+          .then(() => undefined)
+          .catch(() => undefined);
+      });
+
+      const submitHitl = () => {
+        const response = hitlInput.value.trim();
+        if (!response) return;
+        api('/api/hitl_submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ response })
+        })
+          .then(() => {
+            hitlInput.value = '';
+            setInteractive(false);
+          })
+          .catch(() => undefined);
+      };
+
+      hitlSubmit.addEventListener('click', submitHitl);
+      hitlInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') submitHitl();
+      });
+
+      const pollStatus = () => {
+        api('/api/status')
+          .then((response) => response.json())
+          .then((data) => {
+            const status = data.status || 'idle';
+            const active = !['idle', 'done', 'failed', 'error'].includes(status);
+            beacon.classList.toggle('is-visible', active);
+            beacon.classList.toggle('is-paused', Boolean(data.paused));
+            beacon.classList.toggle('is-hitl', status === 'hitl');
+
+            if (!active) {
+              setInteractive(false);
+              return;
+            }
+
+            paused = Boolean(data.paused);
+            stateLabel.textContent = paused ? 'Paused' : status.replace(/^\w/, (letter) => letter.toUpperCase());
+            stepLabel.textContent = 'Step ' + String(data.step || 0);
+            actionText.textContent = data.current_action || 'Working on the reviewed runbook.';
+            modelLabel.textContent = (data.settings?.model_type || 'local').toUpperCase() + ' model';
+            pauseButton.textContent = paused ? 'Resume' : 'Pause';
+            const maxSteps = Number(data.settings?.max_steps || 15);
+            const percent = Math.min((Number(data.step || 0) / maxSteps) * 100, 100);
+            progressFill.style.width = String(percent) + '%';
+
+            const needsHitl = status === 'hitl';
+            hitlPanel.hidden = !needsHitl;
+            if (needsHitl) {
+              hitlQuestion.textContent = data.current_action || 'Human input is required.';
+              setInteractive(true);
+              if (document.activeElement !== hitlInput) hitlInput.focus();
+            }
+          })
+          .catch(() => undefined)
+          .finally(() => window.setTimeout(pollStatus, 600));
+      };
+
+      setInteractive(false);
+      pollStatus();
+    </script>
+  </body>
+</html>

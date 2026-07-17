@@ -1,0 +1,12 @@
+{
+  "name": "overlay-app",
+  "version": "1.0.0",
+  "description": "System-wide WebUI Overlay using Electron.js",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "electron": "^33.0.0"
+  }
+}

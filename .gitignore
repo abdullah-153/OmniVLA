@@ -1,0 +1,12 @@
+models/
+llama-cpp/
+omnivla_memory_v2/
+node_modules/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.log
+logs/
+chats_db.json
+recordings/
+.agents/

@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniVLA: Action Reasoning</title>
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        line-height: 1.7;
+        color: #1a1a2e;
+        background: #ffffff;
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 60px 40px;
+        font-size: 14px;
+    }
+    
+    h1 {
+        font-size: 2.2em;
+        font-weight: 700;
+        color: #0f0f23;
+        margin-top: 0;
+        margin-bottom: 8px;
+        padding-bottom: 16px;
+        border-bottom: 3px solid #667eea;
+        letter-spacing: -0.5px;
+    }
+    
+    h2 {
+        font-size: 1.6em;
+        font-weight: 600;
+        color: #1a1a2e;
+        margin-top: 48px;
+        margin-bottom: 16px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    
+    h3 {
+        font-size: 1.25em;
+        font-weight: 600;
+        color: #2d3748;
+        margin-top: 32px;
+        margin-bottom: 12px;
+    }
+    
+    h4 {
+        font-size: 1.05em;
+        font-weight: 600;
+        color: #4a5568;
+        margin-top: 24px;
+        margin-bottom: 8px;
+    }
+    
+    p {
+        margin-bottom: 16px;
+        color: #2d3748;
+    }
+    
+    strong { font-weight: 600; color: #1a1a2e; }
+    
+    em { font-style: italic; color: #4a5568; }
+    
+    a { color: #667eea; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    
+    code {
+        font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+        background: #f1f5f9;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.88em;
+        color: #e53e3e;
+    }
+    
+    pre {
+        background: #1a1a2e;
+        color: #e2e8f0;
+        padding: 20px 24px;
+        border-radius: 8px;
+        overflow-x: auto;
+        margin: 16px 0 24px 0;
+        font-size: 0.85em;
+        line-height: 1.6;
+        border: 1px solid #2d3748;
+    }
+    
+    pre code {
+        background: transparent;
+        color: #e2e8f0;
+        padding: 0;
+        font-size: 1em;
+    }
+    
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 16px 0 24px 0;
+        font-size: 0.92em;
+    }
+    
+    thead th {
+        background: #667eea;
+        color: white;
+        padding: 12px 16px;
+        text-align: left;
+        font-weight: 600;
+        font-size: 0.9em;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    tbody td {
+        padding: 10px 16px;
+        border-bottom: 1px solid #e2e8f0;
+        vertical-align: top;
+    }
+    
+    tbody tr:nth-child(even) { background: #f8fafc; }
+    tbody tr:hover { background: #edf2f7; }
+    
+    ul, ol {
+        margin: 8px 0 16px 24px;
+    }
+    
+    li {
+        margin-bottom: 6px;
+        color: #2d3748;
+    }
+    
+    li code { font-size: 0.85em; }
+    
+    blockquote {
+        border-left: 4px solid #667eea;
+        background: #f0f4ff;
+        padding: 16px 20px;
+        margin: 16px 0;
+        border-radius: 0 8px 8px 0;
+        font-style: italic;
+        color: #4a5568;
+    }
+    
+    blockquote strong { color: #2d3748; }
+    
+    hr {
+        border: none;
+        border-top: 2px solid #e2e8f0;
+        margin: 40px 0;
+    }
+    
+    /* Print styles */
+    @media print {
+        body { padding: 20px; max-width: 100%; }
+        pre { background: #f5f5f5 !important; color: #333 !important; 
+              border: 1px solid #ddd; }
+        pre code { color: #333 !important; }
+        thead th { background: #333 !important; }
+        h1, h2, h3 { page-break-after: avoid; }
+        pre, table { page-break-inside: avoid; }
+    }
+    
+    .title-block {
+        text-align: center;
+        margin-bottom: 48px;
+        padding: 40px 0;
+        border-bottom: 3px solid #667eea;
+    }
+    
+    .title-block h1 {
+        border: none;
+        padding: 0;
+        margin: 0;
+        font-size: 2.5em;
+    }
+    
+    .subtitle {
+        color: #667eea;
+        font-size: 1.2em;
+        font-weight: 400;
+        margin-top: 8px;
+    }
+    
+    .footer {
+        margin-top: 60px;
+        padding-top: 20px;
+        border-top: 1px solid #e2e8f0;
+        text-align: center;
+        color: #a0aec0;
+        font-size: 0.85em;
+    }
+    </style>
+</head>
+<body>
+    <h1 id="omnivla-action-reasoning">OmniVLA: Action Reasoning</h1>
+
+<h2 id="document-04-constrained-llm-decision-making">Document 04 — Constrained LLM Decision Making</h2>
+
+<hr />
+
+<h2 id="1-the-action-reasoning-problem">1. The Action Reasoning Problem</h2>
+
+<p>Given a sub-goal and the current semantic state, the Action Reasoner must select <strong>exactly one</strong> valid action. This is the module where the LLM's intelligence is most directly applied — and where hallucination risk is highest.</p>
+
+<h3 id="the-challenge">The Challenge</h3>
+
+<pre><code>Sub-goal: "Click the Compose button"
+
+Semantic State:
+  [1] button: "Compose" (top-left)
+  [2] tab: "Inbox" (top-left)
+  [3] tab: "Sent" (top-left)
+  [4] label: "Primary" (top-center)
+  [5] button: "Search" (top-right)
+
+Expected output: click(1)
+
+What a hallucinating model might output:
+  - "I'll click the compose button at coordinates (150, 300)"  ← Wrong format
+  - "click(compose)"                                           ← Wrong ID format
+  - "The compose button is element 2"                          ← Wrong element
+  - "First, let me think about..."                              ← Too verbose
+</code></pre>
+
+<p><strong>Solution</strong>: Constrained decoding via GBNF grammar makes it <strong>physically impossible</strong> for the model to produce anything except valid action syntax.</p>
+
+<hr />
+
+<h2 id="2-gbnf-constrained-decoding">2. GBNF Constrained Decoding</h2>
+
+<h3 id="21-what-is-gbnf">2.1 What is GBNF?</h3>
+
+<p>GBNF (GGML BNF) is a grammar specification format used by <code>llama.cpp</code> to constrain the model's output to match a specific format. At each token generation step, the model's logits are masked so only tokens that would produce a valid next character according to the grammar are considered.</p>
+
+<p><strong>Result</strong>: The model literally cannot hallucinate malformed output. Every generated token is guaranteed to be part of a syntactically valid action.</p>
+
+<h3 id="22-the-action-grammar">2.2 The Action Grammar</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="err">#</span> <span class="k">OmniVLA Action Grammar </span><span class="err">(</span><span class="k">GBNF</span><span class="err">)</span>
+<span class="err">#</span> <span class="k">Guarantees structurally valid action output</span>
+
+<span class="k">root </span><span class="err">::</span><span class="o">=</span> <span class="k">thought action</span>
+
+<span class="err">#</span> <span class="k">Brief reasoning </span><span class="p">(</span><span class="k">max 200 chars</span><span class="p">)</span> <span class="err">—</span> <span class="k">gives the model </span><span class="s2">&quot;thinking&quot;</span> <span class="k">space</span>
+<span class="k">thought </span><span class="err">::=</span> <span class="s2">&quot;THINK: &quot;</span> <span class="k">thought-text </span><span class="s2">&quot;\n&quot;</span>
+<span class="k">thought-text </span><span class="err">::=</span> <span class="p">[</span><span class="err">^\</span><span class="k">n</span><span class="p">]{</span><span class="err">1</span><span class="p">,</span><span class="err">200</span><span class="p">}</span>
+
+<span class="err">#</span> <span class="k">One of seven possible action types</span>
+<span class="k">action </span><span class="err">::=</span> <span class="k">click-action </span>
+         <span class="p">|</span> <span class="k">type-action </span>
+         <span class="p">|</span> <span class="k">key-action </span>
+         <span class="p">|</span> <span class="k">scroll-action </span>
+         <span class="p">|</span> <span class="k">wait-action </span>
+         <span class="p">|</span> <span class="k">done-action </span>
+         <span class="p">|</span> <span class="k">fail-action</span>
+
+<span class="err">#</span> <span class="k">Click an element by its numeric ID from the semantic state</span>
+<span class="k">click-action </span><span class="err">::=</span> <span class="s2">&quot;ACTION: click(&quot;</span> <span class="k">element-id </span><span class="s2">&quot;)\n&quot;</span>
+
+<span class="err">#</span> <span class="k">Type text into the currently focused text field</span>
+<span class="k">type-action </span><span class="err">::=</span> <span class="s2">&quot;ACTION: type(\&quot;&quot; type-content &quot;</span><span class="err">\</span><span class="s2">&quot;)\n&quot;</span>
+
+<span class="err">#</span> <span class="k">Press a keyboard shortcut</span>
+<span class="k">key-action </span><span class="err">::=</span> <span class="s2">&quot;ACTION: key(&quot;</span> <span class="k">key-combo </span><span class="s2">&quot;)\n&quot;</span>
+
+<span class="err">#</span> <span class="k">Scroll the page</span>
+<span class="k">scroll-action </span><span class="err">::=</span> <span class="s2">&quot;ACTION: scroll(&quot;</span> <span class="k">direction </span><span class="s2">&quot;,&quot;</span> <span class="k">ws amount </span><span class="s2">&quot;)\n&quot;</span>
+
+<span class="err">#</span> <span class="k">Wait for UI to update</span>
+<span class="k">wait-action </span><span class="err">::=</span> <span class="s2">&quot;ACTION: wait(&quot;</span> <span class="k">wait-seconds </span><span class="s2">&quot;)\n&quot;</span>
+
+<span class="err">#</span> <span class="k">Signal sub-goal completion</span>
+<span class="k">done-action </span><span class="err">::=</span> <span class="s2">&quot;ACTION: done()\n&quot;</span>
+
+<span class="err">#</span> <span class="k">Signal impossible sub-goal with explanation</span>
+<span class="k">fail-action </span><span class="err">::=</span> <span class="s2">&quot;ACTION: fail(\&quot;&quot; fail-reason &quot;</span><span class="err">\</span><span class="s2">&quot;)\n&quot;</span>
+
+<span class="err">#</span> <span class="k">Primitives</span>
+<span class="k">element-id </span><span class="err">::=</span> <span class="p">[</span><span class="err">1</span><span class="o">-</span><span class="err">9</span><span class="p">]</span> <span class="p">[</span><span class="err">0</span><span class="o">-</span><span class="err">9</span><span class="p">]</span><span class="ni">?                    # 1-99</span>
+<span class="ni">type-content ::= [^&quot;]{1,500}                     # Any text up to 500 chars</span>
+<span class="ni">fail-reason ::= [^&quot;]{1,200}                      # Explanation</span>
+<span class="ni">key-combo ::= key-name (&quot;+&quot; key-name)*           # e.g., ctrl+shift+s</span>
+<span class="ni">key-name ::= &quot;ctrl&quot; | &quot;alt&quot; | &quot;shift&quot; | &quot;enter&quot; | &quot;tab&quot; | &quot;escape&quot; </span>
+<span class="ni">           | &quot;space&quot; | &quot;backspace&quot; | &quot;delete&quot; | &quot;home&quot; | &quot;end&quot; </span>
+<span class="ni">           | &quot;pageup&quot; | &quot;pagedown&quot; | &quot;up&quot; | &quot;down&quot; | &quot;left&quot; | &quot;right&quot;</span>
+<span class="ni">           | &quot;f1&quot; | &quot;f2&quot; | &quot;f3&quot; | &quot;f4&quot; | &quot;f5&quot; | &quot;f6&quot; </span>
+<span class="ni">           | &quot;f7&quot; | &quot;f8&quot; | &quot;f9&quot; | &quot;f10&quot; | &quot;f11&quot; | &quot;f12&quot; </span>
+<span class="ni">           | letter | digit</span>
+<span class="ni">letter ::= [a-z]</span>
+<span class="ni">digit ::= [0-9]</span>
+<span class="ni">direction ::= &quot;up&quot; | &quot;down&quot; | &quot;left&quot; | &quot;right&quot;</span>
+<span class="ni">amount ::= [1-9] [0-9]?</span>
+<span class="k">wait-seconds </span><span class="err">::=</span> <span class="p">[</span><span class="err">1</span><span class="o">-</span><span class="err">5</span><span class="p">]</span>
+<span class="k">ws </span><span class="err">::=</span> <span class="s2">&quot; &quot;</span><span class="err">?</span>
+</code></pre>
+</div>
+
+<h3 id="23-what-this-prevents">2.3 What This Prevents</h3>
+
+<table>
+<thead>
+<tr>
+  <th>Hallucination Type</th>
+  <th>Without Grammar</th>
+  <th>With Grammar</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Invalid action names</td>
+  <td><code>"press(Enter)"</code> — unrecognized</td>
+  <td>❌ Impossible — only 7 action types allowed</td>
+</tr>
+<tr>
+  <td>Wrong argument format</td>
+  <td><code>"click(compose)"</code> — not a number</td>
+  <td>❌ Impossible — only digits after <code>click(</code></td>
+</tr>
+<tr>
+  <td>Missing quotes</td>
+  <td><code>"type(hello)"</code> — no quotes</td>
+  <td>❌ Impossible — <code>"</code> required by grammar</td>
+</tr>
+<tr>
+  <td>Rambling output</td>
+  <td><code>"Let me think about this more..."</code></td>
+  <td>❌ Impossible — must end with <code>\n</code> after action</td>
+</tr>
+<tr>
+  <td>Multiple actions</td>
+  <td><code>"click(1) and then type('hi')"</code></td>
+  <td>❌ Impossible — grammar only allows one action</td>
+</tr>
+<tr>
+  <td>No action at all</td>
+  <td><code>"I can't figure this out"</code></td>
+  <td>❌ Impossible — must output THINK + ACTION</td>
+</tr>
+</tbody>
+</table>
+
+<hr />
+
+<h2 id="3-the-reasoning-prompt">3. The Reasoning Prompt</h2>
+
+<h3 id="31-system-prompt">3.1 System Prompt</h3>
+
+<pre><code>You are a GUI automation agent operating on Windows.
+You see a compressed description of the current screen state.
+You must complete the given sub-goal by choosing ONE action.
+
+RULES:
+1. THINK briefly about what to do (max 1 sentence).
+2. Choose the best ACTION from the available types:
+   - click(id)     — Click an element by its numeric ID
+   - type("text")  — Type text into the currently focused field
+   - key(combo)    — Press a keyboard shortcut (e.g., ctrl+s)
+   - scroll(dir,n) — Scroll: up/down/left/right, 1-99 clicks
+   - wait(s)       — Wait 1-5 seconds for UI to update
+   - done()        — Current sub-goal is complete
+   - fail("why")   — Sub-goal is impossible, explain why
+3. Use element IDs from the state to click. 
+4. PREFER keyboard shortcuts when they are faster/more reliable.
+5. Output done() when the sub-goal IS ALREADY complete in the current state.
+6. Output fail() ONLY if the sub-goal is truly impossible.
+7. If an element is not visible, try scrolling to find it.
+</code></pre>
+
+<h3 id="32-user-prompt-template">3.2 User Prompt Template</h3>
+
+<pre><code>CURRENT SUB-GOAL: {goal}
+
+CURRENT STATE:
+{semantic_state}
+
+{memory_context}
+
+Choose your action:
+</code></pre>
+
+<h3 id="33-complete-prompt-example">3.3 Complete Prompt Example</h3>
+
+<pre><code>[System] You are a GUI automation agent operating on Windows...
+
+[User]
+CURRENT SUB-GOAL: Click the Compose button
+
+CURRENT STATE:
+App: Google Chrome
+Webapp: Gmail
+Window: Inbox - Gmail - Google Chrome
+Layout: browser_webapp
+Screen: 1920x1080
+Text summary: Gmail inbox showing 15 emails. Primary tab selected.
+Interactive elements:
+  [1] button: "Compose" (center-left)
+  [2] tab: "Primary" (top-center)
+  [3] tab: "Social" (top-center)
+  [4] tab: "Promotions" (top-center)
+  [5] link: "Inbox (3)" (center-left)
+  [6] link: "Starred" (center-left)
+  [7] link: "Sent" (center-left)
+  [8] button: "Search" (top-center)
+
+MEMORY: Previously: for goal 'Click Compose' in Gmail, 
+action click(1) succeeded.
+
+Choose your action:
+
+[Assistant]
+THINK: The Compose button is element 1 in the sidebar.
+ACTION: click(1)
+</code></pre>
+
+<hr />
+
+<h2 id="4-reasoning-strategies">4. Reasoning Strategies</h2>
+
+<h3 id="41-direct-match">4.1 Direct Match</h3>
+
+<p>The simplest case: the sub-goal mentions an element name that exactly matches a state element.</p>
+
+<pre><code>Goal: "Click the Save button"
+State: [3] button: "Save" (bottom-right)
+→ THINK: Save button is element 3.
+→ ACTION: click(3)
+</code></pre>
+
+<h3 id="42-semantic-match">4.2 Semantic Match</h3>
+
+<p>The sub-goal describes intent, not an exact element name:</p>
+
+<pre><code>Goal: "Open a new document"
+State: [1] menu: "File" (top-left)
+→ THINK: Need to open File menu to find New option.
+→ ACTION: click(1)
+</code></pre>
+
+<h3 id="43-shortcut-override">4.3 Shortcut Override</h3>
+
+<p>The goal can be achieved faster via keyboard:</p>
+
+<pre><code>Goal: "Save the current file"
+State: [1] menu: "File" (top-left), [12] button: "Save" (top-left)
+→ THINK: Ctrl+S is faster and more reliable than clicking.
+→ ACTION: key(ctrl+s)
+</code></pre>
+
+<h3 id="44-state-completion">4.4 State Completion</h3>
+
+<p>The sub-goal is already satisfied in the current state:</p>
+
+<pre><code>Goal: "Open the Home tab"
+State: [2] tab: "Home" (top-left) — ALREADY SELECTED
+→ THINK: Home tab is already selected/active.
+→ ACTION: done()
+</code></pre>
+
+<h3 id="45-element-not-visible">4.5 Element Not Visible</h3>
+
+<p>The target element might be off-screen:</p>
+
+<pre><code>Goal: "Click the Submit button at the bottom"
+State: (no Submit button visible)
+→ THINK: Submit button not visible, need to scroll down.
+→ ACTION: scroll(down, 5)
+</code></pre>
+
+<hr />
+
+<h2 id="5-prompt-engineering-for-small-models">5. Prompt Engineering for Small Models</h2>
+
+<h3 id="51-key-principles-for-3-4b-models">5.1 Key Principles for 3-4B Models</h3>
+
+<table>
+<thead>
+<tr>
+  <th>Principle</th>
+  <th>Why</th>
+  <th>Implementation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>Short context</strong></td>
+  <td>Small models lose coherence with long prompts</td>
+  <td>Keep total prompt under 400 tokens</td>
+</tr>
+<tr>
+  <td><strong>Explicit formatting</strong></td>
+  <td>Models follow format better when shown</td>
+  <td>Include format example in system prompt</td>
+</tr>
+<tr>
+  <td><strong>Numbered elements</strong></td>
+  <td>Sequential IDs are easier than names</td>
+  <td><code>[1] button: "Save"</code> format</td>
+</tr>
+<tr>
+  <td><strong>One decision</strong></td>
+  <td>Don't ask for reasoning AND action</td>
+  <td>Grammar forces THINK (brief) + ACTION (structured)</td>
+</tr>
+<tr>
+  <td><strong>Memory as examples</strong></td>
+  <td>Few-shot improves accuracy dramatically</td>
+  <td>Inject 1-2 past successful actions</td>
+</tr>
+<tr>
+  <td><strong>Avoid negatives</strong></td>
+  <td>"Don't click X" confuses small models</td>
+  <td>Say "Click Y instead"</td>
+</tr>
+<tr>
+  <td><strong>Region hints</strong></td>
+  <td>Spatial hints help disambiguation</td>
+  <td><code>(top-left)</code>, <code>(center)</code>, etc.</td>
+</tr>
+</tbody>
+</table>
+
+<h3 id="52-prompt-token-budget">5.2 Prompt Token Budget</h3>
+
+<pre><code>System prompt:                     ~150 tokens
+Sub-goal:                          ~20 tokens
+Semantic state:                    ~150 tokens
+Memory context:                    ~50 tokens
+"Choose your action:":             ~3 tokens
+────────────────────────────────────────────
+TOTAL INPUT:                       ~373 tokens
+OUTPUT (THINK + ACTION):           ~30-50 tokens
+────────────────────────────────────────────
+TOTAL:                             ~420 tokens
+
+Context window (2048):             ~1600 tokens remaining
+</code></pre>
+
+<p>Plenty of headroom. The model never has to work near its context limit.</p>
+
+<hr />
+
+<h2 id="6-action-parsing">6. Action Parsing</h2>
+
+<p>After the LLM generates output, we parse the constrained text:</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+
+<span class="n">_ACTION_PATTERNS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;click&quot;</span><span class="p">:</span>  <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;click\((\d+)\)&#39;</span><span class="p">),</span>
+    <span class="s2">&quot;type&quot;</span><span class="p">:</span>   <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;type\(&quot;([^&quot;]*)&quot;\)&#39;</span><span class="p">),</span>
+    <span class="s2">&quot;key&quot;</span><span class="p">:</span>    <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;key\(([^)]+)\)&#39;</span><span class="p">),</span>
+    <span class="s2">&quot;scroll&quot;</span><span class="p">:</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;scroll\((\w+),\s*(\d+)\)&#39;</span><span class="p">),</span>
+    <span class="s2">&quot;wait&quot;</span><span class="p">:</span>   <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;wait\((\d+)\)&#39;</span><span class="p">),</span>
+    <span class="s2">&quot;done&quot;</span><span class="p">:</span>   <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;done\(\)&#39;</span><span class="p">),</span>
+    <span class="s2">&quot;fail&quot;</span><span class="p">:</span>   <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;fail\(&quot;([^&quot;]*)&quot;\)&#39;</span><span class="p">),</span>
+<span class="p">}</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">parse_action</span><span class="p">(</span><span class="n">raw</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AgentAction</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Parse GBNF-constrained output into structured action.&quot;&quot;&quot;</span>
+    <span class="c1"># Extract thought</span>
+    <span class="n">thought</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">think_match</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;THINK:\s*(.+)&#39;</span><span class="p">,</span> <span class="n">raw</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">think_match</span><span class="p">:</span>
+        <span class="n">thought</span> <span class="o">=</span> <span class="n">think_match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+
+    <span class="c1"># Extract action</span>
+    <span class="n">action_match</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39;ACTION:\s*(.+)&#39;</span><span class="p">,</span> <span class="n">raw</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">action_match</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">AgentAction</span><span class="p">(</span><span class="s2">&quot;fail&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;Could not parse&quot;</span><span class="p">],</span> <span class="n">thought</span><span class="p">,</span> <span class="n">raw</span><span class="p">)</span>
+
+    <span class="n">action_str</span> <span class="o">=</span> <span class="n">action_match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+
+    <span class="k">for</span> <span class="n">action_type</span><span class="p">,</span> <span class="n">pattern</span> <span class="ow">in</span> <span class="n">_ACTION_PATTERNS</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="n">pattern</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">action_str</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">m</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">AgentAction</span><span class="p">(</span><span class="n">action_type</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">groups</span><span class="p">()),</span> <span class="n">thought</span><span class="p">,</span> <span class="n">raw</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">AgentAction</span><span class="p">(</span><span class="s2">&quot;fail&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;Unknown action format&quot;</span><span class="p">],</span> <span class="n">thought</span><span class="p">,</span> <span class="n">raw</span><span class="p">)</span>
+</code></pre>
+</div>
+
+<p>Because the grammar constrains output, this parser should <strong>always</strong> succeed. The fallback is purely defensive.</p>
+
+<hr />
+
+<h2 id="7-confidence-calibration">7. Confidence &amp; Calibration</h2>
+
+<h3 id="71-using-log-probabilities">7.1 Using Log Probabilities</h3>
+
+<p><code>llama.cpp</code> can return log probabilities for generated tokens. We can use these to estimate the model's confidence:</p>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_action_confidence</span><span class="p">(</span><span class="n">llm_response</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Estimate model confidence from token log probabilities.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">llm_response</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;logprobs&quot;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="mf">0.5</span>  <span class="c1"># Unknown confidence</span>
+
+    <span class="n">action_logprobs</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">in_action</span> <span class="o">=</span> <span class="kc">False</span>
+
+    <span class="k">for</span> <span class="n">token_info</span> <span class="ow">in</span> <span class="n">llm_response</span><span class="p">[</span><span class="s2">&quot;logprobs&quot;</span><span class="p">]:</span>
+        <span class="k">if</span> <span class="s2">&quot;ACTION:&quot;</span> <span class="ow">in</span> <span class="n">token_info</span><span class="p">[</span><span class="s2">&quot;token&quot;</span><span class="p">]:</span>
+            <span class="n">in_action</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">if</span> <span class="n">in_action</span><span class="p">:</span>
+            <span class="n">action_logprobs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">token_info</span><span class="p">[</span><span class="s2">&quot;logprob&quot;</span><span class="p">])</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">action_logprobs</span><span class="p">:</span>
+        <span class="k">return</span> <span class="mf">0.5</span>
+
+    <span class="c1"># Average log probability → confidence</span>
+    <span class="n">avg_logprob</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">action_logprobs</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">action_logprobs</span><span class="p">)</span>
+    <span class="n">confidence</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">avg_logprob</span><span class="p">)</span>  <span class="c1"># Convert from log space</span>
+
+    <span class="k">return</span> <span class="n">confidence</span>
+</code></pre>
+</div>
+
+<h3 id="72-confidence-based-retry">7.2 Confidence-Based Retry</h3>
+
+<div class="codehilite">
+<pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">reason_with_confidence</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">goal</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">memory</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Reason with confidence checking. Retry if low confidence.&quot;&quot;&quot;</span>
+
+    <span class="n">action</span><span class="p">,</span> <span class="n">confidence</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_reason_once</span><span class="p">(</span><span class="n">goal</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">memory</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">confidence</span> <span class="o">&gt;</span> <span class="mf">0.7</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">action</span>  <span class="c1"># High confidence — proceed</span>
+
+    <span class="k">if</span> <span class="n">confidence</span> <span class="o">&gt;</span> <span class="mf">0.4</span><span class="p">:</span>
+        <span class="c1"># Medium confidence — retry with lower temperature</span>
+        <span class="n">action2</span><span class="p">,</span> <span class="n">conf2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_reason_once</span><span class="p">(</span><span class="n">goal</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">memory</span><span class="p">,</span> <span class="n">temp</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">action2</span> <span class="k">if</span> <span class="n">conf2</span> <span class="o">&gt;</span> <span class="n">confidence</span> <span class="k">else</span> <span class="n">action</span>
+
+    <span class="c1"># Low confidence — add explicit disambiguation to prompt</span>
+    <span class="n">disambiguation</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_add_disambiguation</span><span class="p">(</span><span class="n">goal</span><span class="p">,</span> <span class="n">state</span><span class="p">)</span>
+    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_reason_once</span><span class="p">(</span><span class="n">goal</span><span class="p">,</span> <span class="n">state</span><span class="p">,</span> <span class="n">memory</span> <span class="o">+</span> <span class="n">disambiguation</span><span class="p">)</span>
+</code></pre>
+</div>
+
+<hr />
+
+<h2 id="8-common-failure-modes-mitigations">8. Common Failure Modes &amp; Mitigations</h2>
+
+<h3 id="81-wrong-element-id">8.1 Wrong Element ID</h3>
+
+<p><strong>Problem</strong>: Model selects element 3 when element 7 is correct.</p>
+
+<p><strong>Mitigation</strong>:</p>
+
+<ul>
+<li>Use descriptive labels: <code>[3] button: "Print"</code> is better than <code>[3] button</code></li>
+<li>Include region hints: <code>(top-right)</code> helps spatial disambiguation</li>
+<li>Memory: if the same goal succeeded with element 7 before, prefer it</li>
+</ul>
+
+<h3 id="82-premature-done">8.2 Premature done()</h3>
+
+<p><strong>Problem</strong>: Model says <code>done()</code> before the sub-goal is actually complete.</p>
+
+<p><strong>Mitigation</strong>:</p>
+
+<ul>
+<li>Semantic verification catches this: if the expected outcome isn't in the new state, don't accept <code>done()</code></li>
+<li>Add explicit completion criteria in the prompt: "Output done() ONLY when you can see that [specific outcome] has occurred"</li>
+</ul>
+
+<h3 id="83-infinite-scroll-loop">8.3 Infinite Scroll Loop</h3>
+
+<p><strong>Problem</strong>: Model keeps scrolling because it can't find an element that doesn't exist.</p>
+
+<p><strong>Mitigation</strong>:</p>
+
+<ul>
+<li>Maximum 5 actions per sub-goal</li>
+<li>If 3+ consecutive scrolls with no state change, output <code>fail("element not found")</code></li>
+<li>Re-plan logic catches this and tries alternative approaches</li>
+</ul>
+
+<h3 id="84-type-in-wrong-field">8.4 Type in Wrong Field</h3>
+
+<p><strong>Problem</strong>: Model outputs <code>type("hello")</code> but the wrong text field is focused.</p>
+
+<p><strong>Mitigation</strong>:</p>
+
+<ul>
+<li>Always <code>click(text_field_id)</code> before <code>type("text")</code></li>
+<li>The decomposer should include "Click the search field" before "Type the query"</li>
+</ul>
+
+<hr />
+
+<h2 id="9-advanced-multi-model-reasoning">9. Advanced: Multi-Model Reasoning</h2>
+
+<p>For the future, consider using different models for different reasoning tasks:</p>
+
+<pre><code>┌─────────────────────────────────────────────────────────┐
+│            MULTI-MODEL REASONING (Future)                │
+│                                                           │
+│  Task Decomposition:  Gemma 4 E4B (strong reasoning)    │
+│  Action Reasoning:    Qwen 3.5-2B (fast, spatial)       │
+│  Error Recovery:      Gemma 4 E4B (complex reasoning)   │
+│                                                           │
+│  Both models quantized to Q4_K_M                         │
+│  Hot-swap models via llama.cpp model switching           │
+│  Only ONE model in VRAM at a time                        │
+└─────────────────────────────────────────────────────────┘
+</code></pre>
+
+<p>This is not currently implemented but the architecture supports it. <code>llama.cpp</code> can swap models in ~2 seconds, which is acceptable for the initial planning phase.</p>
+
+<hr />
+
+<p><em>Document Version: 1.0 | Part 04 of 08</em><br />
+<em>See also: <a href="./05_Execution_Layer.md">05_Execution_Layer</a> for action-to-system-input translation</em></p>
+
+    <div class="footer">
+        <p>OmniVLA Project Documentation &mdash; Generated April 2026</p>
+        <p>Confidential &mdash; Final Year Project</p>
+    </div>
+</body>
+</html>
