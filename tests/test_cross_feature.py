@@ -88,10 +88,10 @@ class TestCrossFeature(unittest.TestCase):
         self.assertEqual(len(reqs), 2)
         step2_payload = reqs[1]["messages"]
         
-        # The warning should be in the user prompt before the second inference step
+        # The warning should be in the native tool result before the second inference step.
         warning_found = False
         for msg in step2_payload:
-            if msg["role"] == "user":
+            if msg["role"] in {"user", "tool"}:
                 content = msg.get("content")
                 if isinstance(content, str):
                     if "Warning: The previous action had no effect" in content:
@@ -105,8 +105,11 @@ class TestCrossFeature(unittest.TestCase):
 
     def test_t3_03_keyboard_action_with_layout_delay_triggers_verification_failure(self):
         """TC-T3-03: Keyboard Action with Layout Delay triggers Verification Failure"""
-        # Setup: VLM types some text but semantic verifier expects "Hello" in the UI.
-        # But we do not provide "Hello" in the next mock semantic state -> triggers failure warning.
+        # Queue identical screenshots to mock visual stagnation after typing
+        img = Image.new("RGB", (100, 100), color=(12, 34, 56))
+        mock_mss_instance.queue_image(img)
+        mock_mss_instance.queue_image(img)
+
         self.server.queue_response({
             "note": "Typing text",
             "thought": "Typing Hello",
@@ -127,12 +130,6 @@ class TestCrossFeature(unittest.TestCase):
         })
         
         agent = CogniAgent()
-        # Inject mock states:
-        # First state before action
-        agent._last_semantic_state = SemanticState(elements=[UIElement("Empty")])
-        # Next state after typing, but does NOT contain typed text "Hello"
-        agent.next_mock_state = SemanticState(elements=[UIElement("Empty")])
-        
         agent.run_task("Type hello task", max_steps=2)
         
         reqs = self.server.get_requests()
@@ -140,16 +137,17 @@ class TestCrossFeature(unittest.TestCase):
         
         warning_found = False
         for msg in step2_payload:
-            if msg["role"] == "user":
+            if msg["role"] in {"user", "tool"}:
                 content = msg.get("content")
                 if isinstance(content, str):
-                    if "Warning: Action failed" in content:
+                    if "Warning: The previous action had no effect" in content or "Warning: Action failed" in content:
                         warning_found = True
                 elif isinstance(content, list):
                     for chunk in content:
-                        if isinstance(chunk, dict) and chunk.get("type") == "text" and "Warning: Action failed" in chunk.get("text", ""):
+                        if isinstance(chunk, dict) and chunk.get("type") == "text" and ("Warning: The previous action had no effect" in chunk.get("text", "") or "Warning: Action failed" in chunk.get("text", "")):
                             warning_found = True
         self.assertTrue(warning_found)
+
 
     def test_t3_04_eviction_logic_triggers_during_multi_page_verification_backtracking(self):
         """TC-T3-04: Eviction Logic triggers during Multi-page Verification Backtracking"""

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import secrets
 import socket
 import threading
@@ -19,6 +20,12 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import cogniagent.gui.app as gui_app
+
+from cogniagent.skills.skill_registry import SkillRegistry
+from cogniagent.skills.skill_schema import SkillDefinition
+from cogniagent.skills.observation_learner import ObservationLearner
+from cogniagent.skills.teaching_recorder import NativeObservationRecorder
+from cogniagent.skills.skill_synthesizer import SkillSynthesizer
 
 from cogniagent.gui.control_plane import (
     MAX_AUDIT_EVENTS,
@@ -32,8 +39,12 @@ from cogniagent.gui.control_plane import (
     validate_chat_message,
     validate_hitl_response,
     validate_safety_policy,
+    validate_skill_markdown,
+    validate_skill_name,
     validate_settings,
     validate_task,
+    validate_observation_goal,
+    validate_observed_action,
 )
 from cogniagent.gui.web_assets import get_asset
 
@@ -45,9 +56,11 @@ CHATS_DB_PATH = "chats_db.json"
 
 DEFAULT_SETTINGS = {
     "model_path": "models/Holo-3.1-4B-abliterated-rdo.Q4_K_M.gguf",
+    "planner_model_path": "models/Qwen3.5-4B.Q4_K_M.gguf",
     "temperature": 0.2,
-    "max_steps": 15,
+    "max_steps": 60,
     "enable_recording": False,
+    "memory_enabled": False,
     "model_type": "local",
 }
 
@@ -63,25 +76,120 @@ telemetry_data = {
 
 db_lock = threading.RLock()
 planner_lock = threading.Lock()
+planner_active_chat_id = None
 _db_cache: dict[str, Any] | None = None
 telemetry_thread: threading.Thread | None = None
 pairing_session = PairingSession()
+skills_registry = SkillRegistry()
+observation_learner = ObservationLearner()
+native_observation_recorder = NativeObservationRecorder(observation_learner)
+skill_synthesizer = SkillSynthesizer(enhance_with_models=True)
+chat_retrieval = None
+last_recorded_demo = None
 
 
 def _new_chat() -> dict[str, Any]:
+    now = int(time.time())
     return {
         "id": secrets.token_hex(10),
-        "title": "New run",
+        "title": "New chat",
         "status": "draft",
         "intent": "",
-        "chat_history": [
-            {
-                "role": "assistant",
-                "content": "Hello — I am OmniVLA. Describe a desktop task and I will prepare a reviewed runbook.",
-            }
-        ],
+        "chat_history": [],
         "current_task": "",
+        "run_metrics": None,
+        "execution": _empty_execution_snapshot(),
+        "created_at": now,
+        "updated_at": now,
     }
+
+
+def _empty_execution_snapshot() -> dict[str, Any]:
+    return {
+        "status": "idle",
+        "phase": "idle",
+        "phase_started_at": None,
+        "step": 0,
+        "total_time_ms": 0,
+        "current_action": "Ready",
+        "current_thought": "",
+        "paused": False,
+        "steps": [],
+        "timing": {
+            "last_model_ms": None,
+            "last_action_ms": None,
+            "last_verification_ms": None,
+            "last_step_ms": None,
+            "updated_at": None,
+        },
+    }
+
+
+def _normalize_execution_snapshot(value: Any) -> dict[str, Any]:
+    snapshot = _empty_execution_snapshot()
+    if not isinstance(value, dict):
+        return snapshot
+
+    snapshot["status"] = str(value.get("status") or "idle")[:32]
+    snapshot["phase"] = str(value.get("phase") or snapshot["status"])[:32]
+    snapshot["current_action"] = str(value.get("current_action") or "Ready")[:500]
+    snapshot["current_thought"] = ""
+    snapshot["paused"] = bool(value.get("paused", False))
+    for key, maximum in (("step", 10_000), ("total_time_ms", 24 * 60 * 60 * 1_000)):
+        candidate = value.get(key)
+        snapshot[key] = max(0, min(int(candidate), maximum)) if isinstance(candidate, (int, float)) and not isinstance(candidate, bool) else 0
+    started = value.get("phase_started_at")
+    snapshot["phase_started_at"] = float(started) if isinstance(started, (int, float)) else None
+
+    timing = value.get("timing") if isinstance(value.get("timing"), dict) else {}
+    for key in ("last_model_ms", "last_action_ms", "last_verification_ms", "last_step_ms"):
+        candidate = timing.get(key)
+        snapshot["timing"][key] = max(0, min(int(candidate), 24 * 60 * 60 * 1_000)) if isinstance(candidate, (int, float)) and not isinstance(candidate, bool) else None
+    updated = timing.get("updated_at")
+    snapshot["timing"]["updated_at"] = float(updated) if isinstance(updated, (int, float)) else None
+
+    steps = value.get("steps") if isinstance(value.get("steps"), list) else []
+    safe_steps = []
+    for raw in steps[-60:]:
+        if not isinstance(raw, dict):
+            continue
+        succeeded = bool(raw.get("success", False))
+        raw_action = str(raw.get("action") or "")[:80]
+        action_text = str(raw.get("action_text") or raw_action)[:300]
+        public_prefixes = {
+            "Click · ": "Use · ",
+            "Double Click · ": "Open · ",
+            "Right Click · ": "Options for · ",
+            "Move · ": "Point to · ",
+            "Type ": "Enter ",
+            "Press · ": "Use key · ",
+            "Switch app · ": "Bring forward · ",
+            "Open app · ": "Open · ",
+        }
+        for legacy, public in public_prefixes.items():
+            if action_text.startswith(legacy):
+                action_text = public + action_text[len(legacy):]
+                break
+        search_result = re.fullmatch(
+            r"(?:Use|Open) · Open button for (.+?) app in (?:the )?search results?",
+            action_text,
+            flags=re.IGNORECASE,
+        )
+        if search_result:
+            action_text = f"Open {search_result.group(1).strip()} from search results"
+        if raw_action == "terminate" or action_text == "Terminate":
+            action_text = "Finish task"
+        safe_steps.append({
+            "step": max(0, min(int(raw.get("step", 0)), 10_000)) if isinstance(raw.get("step"), (int, float)) else 0,
+            "action": raw_action,
+            "action_text": action_text,
+            "thought": "",
+            "output": "Completed" if succeeded else ("Action did not complete" if raw.get("output") else ""),
+            "success": succeeded,
+            "eval_state": str(raw.get("eval_state") or "")[:32],
+        })
+    snapshot["steps"] = safe_steps
+    return snapshot
 
 
 def _default_database() -> dict[str, Any]:
@@ -93,6 +201,84 @@ def _default_database() -> dict[str, Any]:
         "safety": default_safety_policy(),
         "audit_events": [],
     }
+
+
+def _is_internal_assistant_message(content: str) -> bool:
+    """Identify legacy planner scratch text that should never be rendered as chat."""
+    normalized = " ".join(content.strip().lower().split())
+    if not normalized:
+        return False
+    if normalized.startswith("hello — i am omnivla. describe a desktop task"):
+        return True
+    if "<think>" in normalized or "</think>" in normalized:
+        return True
+    internal_prefixes = (
+        "let me analyze",
+        "the user is asking",
+        "i need to:",
+        "key observations:",
+        "since the user is asking",
+        "the failure message indicates",
+        "we need to analyze",
+        "we need to respond",
+    )
+    return normalized.startswith(internal_prefixes)
+
+
+def _is_terminal_summary(content: str) -> bool:
+    normalized = " ".join(str(content or "").strip().casefold().split())
+    return normalized.startswith(("task completed", "completed the task", "the task could not", "task failed"))
+
+
+def _plan_copy(content: Any, limit: int = 24_000) -> str:
+    """Migrate legacy planner output into safe, plain-language plan copy."""
+    value = str(content or "")[:limit]
+    if re.search(r"(?:^|\n)\s*(?:[-*]\s*)?(?:step\s*)?\d+[.):]", value, re.IGNORECASE):
+        try:
+            from cogniagent.gui.server_manager import extract_planner_output
+
+            value = extract_planner_output(value)
+        except (RuntimeError, ValueError):
+            pass
+    return re.sub(
+        r"\brunbook\b",
+        lambda match: "Plan" if match.group(0)[:1].isupper() else "plan",
+        value,
+        flags=re.IGNORECASE,
+    )
+
+
+def _chat_title(message: str) -> str:
+    """Create a stable, scannable title without another model request."""
+    words = " ".join(message.split()).strip().split(" ")
+    if words and words[0].lower() in {"please", "could", "can", "would"}:
+        words = words[1:]
+    selected = words[:7]
+    while selected and selected[-1].lower().strip(".,:;!?") in {"a", "an", "and", "for", "from", "the", "to", "with"}:
+        selected.pop()
+    title = " ".join(selected).strip(" .,:;!?-")
+    if not title:
+        return "New chat"
+    return title[:52]
+
+
+def _recover_interrupted_chats(database: dict[str, Any]) -> dict[str, Any]:
+    """Turn states left live by a previous process into honest terminal states."""
+    for chat in database.get("chats", []):
+        if chat.get("status") not in {"running", "planning", "thinking"}:
+            continue
+        chat["status"] = "stopped"
+        execution = _normalize_execution_snapshot(chat.get("execution"))
+        execution.update(
+            {
+                "status": "stopped",
+                "phase": "stopped",
+                "current_action": "Interrupted before the app restarted.",
+                "paused": False,
+            }
+        )
+        chat["execution"] = execution
+    return database
 
 
 def _normalize_database(database: Any) -> dict[str, Any]:
@@ -113,15 +299,41 @@ def _normalize_database(database: Any) -> dict[str, Any]:
         history = chat.get("chat_history")
         if not isinstance(history, list):
             history = []
+        safe_history = []
+        for message in history[-200:]:
+            if not isinstance(message, dict) or message.get("role") not in {"user", "assistant"}:
+                continue
+            content = message.get("content")
+            if isinstance(content, str):
+                if message["role"] == "assistant":
+                    content = _plan_copy(content)
+                    if _is_internal_assistant_message(content):
+                        continue
+                normalized_message = {"role": message["role"], "content": content[:24_000]}
+                if message["role"] == "assistant" and (message.get("kind") == "run_result" or _is_terminal_summary(content)):
+                    normalized_message["kind"] = "run_result"
+                    safe_history = [
+                        item for item in safe_history
+                        if not (item.get("role") == "assistant" and item.get("kind") == "run_result")
+                    ]
+                safe_history.append(normalized_message)
+        now = int(time.time())
+        raw_title = str(chat.get("title") or "New chat")
+        if len(raw_title) > 52 or raw_title.endswith("…") or raw_title in {"Untitled run", "New run"}:
+            raw_title = _chat_title(str(chat.get("intent") or raw_title))
         normalized_chats.append(
             {
                 "id": chat_id,
-                "title": str(chat.get("title") or "Untitled run")[:120],
+                "title": raw_title[:52],
                 "status": str(chat.get("status") or "draft")[:32],
                 "intent": str(chat.get("intent") or "")[:12_000],
-                "chat_history": history,
-                "current_task": str(chat.get("current_task") or "")[:12_000],
-                "reviewed_plan": str(chat.get("reviewed_plan") or "")[:12_000],
+                "chat_history": safe_history,
+                "current_task": _plan_copy(chat.get("current_task"), 12_000),
+                "reviewed_plan": _plan_copy(chat.get("reviewed_plan"), 12_000),
+                "run_metrics": _normalize_run_metrics(chat.get("run_metrics")),
+                "execution": _normalize_execution_snapshot(chat.get("execution")),
+                "created_at": int(chat.get("created_at")) if isinstance(chat.get("created_at"), (int, float)) else now,
+                "updated_at": int(chat.get("updated_at")) if isinstance(chat.get("updated_at"), (int, float)) else now,
             }
         )
 
@@ -132,7 +344,7 @@ def _normalize_database(database: Any) -> dict[str, Any]:
     if not isinstance(settings, dict):
         settings = {}
     # Legacy files may contain an API key. It is intentionally discarded during
-    # normalization; provider credentials belong only to the running process.
+
     settings.pop("api_key", None)
     try:
         normalized_settings, _ = validate_settings(
@@ -162,6 +374,45 @@ def _normalize_database(database: Any) -> dict[str, Any]:
     }
 
 
+def _normalize_run_metrics(value: Any) -> dict[str, Any] | None:
+    """Keep only bounded, content-free measurements in persisted run history."""
+    if not isinstance(value, dict):
+        return None
+
+    def bounded_int(candidate: Any, maximum: int) -> int | None:
+        if isinstance(candidate, bool) or not isinstance(candidate, (int, float)):
+            return None
+        return max(0, min(int(candidate), maximum))
+
+    phase_metrics: dict[str, dict[str, int]] = {}
+    raw_phases = value.get("phases")
+    if isinstance(raw_phases, dict):
+        for phase in ("model", "action", "verification", "step"):
+            raw = raw_phases.get(phase)
+            if not isinstance(raw, dict):
+                continue
+            normalized = {
+                key: bounded_int(raw.get(key), 24 * 60 * 60 * 1000)
+                for key in ("count", "median_ms", "p95_ms")
+            }
+            if all(item is not None for item in normalized.values()):
+                phase_metrics[phase] = normalized
+
+    profile = value.get("profile") if isinstance(value.get("profile"), dict) else {}
+    return {
+        "status": str(value.get("status") or "unknown")[:24],
+        "finished_at": bounded_int(value.get("finished_at"), 9_999_999_999),
+        "duration_ms": bounded_int(value.get("duration_ms"), 24 * 60 * 60 * 1000),
+        "steps": bounded_int(value.get("steps"), 10_000),
+        "phases": phase_metrics,
+        "profile": {
+            "engine": str(profile.get("engine") or "unknown")[:32],
+            "vla": str(profile.get("vla") or "unknown")[:160],
+            "planner": str(profile.get("planner") or "unknown")[:160],
+        },
+    }
+
+
 def load_chats_db() -> dict[str, Any]:
     global _db_cache
     with db_lock:
@@ -176,7 +427,7 @@ def load_chats_db() -> dict[str, Any]:
         try:
             with open(CHATS_DB_PATH, "r", encoding="utf-8") as database_file:
                 raw_database = json.load(database_file)
-            _db_cache = _normalize_database(raw_database)
+            _db_cache = _recover_interrupted_chats(_normalize_database(raw_database))
             # Persist schema/security migrations immediately. In particular,
             # legacy API keys must not remain on disk simply because the user
             # has not changed another setting yet.
@@ -254,10 +505,28 @@ def _chat_summaries(database: dict[str, Any]) -> list[dict[str, Any]]:
             "id": chat["id"],
             "title": chat["title"],
             "status": chat.get("status", "draft"),
+            "intent": chat.get("intent", ""),
             "current_task": chat.get("current_task", ""),
+            "run_metrics": chat.get("run_metrics"),
+            "phase": chat.get("execution", {}).get("phase", "idle"),
+            "updated_at": chat.get("updated_at"),
         }
         for chat in database["chats"]
     ]
+
+
+def persist_chat_execution(chat_id: str | None, state: dict[str, Any]) -> None:
+    """Persist a bounded execution inspector snapshot for one conversation."""
+    if not chat_id:
+        return
+    with db_lock:
+        database = load_chats_db()
+        chat = _find_chat(database, chat_id)
+        if not chat:
+            return
+        chat["execution"] = _normalize_execution_snapshot(state)
+        chat["updated_at"] = int(time.time())
+        save_chats_db(database)
 
 
 def _active_plan(database: dict[str, Any]) -> dict[str, Any] | None:
@@ -325,13 +594,11 @@ def _update_telemetry_loop() -> None:
             telemetry_data["free_vram"] = free_vram
             telemetry_data["optimal_ngl"] = gui_telemetry.calculate_gpu_layers(free_vram)
 
-            vla_active = server_manager.active_vla_max_gpu
-            if vla_active is None:
-                try:
-                    vla_active = requests.get("http://127.0.0.1:8089/health", timeout=0.5).status_code == 200
-                except requests.RequestException:
-                    vla_active = False
-            telemetry_data["vla_gpu"] = vla_active
+            try:
+                vla_healthy = requests.get("http://127.0.0.1:8089/health", timeout=0.5).status_code == 200
+            except requests.RequestException:
+                vla_healthy = False
+            telemetry_data["vla_gpu"] = bool(vla_healthy and server_manager.active_vla_cuda)
 
             try:
                 planner_active = requests.get("http://127.0.0.1:8090/health", timeout=0.5).status_code == 200
@@ -356,14 +623,14 @@ def start_telemetry_thread() -> None:
     telemetry_thread.start()
 
 
-def _start_agent_task(task: str) -> bool:
+def _start_agent_task(task: str, run_policy: dict[str, Any] | None = None) -> bool:
     starter = getattr(gui_app, "start_agent_task", None)
     if callable(starter):
-        return bool(starter(task))
+        return bool(starter(task, run_policy))
 
     if gui_app.running_thread and gui_app.running_thread.is_alive():
         return False
-    worker = threading.Thread(target=gui_app.execute_agent_task, args=(task,), daemon=True)
+    worker = threading.Thread(target=gui_app.execute_agent_task, args=(task, run_policy), daemon=True)
     gui_app.running_thread = worker
     worker.start()
     return True
@@ -394,7 +661,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
         self.send_header(
             "Content-Security-Policy",
-            "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
             "connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
         )
 
@@ -422,6 +689,9 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(content)
 
     def _read_json(self) -> dict[str, Any]:
+        content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+        if content_type != "application/json":
+            raise RequestValidationError("Content-Type must be application/json.")
         header = self.headers.get("Content-Length", "0")
         try:
             content_length = int(header)
@@ -442,8 +712,6 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         return payload
 
     def _authorize(self, *, mutating: bool = False, local_only: bool = False) -> bool:
-        # Browser-originated requests must be same-origin. Command-line and
-        # native-desktop callers do not send Origin and remain supported.
         origin = self.headers.get("Origin")
         host = self.headers.get("Host")
         if origin and (not host or origin != f"http://{host}"):
@@ -465,19 +733,52 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         if mutating and not policy.get("remote_control_enabled", False):
             self._error(403, "Remote control is disabled by the desktop safety policy.")
             return False
+
         return True
 
     def _status_payload(self) -> dict[str, Any]:
         database = load_chats_db()
+        active = _active_chat(database)
         with gui_app.status_lock:
-            agent_state = gui_app.get_safe_status()
+            live_state = gui_app.get_safe_status(include_media=False)
+        execution_chat_id = live_state.get("execution_chat_id")
+        safe_live_state = _normalize_execution_snapshot(live_state)
+        safe_live_state["execution_chat_id"] = execution_chat_id
+        selected_is_execution = bool(execution_chat_id and active["id"] == execution_chat_id)
+        if selected_is_execution:
+            agent_state = dict(safe_live_state)
+        else:
+            agent_state = _normalize_execution_snapshot(active.get("execution"))
+            if planner_active_chat_id == active["id"]:
+                agent_state.update({
+                    "status": "planning",
+                    "phase": "planning",
+                    "current_action": "Preparing a plan",
+                    "phase_started_at": None,
+                })
+            elif active.get("status") == "plan_created":
+                agent_state.update({"status": "ready", "phase": "ready", "current_action": "Plan ready"})
+            agent_state["execution_chat_id"] = execution_chat_id
+        agent_state["execution_live"] = {
+            key: safe_live_state.get(key)
+            for key in (
+                "execution_chat_id", "status", "phase", "phase_started_at", "step",
+                "total_time_ms", "current_action", "current_thought", "paused", "steps", "timing",
+            )
+        }
+        agent_state["chat_history"] = list(active.get("chat_history", []))
+        agent_state["current_task"] = active.get("current_task", "")
+        agent_state["active_intent"] = active.get("intent", "")
+        agent_state["active_title"] = active.get("title", "Untitled run")
+        agent_state["active_plan"] = _active_plan(database)
         agent_state["settings"] = _public_settings()
         agent_state["chats"] = _chat_summaries(database)
         agent_state["active_chat_id"] = database["active_chat_id"]
-        agent_state["active_plan"] = _active_plan(database)
+        agent_state["planning_chat_id"] = planner_active_chat_id
         agent_state["safety"] = database["safety"]
+
         agent_state["audit_events"] = list(database["audit_events"])
-        agent_state["logs"] = list(gui_app.web_log_handler.logs[-200:])
+        agent_state["logs"] = list(gui_app.web_log_handler.logs[-80:])
         agent_state["telemetry"] = dict(telemetry_data)
         agent_state["mobile"] = _mobile_status(self.server.server_address)
         agent_state["access"] = {
@@ -486,20 +787,54 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         }
         return agent_state
 
+    def _screen_payload(self) -> dict[str, Any]:
+        """Return the current compressed frame separately from the status poll."""
+        database = load_chats_db()
+        active = _active_chat(database)
+        with gui_app.status_lock:
+            execution_chat_id = gui_app.agent_status.get("execution_chat_id")
+            if not execution_chat_id or execution_chat_id != active["id"]:
+                snapshot = _normalize_execution_snapshot(active.get("execution"))
+                return {"screenshot_b64": "", "step": snapshot["step"], "phase": snapshot["phase"]}
+            return {
+                "screenshot_b64": str(gui_app.agent_status.get("latest_screenshot_b64") or ""),
+                "step": int(gui_app.agent_status.get("step") or 0),
+                "phase": str(gui_app.agent_status.get("phase") or "idle"),
+            }
+
     def _sync_active_chat(self, chat: dict[str, Any]) -> None:
         with gui_app.status_lock:
+            execution_chat_id = gui_app.agent_status.get("execution_chat_id")
+            if gui_app.running_thread and gui_app.running_thread.is_alive() and execution_chat_id != chat.get("id"):
+                return
             gui_app.agent_status["chat_history"] = list(chat.get("chat_history", []))
             gui_app.agent_status["current_task"] = chat.get("current_task", "")
 
     def _plan_in_background(self, chat_id: str, message: str) -> None:
         try:
-            from cogniagent.memory.chats_rag import ChatsRAG
+            chat_history = []
+            memory_enabled = False
+            with db_lock:
+                database = load_chats_db()
+                chat = _find_chat(database, chat_id)
+                if chat:
+                    chat_history = list(chat.get("chat_history", []))
+                memory_enabled = bool(database.get("settings", {}).get("memory_enabled", False))
 
-            chats_rag = ChatsRAG()
-            chats_rag.index_message(chat_id, "user", message)
-            rag_context = chats_rag.search_context(message, chat_id)
-            response = gui_app.run_planner_chat(message, rag_context=rag_context)
-            chats_rag.index_message(chat_id, "assistant", response)
+            rag_context = ""
+            chats_rag = None
+            if memory_enabled:
+                from cogniagent.memory.chats_rag import ChatsRAG
+                global chat_retrieval
+                if chat_retrieval is None:
+                    chat_retrieval = ChatsRAG()
+                chats_rag = chat_retrieval
+                chats_rag.index_message(chat_id, "user", message)
+                rag_context = chats_rag.search_context(message, chat_id)
+
+            response = gui_app.run_planner_chat(message, chat_history=chat_history, rag_context=rag_context)
+            if chats_rag is not None:
+                chats_rag.index_message(chat_id, "assistant", response)
 
             with db_lock:
                 database = load_chats_db()
@@ -508,6 +843,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                     chat["chat_history"].append({"role": "assistant", "content": response})
                     chat["reviewed_plan"] = response
                     chat["status"] = "plan_created"
+                    chat["updated_at"] = int(time.time())
                     _record_audit(database, "plan.ready", "Plan prepared and waiting for approval.")
                     save_chats_db(database)
                     if database["active_chat_id"] == chat_id:
@@ -519,46 +855,74 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 chat = _find_chat(database, chat_id)
                 if chat:
                     chat["status"] = "failed"
-                    _record_audit(database, "plan.failed", "Planner could not prepare a runbook.")
+                    chat["chat_history"].append(
+                        {"role": "assistant", "content": "I couldn't prepare the plan. Please try again."}
+                    )
+                    chat["execution"] = _normalize_execution_snapshot(
+                        {
+                            "status": "failed",
+                            "phase": "failed",
+                            "current_action": "The plan could not be prepared.",
+                        }
+                    )
+                    chat["updated_at"] = int(time.time())
+                    _record_audit(database, "plan.failed", "Plan preparation failed.")
                     save_chats_db(database)
         finally:
+            global planner_active_chat_id
+            planner_active_chat_id = None
             with gui_app.status_lock:
-                if gui_app.agent_status.get("status") == "thinking":
+                if gui_app.agent_status.get("status") in ("planning", "thinking"):
                     gui_app.agent_status["status"] = "idle"
                     gui_app.agent_status["phase"] = "idle"
                     gui_app.agent_status["phase_started_at"] = time.time()
                     gui_app.agent_status["current_action"] = "Ready for a reviewed task."
             planner_lock.release()
 
+
     def _create_plan(self, payload: dict[str, Any]) -> None:
+        global planner_active_chat_id
         message = validate_chat_message(payload.get("message"))
+        chat_id = payload.get("chat_id")
+        if gui_app.running_thread and gui_app.running_thread.is_alive():
+            self._error(409, "Finish or stop the active task before preparing another plan on this hardware.")
+            return
         if not planner_lock.acquire(blocking=False):
-            self._error(409, "The planner is already preparing a runbook.")
+            self._error(409, "Another plan is already being prepared.")
             return
 
         try:
             with db_lock:
                 database = load_chats_db()
+                if chat_id and any(c["id"] == chat_id for c in database.get("chats", [])):
+                    database["active_chat_id"] = chat_id
                 chat = _active_chat(database)
-                if chat["title"] in {"New run", "New Chat"}:
-                    chat["title"] = message[:48] + ("…" if len(message) > 48 else "")
+
+                if chat["title"] in {"New run", "New Chat", "New chat"}:
+                    chat["title"] = _chat_title(message)
                 chat["intent"] = message
+
                 chat["status"] = "planning"
                 chat["current_task"] = ""
                 chat["chat_history"].append({"role": "user", "content": message})
-                _record_audit(database, "plan.requested", "New runbook requested.")
+                chat["updated_at"] = int(time.time())
+                _record_audit(database, "plan.requested", "New plan requested.")
                 save_chats_db(database)
                 self._sync_active_chat(chat)
 
+            planner_active_chat_id = chat["id"]
+
             with gui_app.status_lock:
-                gui_app.agent_status["status"] = "thinking"
-                gui_app.agent_status["phase"] = "thinking"
+                gui_app.agent_status["status"] = "planning"
+                gui_app.agent_status["phase"] = "planning"
                 gui_app.agent_status["phase_started_at"] = time.time()
-                gui_app.agent_status["current_action"] = "Planner is shaping a reviewed runbook."
+                gui_app.agent_status["current_action"] = "Preparing a plan"
+
 
             worker = threading.Thread(
                 target=self._plan_in_background,
                 args=(chat["id"], message),
+
                 name="omnivla-planner",
                 daemon=True,
             )
@@ -574,24 +938,27 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         approved = payload.get("approved") is True
         risk_acknowledged = payload.get("risk_acknowledged") is True
 
-        # A client cannot turn the approval endpoint into a second, unreviewed
-        # execution channel. The accepted task must be the exact runbook that
-        # is currently stored for the active chat.
         with db_lock:
             database = load_chats_db()
+            chat_id = payload.get("chat_id")
+            if chat_id and any(c["id"] == chat_id for c in database.get("chats", [])):
+                database["active_chat_id"] = chat_id
+            
+            chat = _active_chat(database)
             stored_plan = _active_plan(database)
             if not stored_plan:
-                self._error(409, "Draft a runbook before approving execution.")
+                self._error(409, "Create a plan before starting the task.")
                 return
             if (
                 submitted_task != stored_plan["execution_task"]
                 or submitted_source_task != stored_plan["source_task"]
             ):
-                self._error(409, "The reviewed runbook changed. Refresh it before approval.")
+                self._error(409, "The reviewed plan changed. Refresh it before approval.")
                 return
             task = stored_plan["execution_task"]
             source_task = stored_plan["source_task"]
             policy = dict(database["safety"])
+            run_chat_id = chat["id"]
 
         risk = assess_task_risk(source_task + "\n" + task)
 
@@ -608,21 +975,39 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             )
             return
 
+
         with gui_app.status_lock:
             active_settings = dict(gui_app.agent_status.get("settings", {}))
         if active_settings.get("model_type") != "local" and not active_settings.get("api_key"):
             self._error(428, "Configure a runtime-only provider API key before starting a cloud run.")
             return
 
-        if not _start_agent_task(task):
+        # The reviewed plan is useful guidance, but the original objective is
+        # authoritative. Giving both to the visual reasoner prevents a planner
+        # paraphrase from silently adding or dropping user constraints.
+        execution_prompt = f"User objective:\n{source_task}\n\nReviewed plan:\n{task}"
+        if not _start_agent_task(
+            execution_prompt,
+            {"mode": policy.get("mode", "supervised"), "chat_id": run_chat_id},
+        ):
             self._error(409, "An agent run is already active. Stop or finish it before starting another.")
             return
 
         with db_lock:
             database = load_chats_db()
-            chat = _active_chat(database)
+            chat = _find_chat(database, run_chat_id)
+            if chat is None:
+                self._error(409, "The approved run no longer exists.")
+                return
             chat["current_task"] = task
             chat["status"] = "running"
+            chat["execution"] = _normalize_execution_snapshot({
+                "status": "thinking",
+                "phase": "thinking",
+                "phase_started_at": time.time(),
+                "current_action": "Reading the screen",
+            })
+            chat["updated_at"] = int(time.time())
             _record_audit(database, "run.approved", "Reviewed run approved and started.")
             save_chats_db(database)
             self._sync_active_chat(chat)
@@ -633,35 +1018,60 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
 
         self._json_response({"success": True, "risk": risk}, 202)
 
+    def _select_plan(self, payload: dict[str, Any]) -> None:
+        """Select any model-authored plan in the active conversation for review."""
+        selected = validate_task(payload.get("plan"))
+        chat_id = validate_chat_id(payload.get("chat_id"))
+        if gui_app.running_thread and gui_app.running_thread.is_alive():
+            self._error(409, "Stop the active task before selecting another plan.")
+            return
+        with db_lock:
+            database = load_chats_db()
+            chat = _find_chat(database, chat_id)
+            if chat is None:
+                self._error(404, "Chat not found.")
+                return
+            authored_plans = {
+                _plan_copy(message.get("content"))
+                for message in chat.get("chat_history", [])
+                if message.get("role") == "assistant"
+                and isinstance(message.get("content"), str)
+                and len(re.findall(r"(?m)^\s*\d+[.)]\s+", _plan_copy(message.get("content")))) >= 2
+            }
+            if selected not in authored_plans:
+                self._error(409, "That plan is no longer available in this chat.")
+                return
+            database["active_chat_id"] = chat_id
+            chat["reviewed_plan"] = selected
+            chat["status"] = "plan_created"
+            chat["current_task"] = ""
+            chat["updated_at"] = int(time.time())
+            _record_audit(database, "plan.selected", "A previous plan was selected for review.")
+            save_chats_db(database)
+            self._sync_active_chat(chat)
+        self._json_response({"success": True})
+
     def _new_chat(self) -> None:
         with db_lock:
             database = load_chats_db()
-            empty = next(
-                (
-                    chat
-                    for chat in database["chats"]
-                    if not any(message.get("role") == "user" for message in chat.get("chat_history", []))
-                ),
-                None,
-            )
-            chat = empty or _new_chat()
-            if not empty:
-                database["chats"].append(chat)
+            chat = _new_chat()
+            database["chats"].append(chat)
             database["active_chat_id"] = chat["id"]
             _record_audit(database, "run.created", "Created a new draft run.")
             save_chats_db(database)
             self._sync_active_chat(chat)
 
-        with gui_app.status_lock:
-            gui_app.agent_status["steps"] = []
-            gui_app.agent_status["status"] = "idle"
-            gui_app.agent_status["phase"] = "idle"
-            gui_app.agent_status["phase_started_at"] = time.time()
-            gui_app.agent_status["current_action"] = "Ready for a reviewed task."
+        if not (gui_app.running_thread and gui_app.running_thread.is_alive()):
+            with gui_app.status_lock:
+                gui_app.agent_status["steps"] = []
+                gui_app.agent_status["status"] = "idle"
+                gui_app.agent_status["phase"] = "idle"
+                gui_app.agent_status["phase_started_at"] = time.time()
+                gui_app.agent_status["current_action"] = "Ready for a reviewed task."
         self._json_response({"success": True})
 
     def _retry_run(self) -> None:
-        """Clone a completed run into a fresh, reviewable runbook.
+        """Clone a completed run into a fresh, reviewable plan.
 
         Retrying must not reuse the confirmation granted to the prior run. A
         new chat preserves the original intent and plan, then returns the
@@ -705,6 +1115,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             retry["intent"] = source_task
             retry["reviewed_plan"] = reviewed_plan
             retry["status"] = "plan_created"
+            retry["updated_at"] = int(time.time())
             retry["chat_history"].extend(
                 [
                     {"role": "user", "content": source_task},
@@ -743,6 +1154,13 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         chat_id = validate_chat_id(payload.get("id"))
         with db_lock:
             database = load_chats_db()
+            target = _find_chat(database, chat_id)
+            if target is None:
+                self._error(404, "Run not found.")
+                return
+            if target.get("status") == "running":
+                self._error(409, "Stop the active run before deleting its history.")
+                return
             if len(database["chats"]) == 1:
                 self._error(409, "Keep at least one draft run available.")
                 return
@@ -783,19 +1201,28 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         self._json_response({"success": True, "safety": database["safety"]})
 
     def _stop_run(self) -> None:
-        gui_app.stop_requested = True
+        gui_app.stop_agent()
         with gui_app.status_lock:
             gui_app.hitl_response.append("stop")
             gui_app.hitl_event.set()
-            gui_app.agent_status["current_action"] = "Stop requested. Waiting for the next safe boundary."
-            gui_app.agent_status["phase"] = "stopping"
+            gui_app.agent_status["status"] = "stopped"
+            gui_app.agent_status["current_action"] = "Execution stopped by operator."
+            gui_app.agent_status["phase"] = "stopped"
             gui_app.agent_status["phase_started_at"] = time.time()
             gui_app.agent_status["ui_mode"] = "chat"
+            execution_chat_id = gui_app.agent_status.get("execution_chat_id")
+            state = gui_app.get_safe_status(include_media=False)
+        persist_chat_execution(execution_chat_id, state)
         with db_lock:
             database = load_chats_db()
+            execution_chat = _find_chat(database, execution_chat_id) if execution_chat_id else None
+            if execution_chat:
+                execution_chat["status"] = "stopped"
+                execution_chat["updated_at"] = int(time.time())
             _record_audit(database, "run.stop_requested", "Operator requested the active run to stop.")
             save_chats_db(database)
         self._json_response({"success": True})
+
 
     def _pause_run(self, paused: bool) -> None:
         with gui_app.status_lock:
@@ -803,6 +1230,9 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             gui_app.agent_status["current_action"] = "Run paused by operator." if paused else "Run resumed by operator."
             gui_app.agent_status["phase"] = "paused" if paused else "thinking"
             gui_app.agent_status["phase_started_at"] = time.time()
+            execution_chat_id = gui_app.agent_status.get("execution_chat_id")
+            state = gui_app.get_safe_status(include_media=False)
+        persist_chat_execution(execution_chat_id, state)
         with db_lock:
             database = load_chats_db()
             _record_audit(database, "run.paused" if paused else "run.resumed", "Operator updated the run state.")
@@ -844,6 +1274,135 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             save_chats_db(database)
         self._json_response({"success": True}, 202)
 
+    def _clear_memory(self) -> None:
+        if gui_app.running_thread and gui_app.running_thread.is_alive():
+            self._error(409, "Stop the active run before clearing local recall.")
+            return
+        from cogniagent.config import config
+        from cogniagent.memory.episodic_memory import clear_local_memory
+
+        global chat_retrieval
+        if chat_retrieval is not None:
+            try:
+                chat_retrieval.close()
+            finally:
+                chat_retrieval = None
+        removed = clear_local_memory(config.memory.db_path)
+        with db_lock:
+            database = load_chats_db()
+            _record_audit(database, "memory.cleared", "Operator cleared local episodic recall.")
+            save_chats_db(database)
+        self._json_response({"success": True, "stores_cleared": removed})
+
+    def _list_skills(self) -> None:
+        skills = skills_registry.list_skills()
+        self._json_response({"skills": [s.to_dict() for s in skills]})
+
+    def _get_skill_detail(self, name: str) -> None:
+        skill = skills_registry.get_skill(name)
+        if not skill:
+            self._error(404, "Skill not found.")
+            return
+        self._json_response({"skill": skill.to_dict()})
+
+    def _save_skill_definition(self, payload: dict[str, Any]) -> None:
+        try:
+            if "markdown" in payload:
+                skill = SkillDefinition.from_markdown(validate_skill_markdown(payload["markdown"]))
+            else:
+                if not isinstance(payload.get("name"), str):
+                    raise RequestValidationError("skill name is required.")
+                skill = SkillDefinition.from_dict(payload)
+            skill.name = validate_skill_name(skill.name)
+            for field_name, maximum in (("title", 160), ("description", 2_000), ("strategy", 24_000), ("visual_landmarks", 8_000), ("failure_recovery", 8_000)):
+                value = getattr(skill, field_name)
+                if not isinstance(value, str) or len(value) > maximum:
+                    raise RequestValidationError(f"skill {field_name.replace('_', ' ')} is invalid or too long.")
+            if len(skill.parameters) > 24 or len(skill.triggers) > 64 or len(skill.tags) > 64:
+                raise RequestValidationError("skill has too many parameters, triggers, or tags.")
+            skills_registry.save_skill(skill)
+            self._json_response({"success": True, "skill": skill.to_dict()}, 201)
+        except (RequestValidationError, ValueError, TypeError) as e:
+            self._error(400, f"Invalid skill definition: {e}")
+
+    def _delete_skill_definition(self, payload: dict[str, Any]) -> None:
+        name = validate_skill_name(payload.get("name"))
+        deleted = skills_registry.delete_skill(name)
+        self._json_response({"success": deleted})
+
+    def _start_observation_session(self, payload: dict[str, Any]) -> None:
+        goal = validate_observation_goal(payload.get("task_goal", "Human demonstration"))
+        if gui_app.running_thread and gui_app.running_thread.is_alive():
+            self._error(409, "Stop the agent before recording a human demonstration.")
+            return
+        native_observation_recorder.stop()
+        observation_learner.start_observation(goal)
+        native_capture = native_observation_recorder.start()
+        if not native_capture:
+            observation_learner.stop_observation()
+            self._error(503, "Windows input observation could not start. Check desktop-session permissions.")
+            return
+        self._json_response({"success": True, "is_observing": True, "native_capture": True, "text_privacy": "redacted", "task_goal": goal})
+
+    def _record_observed_action(self, payload: dict[str, Any]) -> None:
+        observed = validate_observed_action(payload)
+        act_type = observed["action_type"]
+        if act_type in {"click", "double_click", "right_click"}:
+            observation_learner.record_click(
+                x=observed["x"],
+                y=observed["y"],
+                button=observed["button"],
+                window_title=observed["window_title"],
+                visual_cue=observed["visual_cue"],
+            )
+        elif act_type == "type":
+            observation_learner.record_typing(
+                text="{{typed_value}}",
+                window_title=observed["window_title"],
+            )
+        elif act_type in {"key_press", "hotkey"}:
+            observation_learner.record_key(
+                key=observed["key"],
+                window_title=observed["window_title"],
+            )
+        self._json_response({"success": True})
+
+    def _stop_observation_session(self) -> None:
+        global last_recorded_demo
+        native_observation_recorder.stop()
+        demo = observation_learner.stop_observation()
+        last_recorded_demo = demo
+        self._json_response({
+            "success": True,
+            "demonstration": demo.to_dict() if demo else None
+        })
+
+    def _synthesize_skill_from_observation(self, payload: dict[str, Any]) -> None:
+        global last_recorded_demo
+        demo = last_recorded_demo
+        if not demo:
+            self._error(400, "No observation demonstration available to synthesize. Record a demonstration first.")
+            return
+        skill_name = payload.get("name")
+        if skill_name is not None:
+            skill_name = validate_skill_name(skill_name)
+        if not planner_lock.acquire(blocking=False):
+            self._error(409, "Finish the current planning request before building a skill.")
+            return
+        from cogniagent.gui.server_manager import start_planner_server, stop_planner_server
+        try:
+            planner_ready = start_planner_server(use_gpu=False)
+            if not planner_ready:
+                logger.warning("Studio planner was unavailable; using the bounded offline compiler.")
+                skill_synthesizer.enhance_with_models = False
+            skill = skill_synthesizer.synthesize_skill(demo, skill_name=skill_name)
+        finally:
+            skill_synthesizer.enhance_with_models = True
+            stop_planner_server()
+            planner_lock.release()
+        skills_registry.save_skill(skill)
+        self._json_response({"success": True, "skill": skill.to_dict()}, 201)
+
     def do_GET(self) -> None:
         path = self._path
         try:
@@ -863,20 +1422,22 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 if self._authorize():
                     self._json_response(self._status_payload())
                 return
+            if path == "/api/screen":
+                if self._authorize():
+                    self._json_response(self._screen_payload())
+                return
+            if path == "/api/skills":
+                if self._authorize():
+                    self._list_skills()
+                return
+            if path.startswith("/api/skills/"):
+                if self._authorize():
+                    skill_name = path.removeprefix("/api/skills/")
+                    self._get_skill_detail(skill_name)
+                return
             if path == "/api/pairing":
                 if self._authorize(local_only=True):
                     self._json_response(pairing_session.local_payload())
-                return
-            if path == "/shutdown":
-                if not self._authorize(local_only=True):
-                    return
-                self._json_response({"success": True})
-
-                def shutdown() -> None:
-                    time.sleep(0.35)
-                    os._exit(0)
-
-                threading.Thread(target=shutdown, name="omnivla-shutdown", daemon=True).start()
                 return
             self._error(404, "Route not found.")
         except Exception as error:
@@ -885,7 +1446,12 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = self._path
-        local_only_routes = {"/api/settings", "/api/safety", "/api/pairing/rotate", "/api/clear_vram"}
+        local_only_routes = {
+            "/api/settings", "/api/safety", "/api/pairing/rotate", "/api/clear_vram", "/api/memory/clear",
+            "/api/skills", "/api/skills/delete", "/api/skills/synthesize",
+            "/api/observe/start", "/api/observe/action", "/api/observe/stop",
+            "/api/shutdown", "/shutdown",
+        }
         try:
             if path not in {
                 "/api/chat",
@@ -893,6 +1459,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 "/api/chats/switch",
                 "/api/chats/delete",
                 "/api/chats/retry",
+                "/api/plans/select",
                 "/api/confirm",
                 "/api/settings",
                 "/api/safety",
@@ -902,8 +1469,16 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 "/api/resume",
                 "/api/hitl_submit",
                 "/api/clear_vram",
-                "/api/run",
+                "/api/memory/clear",
+                "/api/skills",
+                "/api/skills/delete",
+                "/api/skills/synthesize",
+                "/api/observe/start",
+                "/api/observe/action",
+                "/api/observe/stop",
                 "/api/reexecute",
+                "/api/shutdown",
+                "/shutdown",
             }:
                 self._error(404, "Route not found.")
                 return
@@ -911,7 +1486,24 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 return
 
             payload = self._read_json()
-            if path == "/api/chat":
+            if path in ("/api/shutdown", "/shutdown"):
+                self._json_response({"success": True, "message": "OmniVLA shutting down cleanly."})
+
+                def shutdown() -> None:
+                    time.sleep(0.35)
+                    try:
+                        gui_app.shutdown_runtime()
+                        from gui_telemetry import kill_port_owner
+                        kill_port_owner(8089)
+                        kill_port_owner(8090)
+                        kill_port_owner(8082)
+                    except Exception:
+                        pass
+                    os._exit(0)
+
+                threading.Thread(target=shutdown, name="omnivla-shutdown", daemon=True).start()
+            elif path == "/api/chat":
+
                 self._create_plan(payload)
             elif path == "/api/chats/new":
                 self._new_chat()
@@ -921,8 +1513,15 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 self._delete_chat(payload)
             elif path == "/api/chats/retry":
                 self._retry_run()
+            elif path == "/api/plans/select":
+                self._select_plan(payload)
             elif path == "/api/confirm":
+
                 self._confirm_run(payload)
+
+
+
+
             elif path == "/api/settings":
                 self._save_settings(payload)
             elif path == "/api/safety":
@@ -939,8 +1538,22 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 self._submit_hitl(payload)
             elif path == "/api/clear_vram":
                 self._clear_vram()
+            elif path == "/api/memory/clear":
+                self._clear_memory()
+            elif path == "/api/skills":
+                self._save_skill_definition(payload)
+            elif path == "/api/skills/delete":
+                self._delete_skill_definition(payload)
+            elif path == "/api/skills/synthesize":
+                self._synthesize_skill_from_observation(payload)
+            elif path == "/api/observe/start":
+                self._start_observation_session(payload)
+            elif path == "/api/observe/action":
+                self._record_observed_action(payload)
+            elif path == "/api/observe/stop":
+                self._stop_observation_session()
             else:
-                self._error(410, "Direct execution was retired. Draft and approve a runbook instead.")
+                self._error(410, "Create and approve a plan before starting a task.")
         except RequestValidationError as error:
             self._error(400, str(error))
         except Exception as error:

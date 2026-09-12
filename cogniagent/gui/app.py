@@ -6,6 +6,7 @@ import time
 import math
 import ctypes
 import subprocess
+import shutil
 import requests
 import json
 import threading
@@ -17,7 +18,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
 
-import cv2
+try:
+    import cv2
+except ImportError:
+    cv2 = None
 import numpy as np
 import mss
 
@@ -29,10 +33,11 @@ from cogniagent.gui.html_assets import HTML_CONTENT
 # append-only root log was tracked by Git and could grow indefinitely.
 log_file_path = Path(__file__).resolve().parents[2] / "logs" / "gui_server.log"
 is_test_process = (
-    "pytest" in sys.modules
-    or "unittest" in sys.modules
+    "unittest" in sys.modules
+    or "pytest" in sys.modules
     or os.environ.get("OMNIVLA_TEST_MODE") == "1"
 )
+
 if not is_test_process:
     try:
         log_file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -56,7 +61,7 @@ if not is_test_process:
 status_lock = threading.RLock()
 execution_lock = threading.RLock()
 
-def get_safe_status():
+def get_safe_status(*, include_media: bool = True):
     with status_lock:
         import copy
         safe_status = copy.deepcopy(agent_status)
@@ -64,6 +69,11 @@ def get_safe_status():
         safe_settings.pop("api_key", None)
         safe_settings["api_key_configured"] = bool(agent_status.get("settings", {}).get("api_key"))
         safe_status["settings"] = safe_settings
+        if not include_media:
+            safe_status.pop("latest_screenshot_b64", None)
+            for step in safe_status.get("steps", []):
+                if isinstance(step, dict):
+                    step.pop("screenshot_b64", None)
         return safe_status
 
 agent_status = {
@@ -73,17 +83,21 @@ agent_status = {
     "step": 0,
     "total_time_ms": 0,
     "current_action": "None",
+    "execution_task": "",
+    "execution_chat_id": None,
     "latest_screenshot_b64": "",
     "steps": [],
     "paused": False,
-    "chat_history": [{"role": "assistant", "content": "Hello! I am your Planner and Orchestrator. What would you like me to accomplish on your desktop today?"}],
+    "chat_history": [],
     "planner_synthesis": "",
     "ui_mode": "chat",
     "settings": {
         "model_path": "models/Holo-3.1-4B-abliterated-rdo.Q4_K_M.gguf",
+        "planner_model_path": "models/Qwen3.5-4B.Q4_K_M.gguf",
         "temperature": 0.2,
-        "max_steps": 15,
+        "max_steps": 60,
         "enable_recording": False,
+        "memory_enabled": False,
         "model_type": "local",
         "api_key": ""
     },
@@ -105,17 +119,30 @@ server_process = None
 planner_process = None
 active_planner_gpu = None
 active_vla_max_gpu = None
-electron_process = None
+console_process = None
+overlay_process = None
 running_thread = None
+active_agent = None
 stop_requested = False
 hitl_event = threading.Event()
 hitl_response = []
+
+def stop_agent():
+    """Immediately stop active agent run."""
+    global stop_requested, active_agent
+    stop_requested = True
+    if active_agent:
+        try:
+            active_agent.stop()
+        except Exception:
+            pass
+
 
 recording_active = False
 recording_writer = None
 
 
-def start_agent_task(task: str) -> bool:
+def start_agent_task(task: str, run_policy: dict | None = None) -> bool:
     """Atomically start one desktop run and reject overlapping execution."""
     global running_thread
     with execution_lock:
@@ -124,7 +151,7 @@ def start_agent_task(task: str) -> bool:
 
         worker = threading.Thread(
             target=execute_agent_task,
-            args=(task,),
+            args=(task, run_policy),
             name="omnivla-executor",
             daemon=True,
         )
@@ -150,14 +177,20 @@ def recording_loop(output_path, monitor_idx=1, fps=10.0):
         
         while recording_active:
             loop_start = time.time()
-            sct_img = sct.grab(monitor)
-            frame = np.array(sct_img)
-            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+            try:
+                sct_img = sct.grab(monitor)
+                frame = np.array(sct_img)
+                frame_bgr = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+            except Exception:
+                from PIL import ImageGrab
+                pil_img = ImageGrab.grab()
+                frame_bgr = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
             recording_writer.write(frame_bgr)
             
             elapsed = time.time() - loop_start
             sleep_time = max(0.01, frame_delay - elapsed)
             time.sleep(sleep_time)
+
     except Exception as e:
         logging.error(f"Error in screen recording thread: {e}")
     finally:
@@ -205,9 +238,6 @@ class DesktopOverlay:
     def update_loop(self):
         pass
 
-
-
-
 # ─── Server Manager Wrappers ──────────────────────────────────────────────
 def start_planner_server(use_gpu=False):
     import cogniagent.gui.server_manager as sm
@@ -217,14 +247,18 @@ def start_planner_server(use_gpu=False):
     active_planner_gpu = sm.active_planner_gpu
     return res
 
-def run_planner_chat(message, rag_context=""):
+def run_planner_chat(message, chat_history=None, rag_context=""):
     import cogniagent.gui.server_manager as sm
-    history = agent_status.get("chat_history", [])
+    if chat_history is None:
+        history = list(agent_status.get("chat_history", []))
+    else:
+        history = list(chat_history)
     temp = agent_status["settings"].get("temperature", 0.2)
-    max_tokens = min(512, max(128, int(agent_status["settings"].get("max_tokens", 512))))
+    max_tokens = min(640, max(160, int(agent_status["settings"].get("max_tokens", 640))))
+    config.llm.planner_model = agent_status["settings"].get("planner_model_path", config.llm.planner_model)
     return sm.run_planner_chat(message, history, temp, max_tokens, rag_context)
 
-def start_llama_server(max_gpu=False):
+def start_llama_server(max_gpu=True):
     import cogniagent.gui.server_manager as sm
     model_path = agent_status["settings"]["model_path"]
     res = sm.start_llama_server(model_path, max_gpu=max_gpu)
@@ -233,11 +267,33 @@ def start_llama_server(max_gpu=False):
     active_vla_max_gpu = sm.active_vla_max_gpu
     return res
 
+
 # ─── Agent Execution Thread ───────────────────────────────────────────────
-def execute_agent_task(task):
-    global running_thread, stop_requested, recording_active, electron_process
+def summarize_timing_samples(samples):
+    """Return bounded, deterministic timing statistics for persisted evals."""
+    values = sorted(max(0, int(value)) for value in samples if isinstance(value, (int, float)))
+    if not values:
+        return None
+    middle = len(values) // 2
+    if len(values) % 2:
+        median = values[middle]
+    else:
+        median = int(round((values[middle - 1] + values[middle]) / 2))
+    p95 = values[max(0, math.ceil(len(values) * 0.95) - 1)]
+    return {"count": len(values), "median_ms": median, "p95_ms": p95}
+
+
+def execute_agent_task(task, run_policy=None):
+    global running_thread, stop_requested, recording_active, overlay_process
     stop_requested = False
     recording_active = False
+    run_policy = dict(run_policy or {})
+    run_chat_id = run_policy.get("chat_id")
+    run_started_at = time.perf_counter()
+    timing_samples = {"model": [], "action": [], "verification": [], "step": []}
+    final_run_status = "error"
+    final_step_count = 0
+
     with status_lock:
         agent_status["paused"] = False
         agent_status["status"] = "thinking"
@@ -245,10 +301,12 @@ def execute_agent_task(task):
         agent_status["phase_started_at"] = time.time()
         agent_status["step"] = 0
         agent_status["total_time_ms"] = 0
-        agent_status["current_action"] = "Agent is working..."
+        agent_status["current_action"] = "Reading the screen"
         agent_status["latest_screenshot_b64"] = ""
         agent_status["steps"] = []
         agent_status["current_task"] = task
+        agent_status["execution_task"] = task
+        agent_status["execution_chat_id"] = run_chat_id
         agent_status["timing"] = {
             "last_model_ms": None,
             "last_action_ms": None,
@@ -271,6 +329,8 @@ def execute_agent_task(task):
         config.llm.model = agent_status["settings"]["model_path"]
         config.llm.temperature = agent_status["settings"]["temperature"]
         config.llm.api_key = agent_status["settings"].get("api_key", "")
+        config.llm.planner_model = agent_status["settings"].get("planner_model_path", config.llm.planner_model)
+        config.memory.enabled = bool(agent_status["settings"].get("memory_enabled", False))
         try:
             config.llm.context_size = max(2048, min(int(config.llm.context_size), 4096))
         except (TypeError, ValueError):
@@ -286,17 +346,24 @@ def execute_agent_task(task):
         else:
             logging.info(f"Using cloud engine model_type: {model_type}, skipping local VLA llama-server startup.")
 
-        logging.info("Starting Electron desktop overlay app...")
-        try:
-            electron_process = subprocess.Popen(
-                ["npm", "start", "--prefix", "overlay-app"],
-                shell=True,
-                creationflags=0x08000000
-            )
-        except Exception as oe:
-            logging.error(f"Failed to start Electron overlay: {oe}")
+        if overlay_process is None or overlay_process.poll() is not None:
+            logging.info("Starting desktop execution overlay...")
+            try:
+                overlay_process = subprocess.Popen(
+                    [shutil.which("npm.cmd") or shutil.which("npm") or "npm", "start", "--prefix", "overlay-app"],
+                    creationflags=0x08000000,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except Exception as oe:
+                logging.error("Failed to start execution overlay: %s", oe)
             
+        global active_agent
         agent = CogniAgent()
+        agent.check_stop_callback = lambda: stop_requested
+        agent.check_pause_callback = lambda: bool(agent_status.get("paused", False))
+        agent.action_policy = {"mode": run_policy.get("mode", "supervised")}
+        active_agent = agent
         
         def on_status_update(status, detail):
             if stop_requested:
@@ -321,8 +388,7 @@ def execute_agent_task(task):
                     agent_status["current_thought"] = thought
                 else:
                     agent_status["current_action"] = detail
-                    if status == "thinking":
-                        agent_status["current_thought"] = "Analyzing screen context..."
+                    agent_status["current_thought"] = ""
                     
         agent.on_status_change = on_status_update
 
@@ -335,6 +401,7 @@ def execute_agent_task(task):
             }.get(phase)
             if not timing_key:
                 return
+            timing_samples[phase].append(max(0, int(duration_ms)))
             with status_lock:
                 timings = agent_status.setdefault("timing", {})
                 timings[timing_key] = int(duration_ms)
@@ -343,21 +410,34 @@ def execute_agent_task(task):
         agent.on_timing_update = on_timing_update
 
         def on_step_complete(step_info):
-            screenshot_b64 = ""
-            try:
-                with mss.mss() as sct:
-                    monitor = sct.monitors[1]
-                    sct_img = sct.grab(monitor)
-                    from PIL import Image
-                    img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
-                    buffered = BytesIO()
-                    img.save(buffered, format="JPEG", quality=60)
-                    screenshot_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-            except Exception as se:
-                logging.error(f"Failed to capture direct screen on step completion: {se}")
+            screenshot_b64 = step_info.get("screenshot_b64", "")
+            if not screenshot_b64:
+                try:
+                    from PIL import Image, ImageGrab
+                    img = None
+                    try:
+                        with mss.mss() as sct:
+                            monitor = sct.monitors[1] if len(sct.monitors) > 1 else sct.monitors[0]
+                            sct_img = sct.grab(monitor)
+                            img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
+                    except Exception:
+                        try:
+                            img = ImageGrab.grab().convert("RGB")
+                        except Exception:
+                            pass
+
+                    if img is not None:
+                        img.thumbnail((360, 220), Image.Resampling.BILINEAR)
+                        buffered = BytesIO()
+                        img.save(buffered, format="JPEG", quality=60)
+                        screenshot_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                except Exception as se:
+                    logging.error(f"Failed to capture direct screen on step completion: {se}")
 
             with status_lock:
                 step_info["screenshot_b64"] = screenshot_b64
+                if screenshot_b64:
+                    agent_status["latest_screenshot_b64"] = screenshot_b64
                 step_info["critic_review"] = agent_status.get("critic_review", None)
                 if "segment_id" not in step_info:
                     step_info["segment_id"] = 1
@@ -367,7 +447,14 @@ def execute_agent_task(task):
                 agent_status["steps"].append(step_info)
                 agent_status["step"] = step_info["step"]
 
+            try:
+                from cogniagent.gui.server import persist_chat_execution
+                persist_chat_execution(run_chat_id, get_safe_status(include_media=False))
+            except Exception as snapshot_error:
+                logging.debug("Unable to persist live execution snapshot: %s", snapshot_error)
+
         agent.on_step_complete = on_step_complete
+
         
         def wait_for_hitl():
             hitl_event.clear()
@@ -380,8 +467,9 @@ def execute_agent_task(task):
             
         agent.wait_for_hitl_response = wait_for_hitl
         
-        logging.info("Hands off the mouse in 3 seconds...")
-        time.sleep(3)
+        # The first reasoning call is observation-only; a fixed three-second
+        # countdown only made the app appear stalled.
+        time.sleep(0.1)
         
         with status_lock:
             max_steps = agent_status["settings"]["max_steps"]
@@ -391,107 +479,142 @@ def execute_agent_task(task):
             raise Exception("Task stopped manually.")
             
         status = result.get("status", "failed")
+        steps_executed = result.get("steps", [])
+        final_run_status = "success" if status == "success" else "failed"
+        final_step_count = len(steps_executed)
+        terminal_reason = result.get("terminal_reason", "")
+        final_thought = result.get("final_thought", "")
+
+        # Resolve the run's originating chat. The operator may inspect another
+        # run while execution is active, so the active sidebar selection is not
+        # a stable execution identity.
+        user_intent = ""
         try:
-            from cogniagent.gui.server import load_chats_db, save_chats_db
-            db = load_chats_db()
-            active_id = db.get("active_chat_id")
-            for c in db.get("chats", []):
-                if c["id"] == active_id:
-                    c["status"] = "success" if status == "success" else "failed"
-                    save_chats_db(db)
-                    break
+            from cogniagent.gui.server import load_chats_db, db_lock
+            with db_lock:
+                db_temp = load_chats_db()
+                target_id = run_chat_id or db_temp.get("active_chat_id")
+                active_c = next((c for c in db_temp.get("chats", []) if c["id"] == target_id), None)
+                if active_c:
+                    user_intent = active_c.get("intent") or ""
+        except Exception:
+            pass
+
+        # Collect observations and findings discovered on screen
+        observations = []
+        for s in steps_executed:
+            th = s.get("thought", "").strip()
+            if th and th not in ("Screen inspected.", "Proceeding with next UI action.", "Analyzing screen context."):
+                observations.append(f"Step {s.get('step', '?')} observation/thought: {th}")
+            nt = s.get("note", "")
+            if nt:
+                observations.append(f"Step {s.get('step', '?')} note: {nt}")
+        if terminal_reason:
+            observations.append(f"Final Execution Reason/Result: {terminal_reason}")
+        elif final_thought:
+            observations.append(f"Final Thought: {final_thought}")
+
+        obs_text = "\n".join(observations) if observations else "The visual agent executed all steps successfully on screen."
+
+        # Finish immediately from grounded execution evidence. A second planner
+        # generation here used to keep the task locked after the desktop work
+        # was already complete and competed with the next chat for CPU memory.
+        result_text = (terminal_reason or final_thought or "").strip()
+        if status == "success":
+            summary = result_text or "Completed the task successfully."
+        else:
+            summary = result_text or "The task could not be completed. Review the execution details and try again."
+
+        try:
+            from cogniagent.gui.server import load_chats_db, save_chats_db, db_lock
+            with db_lock:
+                db = load_chats_db()
+                target_id = run_chat_id or db.get("active_chat_id")
+                for c in db.get("chats", []):
+                    if c["id"] == target_id:
+                        c["status"] = "success" if status == "success" else "failed"
+                        terminal_prefixes = ("task completed", "completed the task", "the task could not", "task failed")
+                        c["chat_history"] = [
+                            message for message in c["chat_history"]
+                            if not (
+                                message.get("role") == "assistant"
+                                and (
+                                    message.get("kind") == "run_result"
+                                    or str(message.get("content") or "").strip().casefold().startswith(terminal_prefixes)
+                                )
+                            )
+                        ]
+                        c["chat_history"].append({"role": "assistant", "kind": "run_result", "content": summary})
+                        save_chats_db(db)
+                        break
         except Exception as dbe:
             logging.error(f"Failed to update chat status in DB: {dbe}")
+
             
         with status_lock:
             agent_status["status"] = "done" if status == "success" else "failed"
             agent_status["phase"] = agent_status["status"]
             agent_status["phase_started_at"] = time.time()
-            agent_status["current_action"] = f"Finished: {status}"
-        
-        steps_log = "\n".join([f"Step {s['step']}: {s.get('thought', '')}" for s in agent_status["steps"]])
-        
-        synthesis_prompt = (
-            f"Based on the execution logs of the visual action model, synthesize a conversational final answer "
-            f"for the user. Tell them clearly what was accomplished or found.\n\n"
-            f"Note: The overall task execution status is: {status.upper()}.\n"
-            f"If it is FAILED, you MUST clearly state that the task failed or was unable to be completed successfully, "
-            f"do NOT claim it was successfully completed.\n\n"
-            f"User Original Request: {task}\n"
-            f"Execution Logs:\n{steps_log}"
-        )
-        
-        synthesis_payload = {
-            "messages": [
-                {"role": "user", "content": synthesis_prompt}
-            ],
-            "temperature": 0.3,
-            "max_tokens": 512
-        }
-        try:
-            r = requests.post("http://127.0.0.1:8090/v1/chat/completions", json=synthesis_payload, timeout=60)
-            if r.status_code == 200:
-                final_answer = r.json()["choices"][0]["message"]["content"]
-                with status_lock:
-                    agent_status["planner_synthesis"] = final_answer
-                    if "chat_history" not in agent_status:
-                        agent_status["chat_history"] = []
-                    agent_status["chat_history"].append({"role": "assistant", "content": final_answer})
-            else:
-                final_answer = f"Task concluded with status: {status}. The planner failed to synthesize a report."
-                with status_lock:
-                    agent_status["planner_synthesis"] = final_answer
-                    if "chat_history" not in agent_status:
-                        agent_status["chat_history"] = []
-                    agent_status["chat_history"].append({"role": "assistant", "content": final_answer})
-        except Exception as e:
-            logging.error(f"Error in planner synthesis: {e}")
-            final_answer = f"Task concluded with status: {status}."
-            if status == "success":
-                final_answer += " The task was executed successfully."
-            else:
-                final_answer += " The executor encountered an issue or reached the step limit before completing the goal."
-            with status_lock:
-                agent_status["planner_synthesis"] = final_answer
-                if "chat_history" not in agent_status:
-                    agent_status["chat_history"] = []
-                agent_status["chat_history"].append({"role": "assistant", "content": final_answer})
-                
-        # Persist updated chat history to database
-        try:
-            from cogniagent.gui.server import load_chats_db, save_chats_db
-            db = load_chats_db()
-            active_id = db.get("active_chat_id")
-            for c in db.get("chats", []):
-                if c["id"] == active_id:
-                    c["chat_history"] = agent_status["chat_history"]
-                    c["status"] = "success" if status == "success" else "failed"
-                    save_chats_db(db)
-                    break
-        except Exception as dbe:
-            logging.error(f"Failed to persist final chat history to DB: {dbe}")
-            
-        if status == "success":
+            agent_status["current_action"] = "Task completed" if status == "success" else "Task needs attention"
             with status_lock:
                 agent_status["ui_mode"] = "chat"
         
     except Exception as e:
         if stop_requested:
+            final_run_status = "stopped"
             with status_lock:
-                agent_status["status"] = "idle"
-                agent_status["phase"] = "idle"
+                agent_status["status"] = "stopped"
+                agent_status["phase"] = "stopped"
                 agent_status["phase_started_at"] = time.time()
                 agent_status["current_action"] = "Stopped manually"
                 agent_status["current_thought"] = "Task terminated by user request."
                 agent_status["ui_mode"] = "chat"
         else:
+            final_run_status = "error"
             logging.error(f"Error: {e}")
             with status_lock:
                 agent_status["status"] = "error"
                 agent_status["phase"] = "error"
                 agent_status["phase_started_at"] = time.time()
-                agent_status["current_action"] = str(e)
+                agent_status["current_action"] = "The task stopped unexpectedly."
+                agent_status["current_thought"] = ""
     finally:
+        duration_ms = max(0, int((time.perf_counter() - run_started_at) * 1000))
+        with status_lock:
+            agent_status["total_time_ms"] = duration_ms
+            final_step_count = max(final_step_count, len(agent_status.get("steps", [])))
+            settings_snapshot = dict(agent_status.get("settings", {}))
+        metrics = {
+            "status": final_run_status,
+            "finished_at": int(time.time()),
+            "duration_ms": duration_ms,
+            "steps": final_step_count,
+            "phases": {
+                phase: summary
+                for phase, values in timing_samples.items()
+                if (summary := summarize_timing_samples(values)) is not None
+            },
+            "profile": {
+                "engine": str(settings_snapshot.get("model_type", "local")),
+                "vla": os.path.basename(str(settings_snapshot.get("model_path", "unknown"))),
+                "planner": os.path.basename(str(settings_snapshot.get("planner_model_path", "unknown"))),
+            },
+        }
+        try:
+            from cogniagent.gui.server import load_chats_db, save_chats_db, db_lock, _normalize_execution_snapshot
+            with db_lock:
+                database = load_chats_db()
+                target_id = run_chat_id or database.get("active_chat_id")
+                target_chat = next((chat for chat in database.get("chats", []) if chat["id"] == target_id), None)
+                if target_chat:
+                    target_chat["run_metrics"] = metrics
+                    if final_run_status != "success":
+                        target_chat["status"] = "stopped" if final_run_status == "stopped" else "failed"
+                    target_chat["execution"] = _normalize_execution_snapshot(get_safe_status(include_media=False))
+                    target_chat["updated_at"] = int(time.time())
+                    save_chats_db(database)
+        except Exception as metrics_error:
+            logging.warning("Unable to persist run metrics: %s", metrics_error)
         recording_active = False
         with execution_lock:
             if running_thread is threading.current_thread():
@@ -554,8 +677,30 @@ def sync_chats_on_startup():
         except Exception as e:
             logging.error(f"Failed to sync chats on startup: {e}")
 
+def shutdown_runtime(*, include_console: bool = True) -> None:
+    """Stop the active run and release all owned model/runtime processes."""
+    global server_process, planner_process, console_process, overlay_process, recording_active
+    stop_agent()
+    recording_active = False
+    owned = [
+        ("execution overlay", overlay_process),
+        ("VLA server", server_process),
+        ("planner server", planner_process),
+    ]
+    if include_console:
+        owned.append(("command center", console_process))
+    for label, process in owned:
+        if not process or process.poll() is not None:
+            continue
+        try:
+            process.terminate()
+            process.wait(timeout=5)
+        except Exception as error:
+            logging.warning("Unable to stop owned %s cleanly: %s", label, error)
+
+
 def main():
-    global server_process, planner_process, electron_process
+    global server_process, planner_process, console_process
     from gui_telemetry import kill_port_owner
     from cogniagent.gui.server import WebUIRequestHandler
     # Do not terminate every llama-server or Electron process on the machine.
@@ -589,7 +734,7 @@ def main():
         sys.exit(1)
     
     print("====================================================")
-    print("OmniVLA Command Center Running...")
+    print("OmniVLA is running.")
     print(f"URL Endpoint: http://127.0.0.1:8000 (bound to {server_host})")
     print("====================================================")
     
@@ -605,11 +750,9 @@ def main():
         def init_models_sequential():
             logging.info("Pre-initializing VLA model on startup...")
             start_llama_server(max_gpu=True)
-            time.sleep(2.0)
-            logging.info("Pre-initializing Planner model on startup...")
-            # Keep the critic on CPU so the Holo vision model owns the 6 GB
-            # GPU. This avoids VRAM pressure and model-layer CPU spillover.
-            start_planner_server(use_gpu=False)
+            # The CPU planner starts on demand and unloads after each plan so
+            # browsers and other desktop apps retain enough system memory.
+
         t = threading.Thread(target=init_models_sequential)
         t.daemon = True
         t.start()
@@ -617,21 +760,21 @@ def main():
     if not is_testing:
         def launch_electron_delayed():
             time.sleep(1.5)
-            global electron_process
+            global console_process
             logging.info("Starting Electron dedicated console app...")
             try:
                 electron_path = os.path.join("overlay-app", "node_modules", "electron", "dist", "electron.exe")
                 if os.path.exists(electron_path):
-                    electron_process = subprocess.Popen(
+                    console_process = subprocess.Popen(
                         [electron_path, "console-app"],
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
                         creationflags=0x08000000
                     )
                 else:
-                    electron_process = subprocess.Popen(
-                        ["npx", "electron", "console-app"],
-                        shell=True,
+                    npx_executable = shutil.which("npx.cmd") or shutil.which("npx") or "npx"
+                    console_process = subprocess.Popen(
+                        [npx_executable, "electron", "console-app"],
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
                         creationflags=0x08000000
@@ -646,11 +789,11 @@ def main():
                     except Exception:
                         pass
                 
-                t_out = threading.Thread(target=log_stream, args=(electron_process.stdout, "Electron"))
+                t_out = threading.Thread(target=log_stream, args=(console_process.stdout, "Electron"))
                 t_out.daemon = True
                 t_out.start()
                 
-                t_err = threading.Thread(target=log_stream, args=(electron_process.stderr, "Electron-Err"))
+                t_err = threading.Thread(target=log_stream, args=(console_process.stderr, "Electron-Err"))
                 t_err.daemon = True
                 t_err.start()
                 
@@ -664,18 +807,7 @@ def main():
     import atexit
     def cleanup_processes():
         logging.info("Terminating OmniVLA-owned backend and console processes...")
-        for label, process in (
-            ("VLA server", server_process),
-            ("planner server", planner_process),
-            ("command center", electron_process),
-        ):
-            if not process or process.poll() is not None:
-                continue
-            try:
-                process.terminate()
-                process.wait(timeout=5)
-            except Exception as error:
-                logging.warning("Unable to stop owned %s cleanly: %s", label, error)
+        shutdown_runtime()
     atexit.register(cleanup_processes)
 
     try:
@@ -689,8 +821,5 @@ def main():
             except Exception: pass
         if planner_process:
             try: planner_process.terminate()
-            except Exception: pass
-        if electron_process:
-            try: electron_process.terminate()
             except Exception: pass
         httpd.server_close()

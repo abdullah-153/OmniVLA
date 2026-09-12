@@ -1,7 +1,7 @@
 {
-  "name": "OmniVLA Command Center",
+  "name": "OmniVLA",
   "short_name": "OmniVLA",
-  "description": "A supervised, local-first desktop-agent control plane.",
+  "description": "A local desktop assistant.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#08090a",

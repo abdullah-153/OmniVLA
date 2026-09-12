@@ -1,9 +1,9 @@
-import mss
 from PIL import Image
 import numpy as np
 from collections import namedtuple
 
 Size = namedtuple('Size', ['width', 'height'])
+
 
 class MockMSS:
     def __init__(self):
@@ -14,6 +14,13 @@ class MockMSS:
         self.queue = []
         # Create a default blank image (1920x1080, solid blue)
         self.default_image = Image.new("RGB", (1920, 1080), color=(0, 0, 255))
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
         
     def queue_image(self, img):
         """Queue a PIL Image or NumPy array or path to be returned by grab()."""

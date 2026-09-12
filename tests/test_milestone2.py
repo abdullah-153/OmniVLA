@@ -1,6 +1,7 @@
 import sys
 import unittest
 from unittest.mock import patch, MagicMock
+from types import SimpleNamespace
 
 # Mock missing modules before they can be imported
 import tests.mocks.mock_states as mock_states
@@ -9,10 +10,40 @@ sys.modules['cogniagent.reasoning.action_reasoner'] = mock_states
 
 # Import the modules under test
 from cogniagent.config import config
-from cogniagent.perception.vlm_engine import VLMEngine, trim_to_last_n_images
+from cogniagent.perception.vlm_engine import (
+    VLMEngine,
+    native_tools_for_task,
+    parse_native_tool_call,
+    trim_to_last_n_images,
+)
 import cogniagent.agent
 
 class TestMilestone2(unittest.TestCase):
+    def test_native_tool_call_is_strictly_normalized(self):
+        message = SimpleNamespace(
+            reasoning_content="The target is visible and centered.",
+            tool_calls=[
+                SimpleNamespace(
+                    id="call-1",
+                    function=SimpleNamespace(
+                        name="click",
+                        arguments='{"element":"Save button","x":820,"y":90}',
+                    ),
+                )
+            ],
+        )
+        parsed = parse_native_tool_call(message)
+        self.assertEqual(parsed["tool_call"]["tool_name"], "click")
+        self.assertEqual(parsed["tool_call_id"], "call-1")
+        self.assertEqual(parsed["tool_call"]["x"], 820)
+
+    def test_task_tool_catalog_exposes_complete_native_capability_set(self):
+        tools = native_tools_for_task("Open Notepad and type a note")
+        names = {tool["function"]["name"] for tool in tools}
+        self.assertTrue({"click", "type", "get_open_apps", "switch_to_app", "open_app", "terminate"} <= names)
+        self.assertTrue({"drag", "right_click", "move", "minimize_all_apps"} <= names)
+        self.assertTrue(all("tool_name" not in tool["function"]["parameters"]["properties"] for tool in tools))
+
     def test_config_base_url(self):
         """Verify the default config base URL is correct."""
         self.assertEqual(config.llm.base_url, "http://127.0.0.1:8089/v1")
@@ -30,7 +61,12 @@ class TestMilestone2(unittest.TestCase):
         self.assertEqual(vlm.endpoint, "http://127.0.0.1:8089/v1")
         self.assertEqual(vlm.model_name, "models/Holo-3.1-4B-abliterated-rdo.Q4_K_M.gguf")
         
-        mock_openai.assert_called_once_with(base_url="http://127.0.0.1:8089/v1", api_key="antigravity")
+        mock_openai.assert_called_once_with(
+            base_url="http://127.0.0.1:8089/v1",
+            api_key="antigravity",
+            timeout=60.0,
+            max_retries=0,
+        )
 
     @patch('mss.mss')
     @patch('cogniagent.perception.vlm_engine.OpenAI')
@@ -44,7 +80,12 @@ class TestMilestone2(unittest.TestCase):
         
         self.assertEqual(vlm.endpoint, "http://127.0.0.1:9000/v1")
         self.assertEqual(vlm.model_name, "custom_model")
-        mock_openai.assert_called_once_with(base_url="http://127.0.0.1:9000/v1", api_key="antigravity")
+        mock_openai.assert_called_once_with(
+            base_url="http://127.0.0.1:9000/v1",
+            api_key="antigravity",
+            timeout=60.0,
+            max_retries=0,
+        )
 
     def test_trim_to_last_n_images(self):
         """Verify trim_to_last_n_images keeps only the latest 3 screenshots and evicts older ones."""
@@ -141,7 +182,9 @@ class TestMilestone2(unittest.TestCase):
         self.assertEqual(mock_openai_instance.chat.completions.create.call_count, 2)
         
         first_call_kwargs = mock_openai_instance.chat.completions.create.call_args_list[0][1]
-        self.assertEqual(first_call_kwargs["response_format"], {"type": "json_object"})
+        self.assertEqual(first_call_kwargs["tool_choice"], "required")
+        self.assertGreater(len(first_call_kwargs["tools"]), 5)
+        self.assertNotIn("response_format", first_call_kwargs)
 
     @patch('cogniagent.agent.VLMEngine')
     @patch('cogniagent.agent.ActionRouter')
@@ -195,10 +238,9 @@ class TestMilestone2(unittest.TestCase):
         # after the call was recorded. The first message must still be the
         # observation handed to the second reasoning pass.
         self.assertGreaterEqual(len(called_messages), 1)
-        self.assertEqual(called_messages[0]["role"], "user")
-        
-        expected_content = '<observation>\n<tool_output tool="click">\nClicked start button\n</tool_output>\n</observation>'
-        self.assertEqual(called_messages[0]["content"], expected_content)
+        self.assertEqual(called_messages[0]["role"], "tool")
+        self.assertIn('"success": true', called_messages[0]["content"])
+        self.assertIn("Clicked start button", called_messages[0]["content"])
 
 if __name__ == '__main__':
     unittest.main()

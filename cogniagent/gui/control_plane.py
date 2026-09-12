@@ -22,6 +22,7 @@ MAX_HITL_CHARACTERS = 2_000
 MAX_API_KEY_CHARACTERS = 1_024
 MAX_MODEL_PATH_CHARACTERS = 512
 MAX_AUDIT_EVENTS = 120
+MAX_SKILL_MARKDOWN_CHARACTERS = 48_000
 
 ALLOWED_MODEL_TYPES = {"local", "openai", "anthropic"}
 ALLOWED_SAFETY_MODES = {"supervised", "autonomous"}
@@ -64,6 +65,45 @@ def validate_chat_id(value: Any) -> str:
     return chat_id
 
 
+def validate_skill_name(value: Any) -> str:
+    name = _require_text(value, "skill name", 64)
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", name):
+        raise RequestValidationError("skill name must be a letter/number slug using '-' or '_'.")
+    return name
+
+
+def validate_skill_markdown(value: Any) -> str:
+    return _require_text(value, "skill markdown", MAX_SKILL_MARKDOWN_CHARACTERS)
+
+
+def validate_observation_goal(value: Any) -> str:
+    return _require_text(value, "demonstration goal", 500)
+
+
+def validate_observed_action(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise RequestValidationError("observed action must be an object.")
+    action_type = _require_text(payload.get("action_type"), "action type", 32).lower()
+    allowed = {"click", "double_click", "right_click", "type", "key_press", "hotkey"}
+    if action_type not in allowed:
+        raise RequestValidationError("observed action type is not supported.")
+    result: dict[str, Any] = {"action_type": action_type}
+    if action_type in {"click", "double_click", "right_click"}:
+        for coordinate in ("x", "y"):
+            value = payload.get(coordinate)
+            if isinstance(value, bool) or not isinstance(value, int) or not -100_000 <= value <= 100_000:
+                raise RequestValidationError(f"{coordinate} must be a bounded whole-screen coordinate.")
+            result[coordinate] = value
+        result["button"] = "right" if action_type == "right_click" else ("double" if action_type == "double_click" else "left")
+    elif action_type == "type":
+        result["text"] = _require_text(payload.get("text"), "observed text", 2_000, allow_empty=True)
+    else:
+        result["key"] = _require_text(payload.get("key"), "observed key", 64)
+    result["window_title"] = _require_text(payload.get("window_title", ""), "window title", 200, allow_empty=True)
+    result["visual_cue"] = _require_text(payload.get("visual_cue", ""), "visual cue", 300, allow_empty=True)
+    return result
+
+
 def validate_settings(payload: dict[str, Any], current: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
     """Return persisted settings and an optional runtime-only provider key."""
     if not isinstance(payload, dict):
@@ -71,9 +111,11 @@ def validate_settings(payload: dict[str, Any], current: dict[str, Any]) -> tuple
 
     settings = {
         "model_path": current.get("model_path", "models/Holo-3.1-4B-abliterated-rdo.Q4_K_M.gguf"),
+        "planner_model_path": current.get("planner_model_path", "models/Qwen3.5-4B.Q4_K_M.gguf"),
         "temperature": current.get("temperature", 0.2),
         "max_steps": current.get("max_steps", 15),
         "enable_recording": current.get("enable_recording", False),
+        "memory_enabled": current.get("memory_enabled", False),
         "model_type": current.get("model_type", "local"),
     }
 
@@ -106,6 +148,12 @@ def validate_settings(payload: dict[str, Any], current: dict[str, Any]) -> tuple
             raise RequestValidationError("enable recording must be true or false.")
         settings["enable_recording"] = recording
 
+    if "memory_enabled" in payload:
+        memory_enabled = payload["memory_enabled"]
+        if not isinstance(memory_enabled, bool):
+            raise RequestValidationError("memory enabled must be true or false.")
+        settings["memory_enabled"] = memory_enabled
+
     model_path = _require_text(
         payload.get("model_path", settings["model_path"]),
         "model path" if model_type == "local" else "model identifier",
@@ -116,6 +164,15 @@ def validate_settings(payload: dict[str, Any], current: dict[str, Any]) -> tuple
     if model_type != "local" and model_path.lower().endswith(".gguf"):
         raise RequestValidationError("Cloud providers need a provider model identifier, not a .gguf file.")
     settings["model_path"] = model_path
+
+    planner_model_path = _require_text(
+        payload.get("planner_model_path", settings["planner_model_path"]),
+        "planner model path",
+        MAX_MODEL_PATH_CHARACTERS,
+    )
+    if not planner_model_path.lower().endswith(".gguf"):
+        raise RequestValidationError("planner model path must point to a .gguf file.")
+    settings["planner_model_path"] = planner_model_path
 
     runtime_api_key = None
     if "api_key" in payload:

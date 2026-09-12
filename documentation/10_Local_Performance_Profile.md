@@ -1,38 +1,86 @@
-# Local Performance Profile
+# RTX 4050 6 GB local performance profile
 
 ## Objective
 
-OmniVLA is designed to remain responsive on a laptop-class NVIDIA GPU with 6 GB of VRAM while retaining a local vision-language executor and a separate critic. The target is lower end-to-end latency per meaningful action, not simply faster model decoding at the cost of weaker safety checks.
+The reference deployment runs a visual action model and a planner concurrently on consumer hardware: Holo 3.1 4B occupies the RTX 4050 Laptop GPU's 6 GB path, while Qwen3.5 occupies CPU and system memory. Optimizations must preserve task completion, visual grounding, human approvals, and post-action verification.
 
-## Implemented profile
+## Enforced inference topology
 
-| Area | Setting | Why it matters |
+| Resource | Visual executor | Planner / critic |
 | --- | --- | --- |
-| GPU ownership | Holo VLA uses GPU layers; planner/critic uses CPU (`-ngl 0`) | Prevents two models from competing for the same small VRAM pool. |
-| Server concurrency | One llama.cpp slot per server (`-np 1`) | Prevents parallel requests from multiplying KV-cache pressure. |
-| VLA context | Capped at 4,096 tokens | Keeps memory and prefill latency bounded for a local visual executor. |
-| Critic context | 2,048 tokens | A critic decision is short; a full VLA context is unnecessary. |
-| KV cache | q8_0 for VLA, q4_0 for critic | Trades a small amount of cache precision for substantially lower memory pressure. |
-| Prefill | Flash Attention, prompt caching, batch size 512, 8 CPU prompt threads | Cuts repeat prompt work and improves prompt ingestion on common consumer CPUs. |
-| Agent context | Compact JSON action contract, ten-message rolling window, image-free checkpoints | Eliminates avoidable prompt tokens and avoids repeatedly retaining large JPEG payloads. |
-| Telemetry | Phase and timing callbacks | Makes real model, action, verification, and total-cycle time observable in the UI. |
+| Model | Holo 3.1 4B GGUF + vision projector | Qwen3.5 4B GGUF |
+| Device | NVIDIA GPU layers | CPU only (`-ngl 0`) |
+| llama.cpp port | 8089 | 8090 |
+| Parallel slots | 1 | 1 |
+| Context | ≤4,096 | 2,048 |
+| KV cache | q8_0 K/V | q4_0 K/V |
+| Flash Attention | on | on |
+| Batch | 512, ubatch 512 | 512 |
+| Prompt CPU threads | 8 | 8 |
+| Additional bounds | prompt cache, `-fit on`, 512 MiB fit target | reasoning off, compact chat template |
 
-The tuning uses supported llama.cpp server flags, including server-slot control and prompt caching. See the official [llama.cpp server documentation](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md) and [CLI documentation](https://github.com/ggml-org/llama.cpp/blob/master/tools/cli/README.md).
+`start_planner_server` ignores legacy requests for planner GPU layers. This makes CPU/DDR5 placement a runtime invariant rather than a UI convention. Model starts are serialized to avoid simultaneous load spikes, and both services bind to loopback with the embedded llama.cpp web UI disabled.
 
-## Safety and fidelity boundaries
+The supported flags are documented by the official [llama.cpp server README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md). Multimodal speculative decoding is intentionally not claimed or enabled; current llama.cpp multimodal support does not provide a validated draft-model path for this application.
 
-The profile does not add a second visual-change detector or run a duplicated perception pipeline. OmniVLA retains its existing verifier, critic, allowed-input routing, and human confirmation flows. It instead removes redundant prompt/schema/image handling that added latency without contributing new evidence.
+## Why the profile fits the product constraint
 
-The execution budget is still configurable. It is intentionally not presented as a fake completion percentage: the web command center and desktop overlay report the number of actions actually recorded, the current phase, and the latest measured timing. A budget stop remains a protective boundary, not proof that a task is complete.
+The current Holo 4B Q4 model file is roughly 2.86 GiB and its f16 projector roughly 0.63 GiB. File size is not identical to loaded VRAM—CUDA buffers, compute workspaces, image embeddings, and KV cache add overhead—but a single slot, bounded context, quantized KV cache, and llama.cpp fit margin leave materially more headroom than the former 9B configuration or a second GPU-resident planner.
 
-## Repeatable measurement procedure
+The current Qwen3.5 4B Q4 model file is roughly 2.52 GiB and stays in system memory. CPU inference trades latency for the core product guarantee: the visual executor does not contend with a second model for the 6 GB GPU.
 
-1. Launch the app normally with `python run_agent_gui.py`; do not run other GPU-heavy programs.
-2. Wait for the VLA and CPU critic to report ready, then run the same low-risk task twice as warm-up. Do not include those two runs in the comparison.
-3. Run the task three more times and record the UI's **Last cycle** time along with model, action, and verification phases.
-4. Change one setting at a time only if needed. On a 6 GB GPU, keep parallel slots at one and VLA context at or below 4,096.
-5. Report median cycle time and task success rate together. A faster setting that lowers verified completion is not an improvement.
+## End-to-end reductions already implemented
 
-## Expected effect
+- The VLM receives a compact hand-authored action contract instead of a generated full schema.
+- Only one recent screenshot and a bounded text history remain in the active context.
+- Checkpoints are image-free; invalid output retries are bounded.
+- Status responses never contain historical screenshot payloads.
+- The browser fetches and decodes the current frame only while Live is visible.
+- Logs are capped, action telemetry records character counts rather than typed content, and trace rendering uses actual events.
+- Duplicate model starts are serialized and healthy matching processes are reused.
+- Capture failure terminates the step instead of allocating a fake fallback frame.
 
-The former 40–50 second step time can have several causes: GPU contention from a critic, excessive prompt prefill, image-heavy checkpoint copies, cold model startup, or slow desktop actions. This profile directly removes the first three and exposes the last two in the timing breakdown. Actual latency remains hardware-, model-, task-, and warm-up-dependent, so the product records it rather than claiming a fixed speed-up.
+## Model profiles to evaluate
+
+| Profile | Expected trade-off | Promotion gate |
+| --- | --- | --- |
+| Holo 3.1 4B aligned Q4 + Qwen3.5 4B Q4 | Quality-first reference | Default after checkpoint-specific desktop and safety evals |
+| Holo 3.1 4B aligned Q4 + Qwen3.5 2B Q4 | Lower planning latency and RAM | No material regression in plan validity, function choice, recovery, or unsafe approval rate |
+| Holo 3.1 0.8B/other tiny executor | Lower load/step latency | Research only; must match visual grounding and action-schema reliability |
+| Holo 3.1 9B | Higher potential model quality | Not a 6 GB reference profile; requires larger GPU/offload latency analysis |
+
+Official Qwen3.5 cards report a substantial tool-use gap between 0.8B and 2B, so 0.8B is not a sensible default planner solely because it is small. See [Qwen3.5 0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B), [2B](https://huggingface.co/Qwen/Qwen3.5-2B), and [4B](https://huggingface.co/Qwen/Qwen3.5-4B).
+
+## Repeatable readiness and measurement
+
+First run the read-only resource check:
+
+```powershell
+python benchmark_runtime.py --json
+python evaluate_runs.py --json
+```
+
+Then benchmark with a fixed task pack:
+
+1. Close unrelated GPU-heavy programs and record driver, GPU, CPU, RAM speed/capacity, model hashes, llama.cpp version, and all launch flags.
+2. Cold-start each service once and record time-to-health and peak GPU/system memory.
+3. Perform two unmeasured warm-up runs per task.
+4. Execute at least five measured runs for each profile in a dedicated low-privilege desktop session.
+5. Record plan latency, visual-model latency, input duration, verification latency, full action-cycle latency, interventions, retries, and verified outcome.
+6. Report median and p95 latency alongside task success, unsafe-action rate, and schema-valid response rate.
+7. Change one variable at a time and restore the identical desktop state between runs.
+
+Suggested task strata are: single-form entry, menu/context-menu manipulation, cross-application copy with synthetic non-secret text, multi-window navigation, recoverable error handling, visually ambiguous targets, and high-impact decoy prompts that must trigger confirmation or refusal.
+
+## Acceptance gates
+
+A new model or flag set is an improvement only if all are true:
+
+- no out-of-memory failure on a 6,144 MiB target after warm-up;
+- VLA remains the only GPU model;
+- schema-valid actions do not regress materially;
+- verified task success is non-inferior on the fixed pack;
+- destructive/external action confirmations do not regress;
+- median or p95 end-to-end latency improves enough to matter to an operator.
+
+Tokens per second is diagnostic data, not the product metric.

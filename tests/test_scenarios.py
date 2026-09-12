@@ -229,12 +229,10 @@ class TestScenarios(unittest.TestCase):
                 "y": 300
             }
         })
-        mock_mss_instance.queue_image(self.img1)
-        
-        # Step 2: Dismiss error dialog (after detecting error semantic state)
+        # Step 2: Dismiss popup dialog
         self.server.queue_response({
-            "note": "Error popup detected",
-            "thought": "Dismiss error popup by clicking Cancel",
+            "note": "Popup detected",
+            "thought": "Dismiss popup by clicking Cancel",
             "tool_call": {
                 "tool_name": "click",
                 "element": "CancelButton",
@@ -242,30 +240,31 @@ class TestScenarios(unittest.TestCase):
                 "y": 600
             }
         })
-        mock_mss_instance.queue_image(self.img2)
-        
-        # Step 3: Recover and finish
+        # Step 3: Conclude successfully
         self.server.queue_response({
-            "note": "Error popup dismissed, back to normal dashboard",
+            "note": "Popup dismissed, back to normal",
             "thought": "Completed recovery",
             "tool_call": {
                 "tool_name": "terminate",
                 "status": "success",
-                "reason": "Dismissed popup error successfully"
+                "reason": "Dismissed popup successfully"
             }
         })
-        mock_mss_instance.queue_image(self.img3)
+        mock_mss_instance.queue.clear()
+        for frame in (
+            self.img1, self.img2,
+            self.img2, self.img1,
+            self.img1, self.img3,
+        ):
+            mock_mss_instance.queue_image(frame)
         
         agent = CogniAgent()
-        
-        # Inject states: step 1 results in an error dialog appearing
-        agent._last_semantic_state = SemanticState(is_dialog=False)
-        agent.next_mock_state = SemanticState(is_dialog=True, visible_text_summary="Error: Action failed")
-        
         res = agent.run_task("Run action with fallback safety", max_steps=3)
         
         self.assertEqual(res["status"], "success")
         self.assertEqual(res["episodes"], 3)
+
+
 
     def test_t4_05_repeated_invalid_form_submission_is_not_marked_successful(self):
         """TC-T4-05: A repeated failed submission must not become a false success."""
@@ -280,9 +279,8 @@ class TestScenarios(unittest.TestCase):
                 "y": 800
             }
         })
-        mock_mss_instance.queue_image(self.img1)
         
-        # Step 2: Form error on page 2 (we typed bad input, got warning)
+        # Step 2: Stagnant form on page 2 (bad input, button click does not advance screen)
         self.server.queue_response({
             "note": "Form page 2 open",
             "thought": "Click next page button again",
@@ -293,9 +291,8 @@ class TestScenarios(unittest.TestCase):
                 "y": 800
             }
         })
-        mock_mss_instance.queue_image(self.img2)
         
-        # Step 3: Finish
+        # Step 3: Finish (blocked because step 2 had unresolved failure)
         self.server.queue_response({
             "note": "Final page loaded",
             "thought": "Submit form, terminating",
@@ -305,15 +302,18 @@ class TestScenarios(unittest.TestCase):
                 "reason": "Form fully completed"
             }
         })
-        mock_mss_instance.queue_image(self.img3)
+
+        mock_mss_instance.queue.clear()
+        for frame in (
+            self.img1, self.img2,  # Step 1 before -> after (advances to page 2)
+            self.img2, self.img2,  # Step 2 before -> after (stagnant, invalid submission)
+            self.img2, self.img3,  # Step 3 before -> after
+        ):
+            mock_mss_instance.queue_image(frame)
         
         agent = CogniAgent()
-        
-        # Inject states: step 2 returns form invalid warning dialog
-        agent._last_semantic_state = SemanticState(is_dialog=False)
-        agent.next_mock_state = SemanticState(is_dialog=True, visible_text_summary="Warning: invalid input")
-        
         res = agent.run_task("Submit multi-page form", max_steps=3)
         
         self.assertEqual(res["status"], "failed")
         self.assertEqual(res["episodes"], 3)
+

@@ -192,6 +192,34 @@ def get_cursor_pos():
     return 0, 0
 
 
+def get_focus_context() -> tuple[int, int]:
+    """Return foreground and focused HWNDs for generic focus verification."""
+    if not all(hasattr(user32, name) for name in ("GetForegroundWindow", "GetWindowThreadProcessId", "GetGUIThreadInfo")):
+        return 0, 0
+    try:
+        foreground = int(user32.GetForegroundWindow() or 0)
+    except Exception:
+        return 0, 0
+    if not foreground:
+        return 0, 0
+
+    class GUITHREADINFO(ctypes.Structure):
+        _fields_ = [
+            ("cbSize", wintypes.DWORD), ("flags", wintypes.DWORD),
+            ("hwndActive", wintypes.HWND), ("hwndFocus", wintypes.HWND),
+            ("hwndCapture", wintypes.HWND), ("hwndMenuOwner", wintypes.HWND),
+            ("hwndMoveSize", wintypes.HWND), ("hwndCaret", wintypes.HWND),
+            ("rcCaret", wintypes.RECT),
+        ]
+
+    process_id = wintypes.DWORD()
+    thread_id = user32.GetWindowThreadProcessId(foreground, ctypes.byref(process_id))
+    info = GUITHREADINFO(cbSize=ctypes.sizeof(GUITHREADINFO))
+    if thread_id and user32.GetGUIThreadInfo(thread_id, ctypes.byref(info)):
+        return foreground, int(info.hwndFocus or info.hwndCaret or 0)
+    return foreground, 0
+
+
 def smooth_move_to(x: int, y: int, duration: float = 0.35):
     """Move cursor smoothly to absolute virtual-desktop pixel coordinates."""
     check_failsafe()
@@ -285,10 +313,10 @@ def mouse_click(x: int, y: int, button: str = "left"):
 
 
 def mouse_double_click(x: int, y: int):
-    """Execute double-click using SetCursorPos and SendInput."""
+    """Execute double-click using SetCursorPos and SendInput with optimal registration interval."""
     check_failsafe()
     mouse_click(x, y, "left")
-    time.sleep(0.05)  # 50ms delay between clicks
+    time.sleep(0.08)  # 80ms interval for robust Windows UI double-click registration
     mouse_click(x, y, "left")
 
 
@@ -357,23 +385,33 @@ def mouse_scroll(amount: int):
 
 
 def resolve_vk(key: str) -> int:
-    """Resolve key name (or single character/digit) to its Virtual Keycode."""
-    k = key.lower()
+    """Resolve key name (or single character/digit/symbol) to its Virtual Keycode."""
+    k = key.lower().strip()
     if k in VK_MAP:
         return VK_MAP[k]
-    if len(key) == 1:
-        val = ord(key.upper())
+    if len(k) == 1:
+        val = ord(k.upper())
         if (0x30 <= val <= 0x39) or (0x41 <= val <= 0x5A):  # 0-9, A-Z
             return val
         
         punctuation_vks = {
-            ';': 0xBA, '=': 0xBB, ',': 0xBC, '-': 0xBD, '.': 0xBE, '/': 0xBF, '`': 0xC0,
-            '[': 0xDB, '\\': 0xDC, ']': 0xDD, "'": 0xDE
+            ';': 0xBA, ':': 0xBA,
+            '=': 0xBB, '+': 0xBB,
+            ',': 0xBC, '<': 0xBC,
+            '-': 0xBD, '_': 0xBD,
+            '.': 0xBE, '>': 0xBE,
+            '/': 0xBF, '?': 0xBF,
+            '`': 0xC0, '~': 0xC0,
+            '[': 0xDB, '{': 0xDB,
+            '\\': 0xDC, '|': 0xDC,
+            ']': 0xDD, '}': 0xDD,
+            "'": 0xDE, '"': 0xDE,
         }
-        if key in punctuation_vks:
-            return punctuation_vks[key]
+        if k in punctuation_vks:
+            return punctuation_vks[k]
             
     raise ValueError(f"Unsupported key identifier: {key}")
+
 
 
 def key_down(key: str):
@@ -456,20 +494,97 @@ def hotkey(*keys, delay: float = 0.05):
 
 
 def type_text(text: str, interval: float = 0.02):
-    """Type text using Unicode input events to ensure layout-agnostic entry."""
+    """Type text in atomic Unicode batches so events cannot be interleaved."""
     check_failsafe()
+    code_units = []
     for char in text:
         code = ord(char)
         if code <= 0xFFFF:
-            _send_unicode_char(code)
+            code_units.append(code)
         else:
-            lead = 0xD800 + ((code - 0x10000) >> 10)
-            trail = 0xDC00 + ((code - 0x10000) & 0x3FF)
-            _send_unicode_char(lead)
-            _send_unicode_char(trail)
-            
-        if interval > 0:
-            time.sleep(interval)
+            code_units.extend((
+                0xD800 + ((code - 0x10000) >> 10),
+                0xDC00 + ((code - 0x10000) & 0x3FF),
+            ))
+
+    for offset in range(0, len(code_units), 128):
+        chunk = code_units[offset : offset + 128]
+        inputs = (INPUT * (len(chunk) * 2))()
+        for index, code in enumerate(chunk):
+            down = inputs[index * 2]
+            down.type = INPUT_KEYBOARD
+            down.ii.ki.wScan = code
+            down.ii.ki.dwFlags = KEYEVENTF_UNICODE
+            up = inputs[index * 2 + 1]
+            up.type = INPUT_KEYBOARD
+            up.ii.ki.wScan = code
+            up.ii.ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP
+        expected = len(inputs)
+        inserted = int(user32.SendInput(expected, inputs, ctypes.sizeof(INPUT)))
+        if inserted != expected:
+            raise RuntimeError(f"Windows accepted {inserted} of {expected} text input events.")
+        if interval > 0 and offset + len(chunk) < len(code_units):
+            time.sleep(min(0.1, interval * len(chunk)))
+
+
+def paste_text_preserving_clipboard(text: str) -> bool:
+    """Paste exact Unicode text, then restore the prior OLE clipboard object."""
+    try:
+        ole32 = ctypes.windll.ole32
+        kernel32 = ctypes.windll.kernel32
+        ole32.OleInitialize(None)
+
+        previous = ctypes.c_void_p()
+        had_previous = ole32.OleGetClipboard(ctypes.byref(previous)) >= 0 and bool(previous.value)
+
+        kernel32.GlobalAlloc.restype = ctypes.c_void_p
+        kernel32.GlobalLock.restype = ctypes.c_void_p
+        user32.SetClipboardData.restype = ctypes.c_void_p
+        encoded = text.encode("utf-16-le") + b"\x00\x00"
+        handle = kernel32.GlobalAlloc(0x0002, len(encoded))  # GMEM_MOVEABLE
+        if not handle:
+            return False
+        pointer = kernel32.GlobalLock(handle)
+        if not pointer:
+            kernel32.GlobalFree(handle)
+            return False
+        ctypes.memmove(pointer, encoded, len(encoded))
+        kernel32.GlobalUnlock(handle)
+
+        opened = False
+        for _ in range(10):
+            if user32.OpenClipboard(None):
+                opened = True
+                break
+            time.sleep(0.02)
+        if not opened:
+            kernel32.GlobalFree(handle)
+            return False
+        try:
+            if not user32.EmptyClipboard() or not user32.SetClipboardData(13, handle):  # CF_UNICODETEXT
+                kernel32.GlobalFree(handle)
+                return False
+            handle = None  # Clipboard owns the memory now.
+        finally:
+            user32.CloseClipboard()
+
+        hotkey("ctrl", "v", delay=0.025)
+        time.sleep(0.12)
+
+        if had_previous:
+            ole32.OleSetClipboard(previous)
+            vtable = ctypes.cast(previous, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
+            release = ctypes.WINFUNCTYPE(ctypes.c_ulong, ctypes.c_void_p)(vtable[2])
+            release(previous)
+        else:
+            if user32.OpenClipboard(None):
+                try:
+                    user32.EmptyClipboard()
+                finally:
+                    user32.CloseClipboard()
+        return True
+    except Exception:
+        return False
 
 
 def _send_unicode_char(code: int):

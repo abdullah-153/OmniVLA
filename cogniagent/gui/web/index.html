@@ -3,263 +3,170 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#08090a" />
-    <meta name="description" content="OmniVLA's supervised local desktop-agent command center." />
-    <title>OmniVLA — Command Center</title>
+    <meta name="theme-color" content="#fbfbfa" />
+    <meta name="color-scheme" content="light" />
+    <meta name="description" content="A local desktop assistant." />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/assets/icons/omnivla-mark.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/assets/app.css?v=4" />
-    <script src="/assets/app.js?v=4" defer></script>
+    <link rel="stylesheet" href="/assets/app.css?v=18" />
+    <title>OmniVLA</title>
   </head>
   <body>
-    <div class="app-shell" id="app-shell" data-run-state="idle">
-      <header class="product-bar" aria-label="Application controls">
-        <div class="bar-inner">
-          <a class="wordmark" href="#command" data-view-target="command" aria-label="OmniVLA command center">
-            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 2 22 21H2L12 2Zm0 5.1L7.2 16h9.6L12 7.1Z" /></svg>
-            <span>OmniVLA</span>
-          </a>
-          <nav class="product-nav" aria-label="Command center pages">
-            <button class="nav-link is-active" data-view-target="command" aria-current="page">Command</button>
-            <button class="nav-link" data-view-target="live">Live</button>
-            <button class="nav-link" data-view-target="history">History</button>
-            <button class="nav-link" data-view-target="safety">Safety</button>
-            <button class="nav-link" data-view-target="runtime">Runtime</button>
-          </nav>
-          <div class="bar-end">
-            <div class="titlebar-status" id="titlebar-status" aria-live="polite">
-              <span class="status-dot" data-status-dot></span>
-              <span data-status-label>Offline</span>
-            </div>
-            <div class="window-actions" aria-label="Window controls">
-              <button class="icon-button desktop-only" data-window-action="minimize" aria-label="Minimize window">−</button>
-              <button class="icon-button desktop-only" data-window-action="maximize" aria-label="Maximize window">□</button>
-              <button class="icon-button desktop-only" data-window-action="close" aria-label="Close window">×</button>
-            </div>
-          </div>
+    <svg class="icon-sprite" aria-hidden="true" focusable="false">
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></symbol>
+      <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M15 4v16" /></symbol>
+      <symbol id="i-send" viewBox="0 0 24 24"><path d="m4 4 17 8-17 8 3-8zM7 12h14" /></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7z" /></symbol>
+      <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14" /></symbol>
+      <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5" /></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" /></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 3h6l1 4H8zM7 7l1 14h8l1-14M10 11v6M14 11v6" /></symbol>
+      <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8" /><circle cx="12" cy="12" r="3" /></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M19 13.5v-3l-2.3-.8-.6-1.4 1-2.2L15 4l-2.2 1h-1.6L9 4 6.9 6.1l1 2.2-.6 1.4-2.3.8v3l2.3.8.6 1.4-1 2.2L9 20l2.2-1h1.6l2.2 1 2.1-2.1-1-2.2.6-1.4z" /></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.2 4.2L19 7" /></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2.8 20h18.4zM12 9v5M12 17.5v.1" /></symbol>
+      <symbol id="i-record" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" /></symbol>
+      <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v5h5M9 12h6M9 16h6" /></symbol>
+      <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7" /></symbol>
+      <symbol id="i-retry" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5" /><path d="M6.2 8.4A7 7 0 0 1 18.8 10M17.8 15.6A7 7 0 0 1 5.2 14" /></symbol>
+      <symbol id="i-minimize" viewBox="0 0 24 24"><path d="M6 16h12" /></symbol>
+      <symbol id="i-maximize" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1" /></symbol>
+      <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v9M7.1 5.8a8 8 0 1 0 9.8 0" /></symbol>
+      <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></symbol>
+    </svg>
+
+    <a class="skip-link" href="#workspace">Skip to conversation</a>
+    <header class="titlebar" aria-label="Application controls">
+      <div class="titlebar-drag"><span class="titlebar-mark" aria-hidden="true"><i></i><i></i></span><strong>OmniVLA</strong></div>
+      <div class="titlebar-actions">
+        <button class="quit-app" id="quit-app" type="button" title="Stop tasks, unload models, and quit"><svg><use href="#i-power" /></svg><span>Quit</span></button>
+        <button data-window-control="minimize" type="button" aria-label="Minimize"><svg><use href="#i-minimize" /></svg></button>
+        <button data-window-control="maximize" type="button" aria-label="Maximize or restore"><svg><use href="#i-maximize" /></svg></button>
+        <button class="window-close" data-window-control="close" type="button" aria-label="Close"><svg><use href="#i-close" /></svg></button>
+      </div>
+    </header>
+    <div class="app" id="app">
+      <div class="sidebar-scrim" id="sidebar-scrim" hidden></div>
+      <aside class="sidebar" id="sidebar" aria-label="Conversations">
+        <div class="sidebar-brand">
+          <button class="icon-button mobile-only" id="close-sidebar" type="button" aria-label="Close sidebar"><svg><use href="#i-close" /></svg></button>
         </div>
-      </header>
 
-      <main class="workspace" id="workspace">
-        <div class="connection-banner" id="connection-banner" hidden>
-          <div>
-            <p class="eyebrow">Paired companion</p>
-            <p>Enter the short-lived code from this desktop session.</p>
-          </div>
-          <form id="pairing-form" class="pairing-form">
-            <label class="sr-only" for="pairing-code">Pairing code</label>
-            <input id="pairing-code" name="pairing-code" autocomplete="one-time-code" placeholder="Pairing code" />
-            <button class="button button-primary" type="submit">Pair device</button>
-          </form>
+        <button class="new-chat" id="new-chat" type="button"><svg><use href="#i-plus" /></svg><span>New chat</span><kbd>Ctrl N</kbd></button>
+        <label class="chat-search"><svg><use href="#i-search" /></svg><span class="sr-only">Search chats</span><input id="chat-search" type="search" placeholder="Search chats" autocomplete="off" /></label>
+        <nav class="chat-list" id="chat-list" aria-label="Chat history"></nav>
+
+        <div class="sidebar-footer">
+          <button class="sidebar-link" id="open-skills" type="button"><svg><use href="#i-spark" /></svg><span>Skills &amp; Studio</span></button>
+          <button class="sidebar-link" id="open-settings" type="button"><svg><use href="#i-settings" /></svg><span>Settings</span></button>
+          <div class="local-state"><span class="state-dot" id="local-state-dot"></span><span id="local-state-label">Starting</span></div>
         </div>
+      </aside>
 
-        <section class="view-panel is-active command-view" id="command" data-view="command" aria-labelledby="command-title">
-          <header class="page-heading">
-            <div>
-              <p class="eyebrow">Supervised computer use / local-first</p>
-              <h1 id="command-title">Set the outcome.<br />Review the route.</h1>
+      <div class="workspace" id="workspace">
+        <section class="workspace-view is-active" data-workspace-view="chat">
+          <header class="session-header">
+            <button class="icon-button mobile-only" id="open-sidebar" type="button" aria-label="Open sidebar"><svg><use href="#i-menu" /></svg></button>
+            <div class="session-title"><strong id="session-title">New chat</strong><span id="session-status">Ready</span></div>
+            <div class="session-actions">
+              <button class="icon-button" id="retry-chat" type="button" title="Retry this task" aria-label="Retry this task"><svg><use href="#i-retry" /></svg></button>
+              <button class="icon-button" id="delete-chat" type="button" title="Delete chat" aria-label="Delete chat"><svg><use href="#i-trash" /></svg></button>
+              <button class="panel-button is-active" id="toggle-execution" type="button" aria-label="Execution details"><svg><use href="#i-panel" /></svg><span>Execution</span></button>
             </div>
-            <p class="page-lede">Compose one clear intent. OmniVLA returns a reviewable runbook before it can touch your desktop.</p>
           </header>
 
-          <section class="intent-composer focus-surface" aria-labelledby="intent-label">
-            <div class="composer-topline">
-              <label id="intent-label" for="task-input">What should OmniVLA accomplish?</label>
-              <span class="keyboard-hint">Ctrl / ⌘ + Enter</span>
-            </div>
-            <textarea id="task-input" maxlength="12000" rows="4" placeholder="Describe an outcome, not a sequence of clicks. For example: open the monthly report, extract the three latest figures, and prepare a concise summary."></textarea>
-            <div class="composer-footer">
-              <span class="composer-status"><span class="status-dot is-safe"></span><span id="composer-policy">Plan review required</span></span>
-              <div class="composer-actions">
-                <button class="text-button" data-action="use-example">Use example</button>
-                <button class="button button-primary" id="draft-plan">Draft runbook <span aria-hidden="true">↵</span></button>
+          <div class="session-layout">
+            <section class="chat-pane" aria-label="Chat">
+              <div class="chat-scroll" id="chat-scroll">
+                <div class="chat-content">
+                  <section class="chat-empty" id="chat-empty">
+                    <span class="empty-mark" aria-hidden="true"><i></i><i></i></span>
+                    <h1>What do you want to do?</h1>
+                    <p>Describe an outcome on your computer. You will review the plan before anything happens.</p>
+                    <div class="suggestions" aria-label="Examples">
+                      <button type="button" data-suggestion="Open my latest download and move it to Documents">Organize a downloaded file</button>
+                      <button type="button" data-suggestion="Open the browser and find the current time in London">Look something up</button>
+                      <button type="button" data-suggestion="Open Notepad and create a short meeting checklist">Create a quick note</button>
+                    </div>
+                  </section>
+                  <div class="conversation" id="conversation" aria-live="polite"></div>
+                </div>
               </div>
-            </div>
-          </section>
 
-          <article class="surface review-surface">
-            <div class="surface-heading">
-              <div>
-                <p class="eyebrow">Reviewed intent</p>
-                <h2>Runbook</h2>
+              <div class="composer-wrap">
+                <form class="composer" id="composer-form">
+                  <label class="sr-only" for="composer-input">Message</label>
+                  <textarea id="composer-input" rows="1" maxlength="8000" placeholder="Ask OmniVLA to do something on your computer"></textarea>
+                  <div class="composer-footer">
+                    <span class="composer-mode"><span class="state-dot"></span>Review before run</span>
+                    <span class="composer-hint" id="composer-hint">Enter to send · Shift Enter for a new line</span>
+                    <button class="send-button" id="send-message" type="submit" aria-label="Send message" disabled><svg><use href="#i-send" /></svg></button>
+                  </div>
+                </form>
               </div>
-              <span class="state-label" id="plan-state">Awaiting intent</span>
-            </div>
-            <div class="plan-content" id="plan-content">
-              <div class="empty-state">
-                <span class="empty-mark" aria-hidden="true">△</span>
-                <p>Draft a plan to see scope, expected actions, and any safety checks before execution begins.</p>
+            </section>
+
+            <aside class="execution-panel" id="execution-panel" aria-label="Execution details">
+              <header class="panel-header"><div><strong>Execution</strong><span id="execution-subtitle">Nothing to run</span></div><button class="icon-button panel-close" id="close-execution" type="button" aria-label="Close execution panel"><svg><use href="#i-close" /></svg></button></header>
+              <div class="execution-scroll">
+                <section class="execution-summary" id="execution-summary"></section>
+                <section class="approval" id="approval" hidden>
+                  <div class="section-heading"><h2>Plan</h2><span id="risk-badge">Ready</span></div>
+                  <div class="plan-copy" id="plan-copy"></div>
+                  <label class="risk-ack" id="risk-ack-wrap" hidden><input id="risk-ack" type="checkbox" /><span><strong>Review required</strong><small id="risk-copy"></small></span></label>
+                  <button class="run-button" id="run-plan" type="button"><svg><use href="#i-play" /></svg><span>Run</span></button>
+                </section>
+                <section class="operator-request" id="operator-request" hidden>
+                  <svg><use href="#i-alert" /></svg><div><strong>Input needed</strong><p id="operator-question"></p><form id="operator-form"><input id="operator-input" maxlength="2000" placeholder="Type your response" /><button type="submit">Send</button></form></div>
+                </section>
+                <section class="screen-evidence" id="screen-evidence" hidden><div class="section-heading"><h2>Latest screen</h2><span id="screen-step"></span></div><div class="screen-thumb"><img id="latest-screen" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="Latest screen used for this execution" /></div></section>
+                <section class="activity-section"><div class="section-heading"><h2>Activity</h2><span id="activity-count">0 actions</span></div><ol class="activity-list" id="activity-list"></ol><p class="panel-empty" id="activity-empty">Actions will appear here after the task starts.</p></section>
               </div>
-            </div>
-            <footer class="plan-footer" id="plan-footer" hidden>
-              <span class="risk-summary" id="risk-summary"></span>
-              <div class="plan-actions">
-                <button class="button button-ghost" data-view-target="live">Open live view</button>
-                <button class="button button-commit" id="approve-plan">Approve &amp; execute</button>
-              </div>
-            </footer>
-          </article>
-
-          <footer class="page-footnote">
-            <button class="text-button" data-action="open-safety">Review control policy <span aria-hidden="true">→</span></button>
-            <button class="button button-ghost" id="install-app" hidden>Install companion</button>
-          </footer>
-        </section>
-
-        <section class="view-panel live-view" id="live" data-view="live" aria-labelledby="live-title">
-          <header class="page-heading page-heading--inline">
-            <div>
-              <p class="eyebrow">Only evidence in motion</p>
-              <h1 id="live-title">Live execution.</h1>
-            </div>
-            <p class="page-lede">The agent’s current action, screen evidence, and verified trace stay together—without crowding planning or runtime configuration.</p>
-          </header>
-
-          <section class="live-command surface" aria-label="Current execution status">
-            <div class="surface-heading">
-              <div>
-                <p class="eyebrow">Current run</p>
-                <h2>Execution signal</h2>
-              </div>
-              <span class="live-pulse" id="live-pulse"><i></i> Ready</span>
-            </div>
-            <div class="metric-rack">
-              <div class="metric"><span>State</span><strong id="metric-status">Idle</strong></div>
-              <div class="metric"><span>Recorded actions</span><strong id="metric-step">—</strong></div>
-              <div class="metric"><span>Last cycle</span><strong id="metric-latency">—</strong></div>
-              <div class="metric"><span>Model</span><strong id="metric-model">Local</strong></div>
-            </div>
-            <div class="active-action" id="active-action">
-              <span class="active-marker">△</span>
-              <p>Ready for a reviewed task.</p>
-            </div>
-            <div class="control-strip">
-              <button class="button button-ghost" data-action="toggle-pause" id="pause-button" disabled>Pause</button>
-              <button class="button button-ghost" data-action="reexecute" id="retry-button" disabled>Prepare retry</button>
-              <button class="button button-danger" data-action="stop" id="stop-button" disabled>Stop run</button>
-            </div>
-          </section>
-
-          <section class="live-evidence">
-            <article class="surface screen-surface">
-              <div class="surface-heading">
-                <div><p class="eyebrow">Live canvas</p><h2>Newest observation</h2></div>
-                <span class="canvas-status" id="canvas-status">No capture</span>
-              </div>
-              <button class="screen-frame" id="screen-frame" data-action="open-screen" aria-label="Open latest screen capture">
-                <span class="screen-empty" id="screen-empty"><i>△</i> The current desktop capture appears here during a run.</span>
-                <img id="screen-image" alt="Latest agent screen capture" hidden />
-              </button>
-            </article>
-            <article class="surface trace-surface">
-              <div class="surface-heading">
-                <div><p class="eyebrow">Observed trace</p><h2>Actual actions</h2></div>
-                <button class="text-button" data-view-target="history">History <span aria-hidden="true">→</span></button>
-              </div>
-              <div class="execution-timeline" id="execution-timeline">
-                <div class="timeline-empty">Execution actions will appear here as the agent works.</div>
-              </div>
-            </article>
-          </section>
-
-          <section class="intervention-section surface" id="intervention-section" hidden>
-            <div class="surface-heading"><div><p class="eyebrow">Human authority required</p><h2>Continue with direction</h2></div><span class="request-status">Waiting</span></div>
-            <p id="intervention-question"></p>
-            <label class="sr-only" for="intervention-input">Your response</label>
-            <textarea id="intervention-input" rows="3" maxlength="2000" placeholder="Type an instruction, resolve the screen, or confirm when ready…"></textarea>
-            <button class="button button-primary" data-action="submit-intervention">Continue run</button>
-          </section>
-        </section>
-
-        <section class="view-panel history-view" id="history" data-view="history" aria-labelledby="history-title">
-          <header class="page-heading page-heading--inline">
-            <div><p class="eyebrow">Run record / local only</p><h1 id="history-title">Review, don’t relive.</h1></div>
-            <button class="button button-ghost" data-action="refresh">Refresh</button>
-          </header>
-
-          <section class="history-stack">
-            <article class="surface run-library">
-              <div class="surface-heading"><div><p class="eyebrow">Saved runs</p><h2>Choose a workspace</h2></div><button class="text-icon" data-action="new-chat">+ New run</button></div>
-              <div class="conversation-list" id="conversation-list"></div>
-            </article>
-            <article class="surface audit-card">
-              <div class="surface-heading"><div><p class="eyebrow">Operator journal</p><h2>Control-plane events</h2></div><span class="state-label">Last 120</span></div>
-              <ol class="audit-list" id="audit-list"></ol>
-            </article>
-            <article class="surface console-card">
-              <div class="surface-heading"><div><p class="eyebrow">Runtime stream</p><h2>System signals</h2></div><button class="text-button" data-action="copy-logs">Copy</button></div>
-              <pre class="console-output" id="console-output">Waiting for diagnostics…</pre>
-            </article>
-          </section>
-        </section>
-
-        <section class="view-panel safety-view" id="safety" data-view="safety" aria-labelledby="safety-title">
-          <header class="page-heading">
-            <div><p class="eyebrow">Human authority stays explicit</p><h1 id="safety-title">Bound autonomy<br />before it starts.</h1></div>
-            <p class="page-lede">Safety decisions are intentional settings, not hidden defaults in the execution view.</p>
-          </header>
-          <div class="two-column-layout">
-            <article class="surface policy-card">
-              <div class="surface-heading"><div><p class="eyebrow">Execution policy</p><h2>Control boundary</h2></div><span class="state-label" id="policy-state">Supervised</span></div>
-              <fieldset class="policy-options" id="policy-options">
-                <legend class="sr-only">Execution mode</legend>
-                <label class="policy-option"><input type="radio" name="safety-mode" value="supervised" checked /><span><strong>Supervised</strong><small>Every runbook needs operator approval. High-impact intent adds an acknowledgement.</small></span></label>
-                <label class="policy-option"><input type="radio" name="safety-mode" value="autonomous" /><span><strong>Autonomous within a reviewed run</strong><small>The reviewed scope remains visible; the agent stops at safety and human-input gates.</small></span></label>
-              </fieldset>
-              <label class="toggle-row"><span><strong>Require plan approval</strong><small>Keep a human decision before execution.</small></span><input id="require-approval" type="checkbox" checked /></label>
-              <label class="toggle-row"><span><strong>Enable paired mobile control</strong><small>Permit a paired companion to request controls on this LAN.</small></span><input id="remote-control" type="checkbox" /></label>
-              <div class="policy-actions"><button class="button button-primary" id="save-policy">Save policy</button></div>
-            </article>
-            <article class="surface pairing-card">
-              <div class="surface-heading"><div><p class="eyebrow">Second screen</p><h2>Pair a companion</h2></div><span class="state-label" id="pairing-state">Local only</span></div>
-              <p class="card-copy">A short-lived pairing code lives only in memory. The desktop remains the authority for policy, approval, and remote controls.</p>
-              <div class="pairing-code-wrap" id="pairing-code-wrap"><span class="pairing-code" id="pairing-token">••••••••••</span><button class="text-button" data-action="copy-pairing">Copy code</button></div>
-              <dl class="pairing-details"><div><dt>Address</dt><dd id="pairing-address">Start with local mode</dd></div><div><dt>Expires</dt><dd id="pairing-expiry">—</dd></div></dl>
-              <div class="pairing-actions"><button class="button button-ghost" data-action="rotate-pairing">Rotate code</button></div>
-            </article>
+              <footer class="execution-controls" id="execution-controls" hidden><button id="pause-run" type="button"><svg><use href="#i-pause" /></svg><span>Pause</span></button><button class="stop-button" id="stop-run" type="button"><svg><use href="#i-stop" /></svg><span>Stop</span></button></footer>
+            </aside>
           </div>
         </section>
 
-        <section class="view-panel runtime-view" id="runtime" data-view="runtime" aria-labelledby="runtime-title">
-          <header class="page-heading">
-            <div><p class="eyebrow">Local model orchestration</p><h1 id="runtime-title">Tune the runtime,<br />not the guardrails.</h1></div>
-            <p class="page-lede">The 6 GB performance profile stays observable and intentionally separate from task control.</p>
-          </header>
-          <form class="settings-form surface" id="settings-form">
-            <div class="surface-heading"><div><p class="eyebrow">Execution environment</p><h2>Model and run settings</h2></div><span class="state-label">Applies next run</span></div>
-            <div class="form-grid">
-              <label><span>Model provider</span><select id="setting-model-type" name="model_type"><option value="local">Local llama.cpp</option><option value="openai">OpenAI-compatible</option><option value="anthropic">Anthropic-compatible</option></select></label>
-              <label><span>Temperature</span><input id="setting-temperature" name="temperature" type="number" min="0" max="2" step="0.1" /></label>
-              <label class="span-2"><span id="setting-model-label">Model file</span><input id="setting-model-path" name="model_path" type="text" maxlength="512" placeholder="models/your-vision-model.gguf" /></label>
-              <label><span>Step budget</span><input id="setting-max-steps" name="max_steps" type="number" min="1" max="100" step="1" /></label>
-              <label class="check-field"><input id="setting-recording" name="enable_recording" type="checkbox" /><span><strong>Record execution</strong><small>Save an optional local run recording.</small></span></label>
-              <label class="span-2"><span>Provider API key <em>runtime only — never persisted</em></span><input id="setting-api-key" name="api_key" type="password" autocomplete="off" placeholder="Optional for hosted providers" /></label>
-            </div>
-            <div class="settings-footer"><p class="form-note">Local Holo runs use the 6 GB performance profile: one VLA slot, compact context, and a CPU critic.</p><button class="button button-primary" type="submit">Save environment</button></div>
-          </form>
-          <section class="runtime-health surface" aria-labelledby="runtime-health-title">
-            <div class="surface-heading"><div><p class="eyebrow">Runtime health</p><h2 id="runtime-health-title">Inference lane</h2></div><span id="health-state">Checking</span></div>
-            <dl class="health-grid"><div><dt>Free VRAM</dt><dd id="health-vram">—</dd></div><div><dt>VLA layers</dt><dd id="health-layers">—</dd></div><div><dt>Critic service</dt><dd id="health-planner">—</dd></div><div><dt>Critic review</dt><dd id="health-critic">—</dd></div></dl>
-            <button class="text-button" data-action="clear-vram">Recycle VLA memory <span aria-hidden="true">→</span></button>
-          </section>
-        </section>
-      </main>
+        <section class="workspace-view utility-view" data-workspace-view="skills" aria-labelledby="skills-title">
+          <header class="utility-header"><div><button class="icon-button back-to-chat" type="button" aria-label="Back to chat"><svg><use href="#i-back" /></svg></button><h1 id="skills-title">Skills &amp; Studio</h1></div><button class="secondary-button" id="new-skill" type="button"><svg><use href="#i-plus" /></svg><span>New skill</span></button></header>
+          <div class="utility-tabs" role="tablist" aria-label="Skill tools"><button class="is-active" data-skill-tab="library" type="button">Library</button><button data-skill-tab="teach" type="button">Studio</button><button data-skill-tab="editor" type="button">Markdown</button></div>
 
-      <nav class="mobile-nav" aria-label="Mobile navigation">
-        <button class="is-active" data-view-target="command"><span>⌘</span><small>Command</small></button>
-        <button data-view-target="live"><span>◉</span><small>Live</small></button>
-        <button data-view-target="history"><span>↗</span><small>History</small></button>
-        <button data-view-target="safety"><span>◎</span><small>Safety</small></button>
-        <button data-view-target="runtime"><span>◌</span><small>Runtime</small></button>
-      </nav>
+          <div class="skill-view is-active" data-skill-view="library">
+            <label class="utility-search"><svg><use href="#i-search" /></svg><span class="sr-only">Search skills</span><input id="skill-search" type="search" placeholder="Search skills" /></label>
+            <div class="skill-list" id="skill-list"></div>
+          </div>
+
+          <div class="skill-view" data-skill-view="editor">
+            <div class="skill-editor-layout">
+              <section class="import-zone" id="import-zone"><svg><use href="#i-file" /></svg><h2>Import Markdown</h2><p>Drop a <code>.md</code>, <code>.markdown</code>, or <code>.mds</code> file here.</p><label class="secondary-button file-button"><input id="skill-file" type="file" accept=".md,.markdown,.mds,text/markdown" /><span>Choose file</span></label></section>
+              <form class="skill-editor" id="skill-editor"><div class="section-heading"><h2 id="skill-editor-title">New skill</h2><span id="skill-save-state"></span></div><label for="skill-markdown">Markdown</label><textarea id="skill-markdown" spellcheck="false" maxlength="48000"></textarea><div class="editor-actions"><button class="danger-text" id="delete-skill" type="button" hidden>Delete</button><span></span><button class="secondary-button" id="reset-skill" type="button">Reset</button><button class="primary-button" type="submit">Save skill</button></div></form>
+            </div>
+          </div>
+
+          <div class="skill-view" data-skill-view="teach">
+            <div class="teach-layout">
+              <section class="teach-intro"><h2>Skill Studio</h2><p>Demonstrate a workflow once. Studio studies the visible states and action sequence, removes private typed values, and creates adaptable guidance—not a coordinate macro.</p><label class="field"><span>What should this skill accomplish?</span><input id="teach-goal" maxlength="500" placeholder="For example: Find an order in the support portal" /></label><button class="record-button" id="toggle-recording" type="button" disabled><svg><use href="#i-record" /></svg><span>Start demonstration</span></button><div class="recording-status" id="recording-status" hidden><span class="recording-dot"></span><div><strong>Learning</strong><small id="recording-time">0:00</small></div><p>Complete the workflow, then return and stop.</p></div></section>
+              <section class="teach-result"><div class="section-heading"><h2>Observed actions</h2><span id="captured-count">0</span></div><div class="captured-list" id="captured-list"><p class="panel-empty">Visible actions will appear here after the demonstration.</p></div><div class="create-from-demo" id="create-from-demo" hidden><label class="field"><span>Skill name</span><input id="taught-skill-name" maxlength="64" placeholder="Optional name" /></label><button class="primary-button" id="create-taught-skill" type="button">Build intelligent skill</button></div></section>
+            </div>
+          </div>
+        </section>
+
+        <section class="workspace-view utility-view" data-workspace-view="settings" aria-labelledby="settings-title">
+          <header class="utility-header"><div><button class="icon-button back-to-chat" type="button" aria-label="Back to chat"><svg><use href="#i-back" /></svg></button><h1 id="settings-title">Settings</h1></div></header>
+          <form class="settings-form" id="settings-form">
+            <section class="settings-section"><div><h2>Execution</h2><p>Choose when tasks may begin and keep them bounded.</p></div><div class="settings-fields"><label class="select-field"><span>Before a task starts</span><select id="safety-mode"><option value="supervised">Review the plan</option><option value="autonomous">Start immediately</option></select></label><label class="select-field"><span>Maximum actions per task</span><input id="max-steps" type="number" min="1" max="100" /></label><label class="toggle-row"><span><strong>Require plan approval</strong><small>Review every plan before the first action.</small></span><input id="require-plan-approval" type="checkbox" /></label></div></section>
+            <section class="settings-section"><div><h2>Privacy</h2><p>Choose what this device keeps after a task finishes.</p></div><div class="settings-fields"><label class="toggle-row"><span><strong>Conversation recall</strong><small>Use redacted local history to help with later chats.</small></span><input id="memory-enabled" type="checkbox" /></label><label class="toggle-row"><span><strong>Record execution video</strong><small>Save a local video of each task. Off by default.</small></span><input id="enable-recording" type="checkbox" /></label><button class="danger-button" id="clear-memory" type="button">Clear conversation recall</button></div></section>
+            <section class="settings-section"><div><h2>App health</h2><p>Work stays on this computer. Restart OmniVLA only if tasks stop responding.</p></div><div class="settings-fields"><div class="service-state"><span class="state-dot" id="settings-service-dot"></span><strong id="settings-service-label">Checking</strong></div><button class="secondary-button" id="restart-models" type="button"><svg><use href="#i-retry" /></svg><span>Restart OmniVLA</span></button></div></section>
+            <div class="settings-save"><span id="settings-save-state"></span><button class="primary-button" type="submit">Save settings</button></div>
+          </form>
+        </section>
+      </div>
     </div>
 
-    <dialog class="modal" id="approval-dialog" aria-labelledby="approval-title">
-      <form method="dialog" class="modal-card"><p class="eyebrow">Final confirmation</p><h2 id="approval-title">Approve this run?</h2><p id="approval-copy">OmniVLA will begin executing the reviewed plan on this desktop.</p><ul class="risk-list" id="approval-risks"></ul><div class="modal-actions"><button class="button button-ghost" value="cancel">Cancel</button><button class="button button-primary" id="confirm-approval" value="confirm">Approve &amp; execute</button></div></form>
-    </dialog>
-    <dialog class="modal image-modal" id="screen-dialog" aria-labelledby="screen-dialog-title">
-      <form method="dialog" class="modal-card image-modal-card"><div class="modal-title-row"><h2 id="screen-dialog-title">Live capture</h2><button class="icon-button" value="cancel" aria-label="Close capture">×</button></div><img id="screen-dialog-image" alt="Expanded latest agent screen capture" /></form>
-    </dialog>
-    <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
+    <div class="toast-region" id="toast-region" aria-live="polite"></div>
+    <div class="chat-menu" id="chat-menu" hidden><button id="menu-delete-chat" type="button"><svg><use href="#i-trash" /></svg><span>Delete chat</span></button></div>
+    <script src="/assets/app.js?v=18" defer></script>
   </body>
 </html>

@@ -1,9 +1,10 @@
 const shell = document.querySelector("#execution-shell");
 const beacon = document.querySelector("#run-beacon");
-const stateLabel = document.querySelector("#beacon-state");
-const phaseLabel = document.querySelector("#phase-label");
+const beaconToggle = document.querySelector("#beacon-toggle");
 const actionText = document.querySelector("#action-text");
+const capsuleActionText = document.querySelector("#capsule-action-text");
 const traceList = document.querySelector("#trace-list");
+
 const traceCount = document.querySelector("#trace-count");
 const hitlPanel = document.querySelector("#hitl-panel");
 const hitlQuestion = document.querySelector("#hitl-question");
@@ -11,8 +12,10 @@ const hitlInput = document.querySelector("#hitl-input");
 const hitlSubmit = document.querySelector("#hitl-submit");
 const pauseButton = document.querySelector("#pause-button");
 const stopButton = document.querySelector("#stop-button");
-const modelLabel = document.querySelector("#model-label");
+const closeButton = document.querySelector("#beacon-close-btn");
 const phaseDuration = document.querySelector("#phase-duration");
+
+
 
 let paused = false;
 let requestInFlight = false;
@@ -23,19 +26,28 @@ let phaseTimer = null;
 const WORKING_STATES = new Set(["thinking", "acting", "verifying", "hitl", "queued", "stopping", "paused"]);
 
 const phaseCopy = {
-  thinking: "Reading the current desktop context",
-  acting: "Sending the selected native input",
-  verifying: "Checking the screen outcome",
-  hitl: "Waiting for the operator",
-  paused: "Execution is paused",
-  stopping: "Stopping at a safe boundary",
-  done: "Run completed",
-  failed: "Run needs review",
-  error: "Runtime needs attention",
+  thinking: "Reading the screen",
+  acting: "Taking the next action",
+  verifying: "Checking the result",
+  hitl: "Input needed",
+  paused: "Paused",
+  stopping: "Stopping",
+  done: "Completed",
+  failed: "Needs attention",
+  error: "Needs attention",
 };
 
-const api = (path, options = {}) =>
-  fetch("http://127.0.0.1:8000" + path, { cache: "no-store", ...options });
+const api = (path, options = {}) => {
+  const headers = new Headers(options.headers || {});
+  if (options.body !== undefined && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  return fetch("http://127.0.0.1:8000" + path, {
+    cache: "no-store",
+    ...options,
+    headers,
+  });
+};
 
 const setInteractive = (enabled) => {
   if (window.overlayAPI) window.overlayAPI.setIgnoreMouseEvents(!enabled, !enabled);
@@ -91,14 +103,14 @@ const renderTrace = (data, phase) => {
   traceList.replaceChildren();
   const steps = Array.isArray(data.steps) ? data.steps.slice(-3) : [];
   const knownActions = steps
-    .map((step) => String(step.action || "").trim())
+    .map((step) => String(step.action_text || step.output || "Action completed").trim())
     .filter(Boolean);
   knownActions.forEach((action) => appendTrace(action));
 
   if (WORKING_STATES.has(phase)) {
     appendTrace(data.current_action || phaseCopy[phase] || "Working locally", true);
   }
-  if (!traceList.children.length) appendTrace("Waiting for the first observed action");
+  if (!traceList.children.length) appendTrace("Waiting for the first action");
 
   const completed = Array.isArray(data.steps) ? data.steps.length : 0;
   traceCount.textContent = completed ? String(completed) + " recorded" : "No actions yet";
@@ -108,19 +120,27 @@ const renderStatus = (data) => {
   const phase = activePhase(data);
   const active = WORKING_STATES.has(phase) || WORKING_STATES.has(data.status);
 
+  const previousPhase = shell.dataset.tone;
   shell.classList.toggle("is-visible", active);
   shell.dataset.tone = phase;
+  if (active && previousPhase !== phase) {
+    shell.classList.remove("phase-shift");
+    void shell.offsetWidth;
+    shell.classList.add("phase-shift");
+    window.setTimeout(() => shell.classList.remove("phase-shift"), 500);
+  }
+  if (!active) {
+    beacon.classList.remove("is-expanded");
+    beaconToggle.setAttribute("aria-expanded", "false");
+  }
   syncPhaseClock(phase, data.phase_started_at, active);
   paused = Boolean(data.paused);
-  stateLabel.textContent = toTitleCase(phase);
-  phaseLabel.textContent = phaseCopy[phase] || "Preparing local execution";
-  actionText.textContent = data.current_action || "Working on the reviewed runbook.";
-  const lastCycle = Number(data.timing?.last_step_ms);
-  const cycleCopy = Number.isFinite(lastCycle) && lastCycle > 0 ? " / " + formatElapsed(lastCycle / 1000) + " cycle" : " / local control";
-  modelLabel.textContent = (data.settings?.model_type || "local").toUpperCase() + cycleCopy;
+  actionText.textContent = data.current_action || phaseCopy[phase] || "Working";
+  if (capsuleActionText) capsuleActionText.textContent = data.current_action || phaseCopy[phase] || "Working";
   pauseButton.textContent = paused ? "Resume" : "Pause";
 
   renderTrace(data, phase);
+
 
   const needsHitl = phase === "hitl" || data.status === "hitl";
   hitlPanel.hidden = !needsHitl;
@@ -151,7 +171,14 @@ const submitHitl = () => {
 beacon.addEventListener("mouseenter", () => setInteractive(true));
 beacon.addEventListener("mouseleave", () => {
   if (!hitlPanel.hidden) return;
+  beacon.classList.remove("is-expanded");
+  beaconToggle.setAttribute("aria-expanded", "false");
   setInteractive(false);
+});
+
+beaconToggle.addEventListener("click", () => {
+  const expanded = beacon.classList.toggle("is-expanded");
+  beaconToggle.setAttribute("aria-expanded", String(expanded));
 });
 
 pauseButton.addEventListener("click", () => {
@@ -161,6 +188,17 @@ pauseButton.addEventListener("click", () => {
 stopButton.addEventListener("click", () => {
   api("/api/stop", { method: "POST", body: "{}" }).catch(() => undefined);
 });
+
+if (closeButton) {
+  closeButton.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (confirm("Quit OmniVLA and stop the current task?")) {
+      api("/api/shutdown", { method: "POST", body: "{}" }).catch(() => undefined);
+      window.close();
+    }
+  });
+}
+
 
 hitlSubmit.addEventListener("click", submitHitl);
 hitlInput.addEventListener("keydown", (event) => {
@@ -175,7 +213,10 @@ const pollStatus = async () => {
     requestInFlight = true;
     try {
       const response = await api("/api/status");
-      if (response.ok) renderStatus(await response.json());
+      if (response.ok) {
+        const payload = await response.json();
+        renderStatus(payload.execution_live || payload);
+      }
     } catch {
       // The overlay simply stays quiet while the local command center restarts.
     } finally {

@@ -1,4 +1,5 @@
 import sys
+import types
 
 # 1. Mock missing modules and chromadb before they can be imported
 import tests.mocks.mock_states as mock_states
@@ -20,9 +21,31 @@ import tests.mocks.mock_ctypes as mock_ctypes
 mock_ctypes.patch_ctypes()
 
 # 3. Mock mss.mss
-import mss
 import tests.mocks.mock_screen as mock_screen
-mss.mss = mock_screen.mock_mss_factory
+try:
+    import mss
+    mss.mss = mock_screen.mock_mss_factory
+except ImportError:
+    fake_mss = types.ModuleType("mss")
+    fake_mss.mss = mock_screen.mock_mss_factory
+    sys.modules['mss'] = fake_mss
+    sys.modules['mss.tools'] = types.ModuleType("mss.tools")
+
+# 3b. Mock openai
+try:
+    import openai
+except ImportError:
+    import tests.mocks.mock_openai as mock_openai
+    sys.modules['openai'] = mock_openai
+
+# 3c. Mock cv2
+try:
+    import cv2
+except ImportError:
+    fake_cv2 = types.ModuleType("cv2")
+    sys.modules['cv2'] = fake_cv2
+
+
 
 # 4. Optional: Pytest fixtures
 try:
@@ -47,3 +70,4 @@ def pytest_sessionstart(session):
 def pytest_sessionfinish(session, exitstatus):
     from tests.mocks.mock_llama_server import stop_shared_server
     stop_shared_server()
+

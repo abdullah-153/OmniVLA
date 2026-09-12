@@ -79,10 +79,13 @@ class TestF2Brain(unittest.TestCase):
         requests = self.server.get_requests()
         system_msg = requests[0]["messages"][0]["content"]
         
-        # Check system message has schema rules
-        self.assertIn("note", system_msg)
-        self.assertIn("thought", system_msg)
-        self.assertIn("tool_call", system_msg)
+        # The model receives native tool schemas rather than a fragile JSON
+        # envelope embedded in prose.
+        self.assertIn("call exactly one native tool", system_msg)
+        self.assertIn("tools", requests[0])
+        tool_names = {tool["function"]["name"] for tool in requests[0]["tools"]}
+        self.assertIn("click", tool_names)
+        self.assertIn("terminate", tool_names)
 
     def test_t1_f2_04_successful_structured_output_parse(self):
         """TC-T1-F2-04: Successful Structured Output Parse"""
@@ -157,6 +160,28 @@ class TestF2Brain(unittest.TestCase):
         # Should fail validation on all attempts and return None
         res = vlm.reason("Click button", [])
         self.assertIsNone(res)
+
+    def test_flat_local_tool_shape_is_normalized_then_validated(self):
+        from cogniagent.perception.vlm_engine import parse_vlm_output
+
+        result = parse_vlm_output(
+            '{"tool_call":"key_press","args":{"key":"win"},"note":"Opening search."}'
+        )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["tool_call"], {"tool_name": "key_press", "key": "win"})
+
+    def test_flat_local_tool_shape_still_fails_when_arguments_are_missing(self):
+        from cogniagent.perception.vlm_engine import parse_vlm_output
+
+        self.assertIsNone(parse_vlm_output('{"tool_call":"click","note":null}'))
+
+    def test_semantic_open_app_action_is_schema_valid(self):
+        from cogniagent.perception.vlm_engine import parse_vlm_output
+
+        result = parse_vlm_output('{"tool_call":{"tool_name":"open_app","app_name":"Notepad"}}')
+
+        self.assertEqual(result["tool_call"], {"tool_name": "open_app", "app_name": "Notepad"})
 
     def test_t2_f2_03_eviction_logic_on_non_image_payloads(self):
         """TC-T2-F2-03: Eviction Logic on Non-Image Payloads"""

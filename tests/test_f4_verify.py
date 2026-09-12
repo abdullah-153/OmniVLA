@@ -46,23 +46,39 @@ class TestF4Verify(unittest.TestCase):
         self.assertTrue(res["changed"])
         self.assertEqual(res["description"], "Minor change (tooltip, cursor, highlight)")
 
-    def test_t1_f4_04_semantic_verification_success_scenario(self):
-        """TC-T1-F4-04: Semantic Verification Success Scenario"""
-        old_state = SemanticState(elements=[UIElement("File")])
-        new_state = SemanticState(elements=[UIElement("File"), UIElement("Save As")])
-        action = AgentAction(action_type="click", thought="Open the file menu")
+    def test_t1_f4_04_visual_stagnation_failure_detection(self):
+        """TC-T1-F4-04: Visual Stagnation Failure Detection"""
+        diff_res = {"changed": False, "diff_ratio": 0.0}
+        action = AgentAction(action_type="click", thought="Click the submit button")
         
-        success = self.verifier.verify_semantically(old_state, new_state, action)
-        self.assertTrue(success)
+        fail_reason = self.verifier.detect_failure(diff_res, action=action)
+        self.assertEqual(fail_reason, "No visible screen change after action")
 
-    def test_t1_f4_05_semantic_state_stagnation_scenario(self):
-        """TC-T1-F4-05: Semantic State Stagnation Scenario"""
-        old_state = SemanticState(elements=[UIElement("File")])
-        new_state = SemanticState(elements=[UIElement("File")])
-        action = AgentAction(action_type="click", thought="Open the file menu")
+    def test_t1_f4_05_visual_success_no_failure(self):
+        """TC-T1-F4-05: Visual Change Verified Success"""
+        diff_res = {"changed": True, "diff_ratio": 0.25}
+        action = AgentAction(action_type="click", thought="Click the menu")
         
-        success = self.verifier.verify_semantically(old_state, new_state, action)
-        self.assertFalse(success)
+        fail_reason = self.verifier.detect_failure(diff_res, action=action)
+        self.assertIsNone(fail_reason)
+
+    def test_focus_change_verifies_a_visually_static_click(self):
+        diff_res = {"changed": False, "diff_ratio": 0.0}
+        action = AgentAction(action_type="click", thought="Focus the editor")
+
+        fail_reason = self.verifier.detect_failure(
+            diff_res,
+            action=action,
+            execution_result={"focus_changed": True},
+        )
+
+        self.assertIsNone(fail_reason)
+
+    def test_small_text_delta_is_verified_below_navigation_threshold(self):
+        diff_res = {"changed": False, "diff_ratio": 0.0002}
+        action = AgentAction(action_type="type", thought="Enter text")
+
+        self.assertIsNone(self.verifier.detect_failure(diff_res, action=action))
 
     def test_t2_f4_01_invalid_image_dimensions_to_verifier(self):
         """TC-T2-F4-01: Invalid Image Dimensions to Verifier"""
@@ -99,36 +115,11 @@ class TestF4Verify(unittest.TestCase):
     def test_t2_f4_03_verification_skip_on_special_tool_actions(self):
         """TC-T2-F4-03: Verification Skip on Special Tool Actions"""
         diff_res = {"changed": False}
-        old_state = SemanticState()
-        new_state = SemanticState()
-        
         action_wait = AgentAction(action_type="wait")
-        fail_reason = self.verifier.detect_failure(diff_res, old_state, new_state, action_wait)
+        fail_reason = self.verifier.detect_failure(diff_res, action=action_wait)
         # For "wait" action type, no visible screen change should NOT flag failure
         self.assertIsNone(fail_reason)
 
-    def test_t2_f4_04_multi_threaded_state_extraction_race_interception(self):
-        """TC-T2-F4-04: Multi-Threaded State Extraction Race Interception"""
-        state = SemanticState()
-        
-        def updater():
-            for i in range(100):
-                state.elements.append(UIElement(f"Element {i}"))
-                time.sleep(0.001)
-                
-        def reader():
-            for _ in range(100):
-                _ = len(state.elements)
-                time.sleep(0.001)
-                
-        t1 = threading.Thread(target=updater)
-        t2 = threading.Thread(target=reader)
-        t1.start()
-        t2.start()
-        t1.join()
-        t2.join()
-        # Asserts no crashes occurred during concurrent access
-        self.assertEqual(len(state.elements), 100)
 
     def test_t2_f4_05_backtracking_trajectory_persistence(self):
         """TC-T2-F4-05: Backtracking Trajectory Persistence"""

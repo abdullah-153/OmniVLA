@@ -11,8 +11,6 @@ from collections import defaultdict, Counter
 from dataclasses import dataclass
 from typing import Optional, List
 
-import chromadb
-
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -50,12 +48,16 @@ class EpisodicMemory:
     
     def __init__(self, config):
         self.config = config
-        self._available = True
+        self._available = bool(getattr(config.memory, "enabled", True))
+        if not self._available:
+            logger.info("Episodic Memory is disabled by local privacy settings.")
+            return
         try:
+            import chromadb
             from chromadb.config import Settings
             # Persistent storage in ./omnivla_memory_v2/
             self.client = chromadb.PersistentClient(
-                path="./omnivla_memory_v2",
+                path=getattr(config.memory, "db_path", "./omnivla_memory_v2"),
                 settings=Settings(anonymized_telemetry=False)
             )
             self._collection = self.client.get_or_create_collection(name="episodes")
@@ -206,3 +208,32 @@ class EpisodicMemory:
             logger.error(f"Failed to recall trajectory: {e}")
             
         return None
+
+
+def clear_local_memory(storage_dir: str = "./omnivla_memory_v2") -> int:
+    """Clear OmniVLA recall collections and its flat chat index."""
+    removed = 0
+    try:
+        import chromadb
+        from chromadb.config import Settings
+        client = chromadb.PersistentClient(
+            path=storage_dir,
+            settings=Settings(anonymized_telemetry=False),
+        )
+        existing = {collection.name for collection in client.list_collections()}
+        for name in ("episodes", "trajectories"):
+            if name in existing:
+                client.delete_collection(name)
+                removed += 1
+    except Exception as error:
+        logger.warning("Unable to clear one or more Chroma collections: %s", error)
+
+    for filename in (
+        "chat_rag_store.json", "chat_rag_store.json.migrated", "chat_recall.sqlite3",
+        "chat_recall.sqlite3-wal", "chat_recall.sqlite3-shm",
+    ):
+        chat_index = os.path.join(storage_dir, filename)
+        if os.path.isfile(chat_index):
+            os.remove(chat_index)
+            removed += 1
+    return removed

@@ -1,6 +1,7 @@
 import unittest
 import os
 import sys
+from unittest.mock import patch
 
 import tests.conftest
 tests.conftest.init_mocks()
@@ -79,7 +80,8 @@ class TestF3Input(unittest.TestCase):
             }
         }
         
-        router.execute_vlm_action(vlm_result, (1920, 1080))
+        with patch.object(win32_input, "paste_text_preserving_clipboard", return_value=False):
+            router.execute_vlm_action(vlm_result, (1920, 1080))
         
         # Verify keyboard unicode events were sent for T, e, s, t
         kb_events = [ev for ev in registry.send_input_events if ev["type"] == "keyboard"]
@@ -92,6 +94,23 @@ class TestF3Input(unittest.TestCase):
         self.assertIn(ord('s'), scan_codes)
         self.assertIn(ord('t'), scan_codes)
 
+    def test_exact_paste_transport_is_preferred_for_text(self):
+        router = ActionRouter(config)
+        payload = {
+            "action_desp": "type",
+            "parsed_action": {"tool_name": "type", "text": "exact text", "submit": False},
+        }
+
+        with (
+            patch.object(win32_input, "paste_text_preserving_clipboard", return_value=True) as paste,
+            patch.object(win32_input, "type_text") as fallback,
+        ):
+            result = router.execute_vlm_action(payload, (1920, 1080))
+
+        self.assertTrue(result["success"])
+        paste.assert_called_once_with("exact text")
+        fallback.assert_not_called()
+
     def test_t1_f3_04_native_key_press_event_generation(self):
         """TC-T1-F3-04: Native Key Press Event Generation"""
         router = ActionRouter(config)
@@ -103,7 +122,8 @@ class TestF3Input(unittest.TestCase):
             }
         }
         
-        router.execute_vlm_action(vlm_result, (1920, 1080))
+        with patch.object(win32_input, "paste_text_preserving_clipboard", return_value=False):
+            router.execute_vlm_action(vlm_result, (1920, 1080))
         
         # Verify SendInput keyboard events for VK_RETURN (0x0D)
         kb_events = [ev for ev in registry.send_input_events if ev["type"] == "keyboard"]
@@ -132,6 +152,46 @@ class TestF3Input(unittest.TestCase):
         self.assertEqual(mouse_events[0]["dwFlags"], 0x0800)
         # Scroll down is negative amount
         self.assertTrue(mouse_events[0]["mouseData"] > 0x7FFFFFFF) # unsigned representation of negative int
+
+    def test_t1_f3_06_right_click_uses_native_context_button(self):
+        router = ActionRouter(config)
+        result = router.execute_vlm_action(
+            {
+                "action_desp": "right_click",
+                "parsed_action": {"tool_name": "right_click", "element": "document row", "x": 250, "y": 300},
+            },
+            (1920, 1080),
+        )
+        self.assertTrue(result["success"])
+        flags = [event["dwFlags"] for event in registry.send_input_events if event["type"] == "mouse"]
+        self.assertIn(0x0008, flags)
+        self.assertIn(0x0010, flags)
+
+    def test_t1_f3_07_drag_scales_both_visible_endpoints(self):
+        old_pause = config.execution.click_pause
+        config.execution.click_pause = 0.0
+        try:
+            router = ActionRouter(config)
+            result = router.execute_vlm_action(
+                {
+                    "action_desp": "drag",
+                    "parsed_action": {
+                        "tool_name": "drag",
+                        "source_element": "report row",
+                        "target_element": "archive folder",
+                        "from_x": 100,
+                        "from_y": 200,
+                        "to_x": 900,
+                        "to_y": 800,
+                        "duration": 0.2,
+                    },
+                },
+                (1000, 1000),
+            )
+            self.assertTrue(result["success"])
+            self.assertEqual((registry.cursor_x, registry.cursor_y), (900, 800))
+        finally:
+            config.execution.click_pause = old_pause
 
     def test_t2_f3_01_out_of_range_coordinates_are_rejected(self):
         """TC-T2-F3-01: Invalid coordinates must not turn into edge clicks."""

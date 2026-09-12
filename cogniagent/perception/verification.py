@@ -1,25 +1,14 @@
 import numpy as np
 import logging
-from cogniagent.perception.state import SemanticState
 from cogniagent.reasoning.action_reasoner import AgentAction
 
 logger = logging.getLogger(__name__)
 
 class ScreenVerifier:
-    """Verifies the success of an action using screen diffs and semantic checks."""
+    """Verifies the visual outcome of an agent action using bounded screen diffs."""
 
     def __init__(self, max_sample_pixels: int = 250_000):
         self.max_sample_pixels = max(1, int(max_sample_pixels))
-
-    @staticmethod
-    def has_semantic_observation(state: SemanticState) -> bool:
-        """Tell a real accessibility snapshot from an unavailable empty one."""
-        return bool(
-            getattr(state, "is_available", False)
-            or getattr(state, "elements", None)
-            or getattr(state, "is_dialog", False)
-            or getattr(state, "visible_text_summary", "")
-        )
     
     def compute_screen_diff(self, before_frame: np.ndarray, after_frame: np.ndarray, threshold: int = 30) -> dict:
         """Compare screenshots using a bounded CPU and memory budget."""
@@ -35,20 +24,16 @@ class ScreenVerifier:
         before_sample = before_frame[::sample_stride, ::sample_stride]
         after_sample = after_frame[::sample_stride, ::sample_stride]
 
-        # int16 is sufficient for the [-255, 255] pixel delta and avoids the
-        # much larger default int64 full-frame allocation.
+        # int16 is sufficient for the [-255, 255] pixel delta and avoids full-frame int64 allocation
         if before_sample.ndim == 3:
             before_sample = before_sample[:, :, :3]
             after_sample = after_sample[:, :, :3]
         diff = np.abs(before_sample.astype(np.int16) - after_sample.astype(np.int16))
             
-        # A difference exactly at the configured threshold is meaningful.  The
-        # prior strict comparison silently discarded real, deterministic UI
-        # transitions at that boundary.
         changed_pixels = np.any(diff >= threshold, axis=2) if diff.ndim == 3 else diff >= threshold
         diff_ratio = float(changed_pixels.sum()) / changed_pixels.size
         
-        # Classify the change
+        # Classify visual change
         if diff_ratio < 0.01:
             description = "No visible change"
             changed = False
@@ -73,71 +58,25 @@ class ScreenVerifier:
             "sampled_pixels": int(changed_pixels.size),
         }
 
-    def verify_semantically(self, old_state: SemanticState, new_state: SemanticState, action: AgentAction, expected_outcome: str = "") -> bool:
-        """Check if the action produced the expected semantic change."""
-        
-        old_labels = {e.label for e in old_state.elements if e.label}
-        new_labels = {e.label for e in new_state.elements if e.label}
-        
-        new_elements = new_labels - old_labels
-        removed_elements = old_labels - new_labels
-        
-        # Action-specific verification
-        if action.action_type == "click":
-            # After clicking a menu item, new items should appear
-            if action.thought and "menu" in action.thought.lower():
-                return len(new_elements) > 0
-            
-            # After clicking a tab, the tab layout might change or new elements appear
-            if action.thought and "tab" in action.thought.lower():
-                return new_state.layout_type != old_state.layout_type or len(new_elements) > 0
-                
-        elif action.action_type == "type":
-            # After typing, the text should appear somewhere in the state
-            if action.args:
-                typed_text = action.args[0]
-                return any(typed_text.lower() in (e.label or "").lower() for e in new_state.elements)
-                
-        # Fallback: any visible change in labels is a potential success
-        if len(new_elements) > 0 or len(removed_elements) > 0:
-            return True
-            
-        # If the active application changed, it is an observable state change.
-        if old_state.app and new_state.app and old_state.app != new_state.app:
-            return True
-            
-        return False
+    def detect_failure(self, diff_result: dict, old_state: object = None, new_state: object = None, action: AgentAction = None, execution_result: dict = None) -> str | None:
+        """Detect if an action resulted in visual stagnation or failure. Returns failure reason or None."""
+        if not action:
+            return None
 
-    def detect_failure(self, diff_result: dict, old_state: SemanticState, new_state: SemanticState, action: AgentAction) -> str:
-        """Detect if an action failed. Returns failure reason or None."""
-        
-        # Unexpected dialog appeared
-        if new_state.is_dialog and not old_state.is_dialog:
-            dialog_text = str(new_state.visible_text_summary or "").lower()
-            if any(w in dialog_text for w in ["error", "warning", "failed"]):
-                return f"Error dialog appeared: {new_state.visible_text_summary}"
-
-        # These tools are observations or control-flow states; they need not
-        # visibly mutate the screen to be valid.
+        # These tools are observational or control-flow; they don't visibly mutate the screen
         passive_actions = {"wait", "get_open_apps", "hitl_intervention", "terminate"}
-        if not diff_result.get("changed", True) and action.action_type not in passive_actions:
+        if action.action_type in passive_actions:
+            return None
+
+        # Text, a caret, or a focus ring can affect far less than 1% of a
+        # 1080p frame. They are meaningful outcomes even though they sit below
+        # the navigation-oriented screen-change cutoff.
+        if action.action_type in {"type", "key_press"} and float(diff_result.get("diff_ratio", 0.0)) >= 0.00002:
+            return None
+        if action.action_type in {"click", "double_click", "right_click"} and (execution_result or {}).get("focus_changed"):
+            return None
+
+        if not diff_result.get("changed", True):
             return "No visible screen change after action"
 
-        # A changed screenshot can be just a cursor hover or animation.  When
-        # UIA supplied genuine before/after states, require it to corroborate
-        # interactive actions before treating the step as verified.
-        interactive_actions = {"click", "type", "key_press", "scroll", "switch_to_app"}
-        if (
-            action.action_type in interactive_actions
-            and self.has_semantic_observation(old_state)
-            and self.has_semantic_observation(new_state)
-            and not self.verify_semantically(old_state, new_state, action)
-        ):
-            return "Accessible UI state did not confirm the requested action"
-        
-        # Application crashed or lost focus entirely unexpectedly
-        if new_state.app != old_state.app and old_state.app not in new_state.window_title:
-            # Not necessarily a failure if we wanted to switch apps, but a risk
-            pass
-            
         return None

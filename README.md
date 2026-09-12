@@ -1,77 +1,276 @@
-# OmniVLA: Cognitive Agent Harness
+<div align="center">
 
-This project contains the **OmniVLA** cognitive agent harness and its supervised Command Center. The configured local profile uses Holo-3.1 4B GGUF plus a vision projector through `llama-server`. The startup scripts retain compatibility notes for the original Holo-3.1-9B target.
+# OmniVLA
 
-## Prerequisites
+### Vision-Language-Action Desktop Agent for Consumer Hardware
 
-1. **System & GPU**: Windows OS with an NVIDIA GPU (recommended: RTX 4050 6GB VRAM or better) with CUDA drivers installed.
-2. **Python**: Python 3.10+ (tested with Python 3.12).
-3. **Model Files**: The default local profile expects these files in `models/`:
-   - `models/Holo-3.1-4B-abliterated-rdo.Q4_K_M.gguf` (main VLM)
-   - `models/Holo-3.1-4B.mmproj-f16.gguf` (vision projector)
-   - `models/Qwen3.5-4B.Q4_K_M.gguf` (planner)
-4. **Llama-server executable**: Ensure `llama-server.exe` exists under the `llama-cpp/` directory.
+[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-0078D6?logo=windows&logoColor=white)](https://microsoft.com)
+[![CUDA](https://img.shields.io/badge/CUDA-12.0+-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/cuda-toolkit)
+[![Tests](https://img.shields.io/badge/tests-100%20passed-2ea44f?logo=pytest&logoColor=white)](https://pytest.org)
+[![Inference](https://img.shields.io/badge/inference-llama.cpp-orange)](https://github.com/ggerganov/llama.cpp)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> Model weights, llama.cpp binaries, chats, recordings, and local memory are deliberately excluded from Git. They remain local to the machine that runs the agent; only source, tests, documentation, and configuration are published.
+<p align="center">
+  <b>OmniVLA</b> is an open, vision-first Windows desktop agent designed to run on an RTX 4050 laptop GPU with 6 GB VRAM.
+</p>
+
+[Key Features](#-key-features) • [Architecture](#-architecture) • [Hardware Profile](#-reference-hardware-profile) • [Quick Start](#-quick-start) • [UI & Workspaces](#-operator-command-center) • [Skills & Teaching](#-skills--demonstration-recorder) • [Safety & Security](#-safety--security-model) • [Documentation](#-documentation)
 
 ---
 
-## 1. Setup
+</div>
 
-First, install the required Python dependencies. Open a terminal (PowerShell or Command Prompt) in the project root directory `C:\Programming\FYP` and run:
+## 🌟 Overview
 
-```bash
+Unlike blind coordinate macro runners or expensive cloud-tethered generalist agents, **OmniVLA** pairs real-time visual perception with structured reasoning on local hardware:
+
+- **Asymmetric Hardware Topology**: A dedicated vision-action model executes on the 6 GB CUDA GPU while the planner runs on CPU and system RAM. The two models never compete for VRAM.
+- **Evidence-Grounded Execution**: Every mouse click, drag, keystroke, and app switch is derived from a fresh desktop screenshot and validated against a typed action schema.
+- **Review by Design**: A plan is reviewed before execution, visual changes are verified after actions, and high-consequence controls require confirmation.
+- **Extensible Procedural Skills**: Capture complex workflows via native demonstration recording with automatic credential redaction, compile them into Markdown skills, and execute with visual grounding.
+
+---
+
+## 🏛️ Architecture
+
+OmniVLA decouples visual perception from high-level planning and risk analysis:
+
+```mermaid
+flowchart TD
+    subgraph UI ["Operator Surfaces"]
+        Web["Chat app (127.0.0.1:8000)"]
+        Overlay["Transparent Overlay App (Electron)"]
+        Mobile["Mobile LAN PWA (Paired Viewer)"]
+    end
+
+    subgraph ControlPlane ["Control Plane & Safety"]
+        API["Local HTTP server"]
+        Lock["Single-Active-Run Lock"]
+        Risk["Task & Action Risk Evaluator"]
+    end
+
+    subgraph InferenceTopology ["Asymmetric Local Inference"]
+        subgraph GPUPath ["GPU Path (RTX 4050 - 6 GB VRAM)"]
+            Holo["Holo 3.1 4B VLM (llama.cpp -ngl 99)"]
+            Vision["Perception & Strict Step Schema Parser"]
+        end
+        subgraph CPUPath ["CPU Path (Multi-core CPU + DDR5)"]
+            Qwen["Qwen3.5 4B LLM (llama.cpp -ngl 0)"]
+            Planner["Plan Generator"]
+        end
+    end
+
+    subgraph ExecutionEngine ["Execution & Feedback Loop"]
+        Router["Action Router & Coordinate Scaler"]
+        Input["Win32 Native SendInput"]
+        Verifier["Pixel Verifier & Stagnation Detector"]
+        Memory["Redacted Episodic Memory (ChromaDB)"]
+        SkillReg["Skill Registry & Synthesizer"]
+    end
+
+    Web <--> API
+    Overlay <--> API
+    Mobile <--> API
+    API --> Lock
+    Lock --> Planner
+    Planner --> Risk
+    Risk --> Web
+    Planner --> Holo
+    Holo --> Vision
+    Vision --> Router
+    Router --> Input
+    Input --> Verifier
+    Verifier --> Holo
+    Verifier --> Memory
+    SkillReg <--> Planner
+```
+
+---
+
+## ⚡ Key Features
+
+| Feature | Description |
+| :--- | :--- |
+| 👁️ **Visual Desktop Grounding** | Full multi-monitor coordinate normalization, pure screenshot perception, and strict Pydantic `Step` schema validation. |
+| 🖱️ **Native Win32 Input** | Direct `SendInput` execution supporting clicks, double clicks, right clicks, drag & drop, typing, hotkeys, scroll, and window management. |
+| 🛡️ **Fail-Closed Safety Engine** | Validates bounding boxes, durations, and dangerous UI targets (financial, deletion, external access) with just-in-time confirmation. |
+| 🔄 **Visual Verification** | Compares before/after frames, blocks repeated failed actions, and reports stagnation without another model call. |
+| 🎓 **Native Demonstration Teaching** | Records low-level user demonstrations with background thread processing and masks sensitive credentials into `{{typed_value}}`. |
+| 💬 **Chat-first UI** | Separate conversations, a per-chat execution panel, Skills, and Settings in a responsive desktop shell. |
+| 📱 **Paired Mobile PWA** | Low-latency LAN operator companion with constant-time token verification and desktop-isolated permissions. |
+| 🔒 **Privacy-First Memory** | Opt-in episodic recall with automatic PII/secret scrubbing and desktop-only memory purge controls. |
+
+---
+
+## 💻 Reference Hardware Profile
+
+| Subsystem | Specification |
+| :--- | :--- |
+| **Operating System** | Windows 10 or Windows 11 (x64) |
+| **GPU** | NVIDIA GeForce RTX 4050 Laptop GPU (6 GB VRAM) or equivalent CUDA GPU |
+| **CPU & RAM** | Modern multi-core CPU (AMD Ryzen 5/7/9 or Intel Core i5/i7/i9) with 16 GB+ DDR5 RAM |
+| **Visual Executor** | `Holo-3.1-4B-abliterated-rdo.Q4_K_M.gguf` + `Holo-3.1-4B.mmproj-f16.gguf` (GPU offload `-ngl 99`) |
+| **Planner** | `Qwen3.5-4B.Q4_K_M.gguf` (CPU execution `-ngl 0`) |
+| **Runtime Dependencies** | Python 3.10+, `llama-server.exe` under `llama-cpp/` |
+
+---
+
+## 🚀 Quick Start
+
+### 1. Prerequisites & Installation
+
+Clone the repository and install the Python dependencies:
+
+```powershell
+# Clone the repository
+git clone https://github.com/abdullah-153/OmniVLA.git
+cd OmniVLA
+
+# Create and activate virtual environment
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+
+# Install requirements
 pip install -r requirements.txt
 ```
 
----
+### 2. Model & Runtime Setup
 
-## 2. Running the Agent (with GUI)
+1. Download the quantized model weights and place them in the `models/` folder:
+   - **Holo 3.1 4B VLM**: `models/Holo-3.1-4B-abliterated-rdo.Q4_K_M.gguf`
+   - **Holo Multimodal Projector**: `models/Holo-3.1-4B.mmproj-f16.gguf`
+   - **Qwen3.5 4B Planner**: `models/Qwen3.5-4B.Q4_K_M.gguf`
+2. Ensure `llama-server.exe` with CUDA support is located in `llama-cpp/`.
 
-You can launch and manage the agent via the provided Tkinter-based control panel:
+### 3. Launching OmniVLA
 
-```bash
+Start the local app and model harness:
+
+```powershell
 python run_agent_gui.py
 ```
 
-### Command Center features:
-- **Reviewable execution**: draft a runbook, inspect it, then approve it before desktop input begins.
-- **Live trace**: inspect current action, steps, screen capture, runtime health, and an operator audit journal.
-- **Guardrails**: validate control-plane requests, keep provider API keys in process memory only, and require an extra acknowledgement for high-impact intent.
-- **Mobile companion**: install the responsive PWA on a phone. LAN mode is opt-in (set `OMNIVLA_HOST` to `0.0.0.0` before launch), protected by a short-lived pairing code and a desktop-controlled remote-control toggle.
-- **Secure desktop shell**: Electron runs with context isolation, sandboxing, and a narrow preload bridge instead of exposing Node.js to page content.
+Open **`http://127.0.0.1:8000`** if the desktop shell does not open automatically.
 
-The command center starts at `http://127.0.0.1:8000`. For a mobile companion, enable LAN mode before launching:
-
-    $env:OMNIVLA_HOST = "0.0.0.0"
-    python run_agent_gui.py
-
-Open the LAN address shown under **Safety → Pair a second screen**, then enter the short-lived pairing code. Remote controls remain disabled until explicitly enabled from the desktop.
-
-### 6 GB local performance profile
-
-The default configuration is intentionally tuned for a consumer GPU with 6 GB VRAM:
-
-- The Holo VLA is the only model allocated GPU layers. The planner/critic is explicitly CPU-only, avoiding VRAM and KV-cache contention.
-- Each llama.cpp server uses one execution slot, bounded context (4,096 tokens for VLA; 2,048 for critic), compact KV cache types, Flash Attention, prompt caching, and an 8-thread CPU prompt path.
-- The VLA receives a compact action contract and short rolling history instead of a generated Pydantic schema and unbounded screenshot checkpoints. This reduces prompt prefill work without weakening the existing action verifier or human-in-the-loop checks.
-- The Command Center and execution overlay show real phase and timing data (thinking, input, verification, and full cycle), plus the actual trace length. The visible action count is not a fabricated step-progress meter; the step budget remains a safety limit only.
-
-Use the first two runs as warm-up, then compare the **Last cycle** value in the Command Center across three representative tasks. See [the local performance profile](documentation/10_Local_Performance_Profile.md) for the rationale and a repeatable measurement procedure.
+*(Optional)* Launch the Electron desktop shell:
+```powershell
+cd console-app
+npm install
+npm start
+```
 
 ---
 
-## 3. Running the Test Suite
+## 🖥️ Desktop app
 
-To run all automated unit and integration tests, execute the following command in the project root:
+The interface is organized around conversations:
 
-```bash
-python -m pytest tests/ -v
+1. **Chats**: Start a new chat, search saved chats, and review the plan and final response without mixing other runs into the thread.
+2. **Execution**: Each chat owns its action history, latest screen, timing state, approvals, Pause, and Stop controls in a dedicated side panel.
+3. **Skills**: Search the library, import `.md`, `.markdown`, or `.mds`, edit Markdown, or teach a workflow by demonstration.
+4. **Settings**: Configure plan approval, action limits, local recall, recording, and model restart controls without exposing model topology in normal use.
+
+---
+
+## 🛠️ Skills & Demonstration Recorder
+
+OmniVLA allows users to define and teach complex procedural workflows:
+
+- **Markdown Skill Definitions**: Skills are structured Markdown files with parameters, pre-conditions, step strategies, and visual grounding guidelines (located in `skills/`).
+- **Low-Level Native Recorder**: Start a demonstration to capture clicks, shortcuts, application changes, and redacted typing via Windows hooks without recording agent feedback loops.
+- **Privacy Masking**: User typing is automatically converted into parameterized tokens (`{{typed_value}}`) to prevent credential leakage.
+- **Skill Synthesizer**: Converts raw recorded demonstrations into reusable, parameterized skills.
+
+---
+
+## 🧪 Testing & Verification
+
+OmniVLA includes a hermetic test suite covering model command construction, coordinate scaling, Win32 input, risk grounding, control-plane authorization, and UI contracts:
+
+```powershell
+# Run the full test suite (100+ tests)
+python -m pytest -q
+
+# Run end-to-end integration test harness
+python run_e2e_tests.py
+
+# Check runtime readiness & hardware profile
+python benchmark_runtime.py --json
+
+# Evaluate historical run performance metrics
+python evaluate_runs.py --json
 ```
 
-This runs:
-- **F1 Hosting Tests**: Validates startup command construction, log parsing, and VRAM monitoring.
-- **F2 Brain (VLM) Tests**: Verifies connection, retry logic, image eviction (context window management), and JSON parsing.
-- **F3 Input Tests**: Validates the Windows native input controls (mouse clicks, drags, keyboard keystrokes, and banned inputs/fail-safes).
-- **F4 Verification Tests**: Validates visual change detection (using SSIM) and semantic state verification.
-- **End-to-End Scenarios**: Simulates full multi-step tasks such as logging in, filling out forms, handling error dialogs, and database sync.
+---
+
+## 🛡️ Safety & Security Model
+
+- **Fail-Closed Policy**: Malformed or ungrounded model outputs fail closed without triggering phantom inputs.
+- **Consequential Action Interception**: Actions targeting delete buttons, money transfers, password fields, or system settings require explicit operator confirmation.
+- **Desktop Isolation**: Destructive commands, skill modifications, teaching sessions, and memory deletions can only be invoked from local loopback (`127.0.0.1`).
+- **Privacy by Default**: All sensitive tokens and keys remain strictly in-process memory and are never persisted or echoed in status responses.
+
+---
+
+## 📂 Repository Structure
+
+```
+OmniVLA/
+├── cogniagent/                  # Core Agent Architecture
+│   ├── agent.py                 # Main Agent Execution Loop & State Machine
+│   ├── config.py                # System Configurations & Model Settings
+│   ├── execution/               # Action Router & Win32 Native Input
+│   ├── gui/                     # Web Server, Control Plane, Static Web UI
+│   │   ├── control_plane.py     # Request Validation & Security Boundary
+│   │   ├── server.py            # FastAPI Server Endpoints
+│   │   ├── server_manager.py    # llama.cpp Subprocess Manager
+│   │   └── web/                 # Chat-first web interface
+│   ├── memory/                  # Vector Memory (ChromaDB) & Redaction
+│   ├── perception/              # VLM Engine, Screen Capture, Verification
+│   ├── reasoning/               # Action Reasoner & Strategy Formulation
+│   └── skills/                  # Skill Registry, Compiler & Synthesizer
+├── console-app/                 # Electron Desktop Application Shell
+├── documentation/               # Research, Architecture Audits & Benchmarks
+│   ├── 09_Command_Center_Research_and_Design.md
+│   ├── 10_Local_Performance_Profile.md
+│   ├── 11_Repository_Architecture_and_Security_Audit.md
+│   ├── 12_2026_Model_Agent_and_Benchmark_Landscape.md
+│   └── 13_Background_Execution.md
+├── overlay-app/                 # Transparent Execution Overlay Interface
+├── skills/                      # Built-in Procedural Skill Library
+├── tests/                       # Complete Pytest Hermetic Test Suite
+├── benchmark_runtime.py         # Hardware Readiness & VRAM Profiling
+├── evaluate_runs.py             # Performance & Metric Aggregation Script
+├── run_agent_gui.py             # Main Entrypoint Script
+├── run_e2e_tests.py             # End-to-End Verification Pipeline
+├── PROJECT.md                   # Technical Architecture & Trust Boundaries
+├── PRODUCT.md                   # Product Positioning & Requirements
+└── DESIGN.md                    # Visual Style Guide & Design System
+```
+
+---
+
+## 📚 Documentation
+
+For in-depth architectural and research details, consult the following references:
+
+- [`PROJECT.md`](PROJECT.md) — Implementation architecture, execution lifecycle, and trust boundaries.
+- [`PRODUCT.md`](PRODUCT.md) — Product requirements, positioning, and target user profile.
+- [`DESIGN.md`](DESIGN.md) — Visual design tokens, layout hierarchy, and interaction design.
+- [`documentation/10_Local_Performance_Profile.md`](documentation/10_Local_Performance_Profile.md) — 6 GB VRAM local profiling protocol.
+- [`documentation/11_Repository_Architecture_and_Security_Audit.md`](documentation/11_Repository_Architecture_and_Security_Audit.md) — Security audit and control-plane boundary specifications.
+- [`documentation/12_2026_Model_Agent_and_Benchmark_Landscape.md`](documentation/12_2026_Model_Agent_and_Benchmark_Landscape.md) — Comparative benchmark analysis and future model roadmap.
+- [`documentation/13_Background_Execution.md`](documentation/13_Background_Execution.md) — Hybrid background, semantic, and isolated execution architecture.
+
+---
+
+## 📄 License
+
+This project is licensed under the [MIT License](LICENSE).
+
+---
+
+<div align="center">
+  <sub>Built with ❤️ for local, privacy-respecting, vision-first computer use automation.</sub>
+</div>

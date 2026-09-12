@@ -2,6 +2,30 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 
 let win;
+let shutdownRequested = false;
+
+function shutdownBackendAndQuit() {
+  if (shutdownRequested) {
+    if (process.platform !== 'darwin') app.quit();
+    return;
+  }
+  shutdownRequested = true;
+  const http = require('http');
+  const finish = () => {
+    if (process.platform !== 'darwin') app.quit();
+  };
+  const req = http.request({
+    hostname: '127.0.0.1',
+    port: 8000,
+    path: '/api/shutdown',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Content-Length': 2 }
+  }, finish);
+  req.setTimeout(6000, () => { req.destroy(); finish(); });
+  req.on('error', finish);
+  req.write('{}');
+  req.end();
+}
 
 function revealWindow(window) {
   if (!window || window.isDestroyed()) return;
@@ -33,7 +57,7 @@ function createWindow() {
     minHeight: 700,
     frame: false, // Make window frameless for custom title bar
     show: false,
-    backgroundColor: "#08090a",
+    backgroundColor: "#faf9f5",
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -95,6 +119,10 @@ ipcMain.handle('window:control', (event, action) => {
   win.close();
 });
 
+ipcMain.handle('app:quit', () => {
+  shutdownBackendAndQuit();
+});
+
 app.whenReady().then(() => {
   createWindow();
 
@@ -106,15 +134,5 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  const http = require('http');
-  const req = http.get('http://127.0.0.1:8000/shutdown', () => {
-    if (process.platform !== 'darwin') {
-      app.quit();
-    }
-  });
-  req.on('error', () => {
-    if (process.platform !== 'darwin') {
-      app.quit();
-    }
-  });
+  shutdownBackendAndQuit();
 });

@@ -3,51 +3,46 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>OmniVLA Execution Signal</title>
+    <title>OmniVLA status</title>
     <link rel="stylesheet" href="index.css" />
   </head>
   <body>
     <main class="execution-shell" id="execution-shell" data-tone="idle" aria-live="polite">
-      <div class="execution-atmosphere" aria-hidden="true"><i></i><i></i><i></i></div>
       <div class="screen-edges" aria-hidden="true">
-        <span class="screen-edge edge-top"></span>
-        <span class="screen-edge edge-right"></span>
-        <span class="screen-edge edge-bottom"></span>
-        <span class="screen-edge edge-left"></span>
-        <span class="edge-runner runner-top"></span><span class="edge-runner runner-right"></span>
-        <span class="edge-runner runner-bottom"></span><span class="edge-runner runner-left"></span>
-        <i class="edge-corner corner-nw"></i><i class="edge-corner corner-ne"></i>
-        <i class="edge-corner corner-se"></i><i class="edge-corner corner-sw"></i>
+        <i class="screen-edge edge-top"></i><i class="screen-edge edge-right"></i>
+        <i class="screen-edge edge-bottom"></i><i class="screen-edge edge-left"></i>
       </div>
-
-      <section class="run-beacon" id="run-beacon" aria-label="OmniVLA execution status">
-        <header class="beacon-header">
-          <div class="beacon-brand"><span class="mark" aria-hidden="true">△</span><span>OmniVLA</span></div>
-          <div class="beacon-meta"><span class="beacon-state" id="beacon-state">Standing by</span><span class="phase-duration" id="phase-duration">0s</span></div>
-        </header>
-        <div class="beacon-main">
-          <p class="phase-label" id="phase-label">Preparing local control plane</p>
-          <p class="action-text" id="action-text">No active run.</p>
+      <section class="run-beacon" id="run-beacon" aria-label="Task status">
+        <div class="beacon-header">
+          <button class="beacon-toggle" id="beacon-toggle" type="button" aria-expanded="false" aria-controls="beacon-drawer">
+            <span class="status-indicator" aria-hidden="true"><i></i></span>
+            <span class="capsule-action-text" id="capsule-action-text">Ready</span>
+            <span class="phase-duration" id="phase-duration">Standing by</span>
+            <svg class="chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg>
+          </button>
+          <button class="beacon-close-btn" id="beacon-close-btn" title="Quit OmniVLA" aria-label="Quit OmniVLA" type="button">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" /></svg>
+          </button>
         </div>
-        <div class="signal-rail" aria-hidden="true"><span></span><i></i><b></b></div>
-        <section class="trace-panel" aria-label="Actual execution trace">
-          <div class="trace-heading"><span>Observed actions</span><span id="trace-count">No actions yet</span></div>
-          <ol class="trace-list" id="trace-list"></ol>
-        </section>
-        <section class="hitl-panel" id="hitl-panel" hidden>
-          <p class="hitl-question" id="hitl-question">Human input is required.</p>
-          <div class="hitl-controls">
-            <input id="hitl-input" maxlength="2000" placeholder="Provide a response…" />
-            <button id="hitl-submit" type="button">Continue</button>
-          </div>
-        </section>
-        <footer class="beacon-controls">
-          <span id="model-label">Local execution</span>
-          <div>
+
+        <div class="beacon-expanded-drawer" id="beacon-drawer"><div class="drawer-content">
+          <p class="action-text" id="action-text">Reading the screen.</p>
+          <section class="trace-panel" aria-label="Recent activity">
+            <div class="trace-heading"><span>Activity</span><span id="trace-count">No actions yet</span></div>
+            <ol class="trace-list" id="trace-list"></ol>
+          </section>
+          <section class="hitl-panel" id="hitl-panel" hidden>
+            <p class="hitl-question" id="hitl-question">Input is needed.</p>
+            <div class="hitl-controls">
+              <input id="hitl-input" maxlength="2000" placeholder="Type your response" />
+              <button id="hitl-submit" type="button">Send</button>
+            </div>
+          </section>
+          <footer class="beacon-controls">
             <button id="pause-button" type="button">Pause</button>
             <button id="stop-button" type="button">Stop</button>
-          </div>
-        </footer>
+          </footer>
+        </div></div>
       </section>
     </main>
     <script src="renderer.js"></script>

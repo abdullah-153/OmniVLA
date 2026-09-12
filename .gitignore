@@ -10,3 +10,7 @@ logs/
 chats_db.json
 recordings/
 .agents/
+.codex/
+.impeccable/*
+!.impeccable/design.json
+scratch/
