@@ -221,8 +221,8 @@ Core Rules:
 4. No Repetition: Never repeat ineffective actions. If an action fails or leaves state unchanged, adapt immediately.
 5. Working Memory: Record extracted information (senders, subjects, rows, data) into "note" to retain findings across steps.
 6. Verification: Call terminate(status="success", reason="...") only when the newest screen visually verifies completion.
-7. Safety: Use hitl_intervention for credentials, MFA, payments, destructive file changes, or sending external data.
-8. Execution: Reason privately without narrating to the user; finish with exactly one tool call.
+7. Auth & Safety: For logins, use saved passwords; else call hitl_intervention. If multiple accounts appear, select from prompt/memory or ask via hitl_intervention. Never guess OTP or passwords.
+8. Execution: Reason privately without narrating; finish with exactly one tool call.
 """
 
 

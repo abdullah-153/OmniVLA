@@ -467,9 +467,9 @@ tags: [desktop]
       $("run-plan").disabled = highRisk && !$("risk-ack").checked;
     }
 
-    const needsInput = phase === "hitl" && activeSelected;
+    const needsInput = (phase === "hitl" || Boolean(data.hitl_question)) && activeSelected;
     $("operator-request").hidden = !needsInput;
-    if (needsInput) $("operator-question").textContent = data.current_action || "Please review the current screen.";
+    if (needsInput) $("operator-question").textContent = data.hitl_question || data.current_action || "Please review the current screen.";
 
     const steps = Array.isArray(data.steps) ? data.steps : [];
     $("activity-count").textContent = `${steps.length} ${steps.length === 1 ? "action" : "actions"}`;
@@ -498,8 +498,21 @@ tags: [desktop]
   }
 
   function renderComposer(data) {
-    const blocked = isLiveWorking(data) || data.planning_chat_id === data.active_chat_id;
+    const live = data?.execution_live || {};
+    const isHitl = live.phase === "hitl" || live.status === "hitl" || data?.phase === "hitl" || Boolean(data?.hitl_question || live.hitl_question);
+    const activeSelected = isSelectedExecution(data);
     const hasText = Boolean($("composer-input").value.trim());
+
+    if (isHitl && activeSelected) {
+      const question = data?.hitl_question || live.hitl_question || data?.current_action || "Operator response required";
+      $("send-message").disabled = !hasText;
+      $("composer-input").disabled = false;
+      $("composer-input").placeholder = `Input needed: ${question}`;
+      $("composer-hint").textContent = "Type your response, OTP, or instruction · Enter to submit";
+      return;
+    }
+
+    const blocked = isLiveWorking(data) || data.planning_chat_id === data.active_chat_id;
     $("send-message").disabled = blocked || !hasText;
     $("composer-input").disabled = blocked;
     $("composer-input").placeholder = blocked ? "Finish the current task before sending another message" : "Ask OmniVLA to do something on your computer";
@@ -581,6 +594,7 @@ tags: [desktop]
     const chat = (data.chats || []).find((item) => item.id === data.active_chat_id) || {};
     const chatWorking = ["running", "executing", "working", "hitl"].includes(chat.status);
     const isExecuting = activeSelected || chatWorking;
+    const isHitl = data?.phase === "hitl" || Boolean(data?.hitl_question) || data?.execution_live?.phase === "hitl";
 
     const hasPlan = Boolean(data.active_plan);
     const hasExecutableTask = hasPlan || isExecuting;
@@ -588,7 +602,7 @@ tags: [desktop]
     document.body.classList.toggle("has-executable-task", hasExecutableTask);
     document.body.classList.toggle("is-executing", isExecuting);
 
-    if (isExecuting) {
+    if (isExecuting || isHitl) {
       document.body.classList.remove("execution-closed");
     } else if (!hasExecutableTask) {
       document.body.classList.add("execution-closed");
@@ -647,7 +661,28 @@ tags: [desktop]
   async function sendMessage() {
     const input = $("composer-input");
     const message = input.value.trim();
-    if (!message || isLiveWorking(state.status)) return;
+    if (!message) return;
+
+    const live = state.status?.execution_live || {};
+    const isHitl = live.phase === "hitl" || live.status === "hitl" || state.status?.phase === "hitl" || Boolean(state.status?.hitl_question || live.hitl_question);
+    if (isHitl && isSelectedExecution(state.status)) {
+      setBusy($("send-message"), true, "Sending");
+      try {
+        await api("/api/hitl_submit", { method: "POST", body: { response: message } });
+        input.value = "";
+        resizeComposer();
+        toast("Response submitted to agent.");
+        await fetchStatus();
+      } catch (error) {
+        toast(error.message, true);
+      } finally {
+        setBusy($("send-message"), false);
+        renderComposer(state.status || {});
+      }
+      return;
+    }
+
+    if (isLiveWorking(state.status)) return;
     setBusy($("send-message"), true, "Sending");
     try {
       await api("/api/chat", { method: "POST", body: { message, chat_id: state.status?.active_chat_id } });

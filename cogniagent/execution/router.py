@@ -131,6 +131,24 @@ class ActionRouter:
         return None
 
     @staticmethod
+    def is_dummy_verification_code(text: str, element_or_context: str = "") -> bool:
+        """Detect if text being entered into an OTP/verification context is a known dummy/placeholder code."""
+        cleaned_text = str(text or "").strip()
+        cleaned_context = str(element_or_context or "").lower()
+        is_auth_context = bool(re.search(
+            r"\b(otp|one[- ]time|2fa|two[- ]factor|verification|security code|passcode|auth[- ]code|pin)\b",
+            cleaned_context,
+            re.IGNORECASE,
+        ))
+        dummy_patterns = {
+            "123456", "000000", "111111", "1234", "12345", "12345678",
+            "999999", "654321", "012345", "test", "demo", "sample",
+        }
+        if is_auth_context and (cleaned_text.lower() in dummy_patterns or bool(re.fullmatch(r"(.)\1{3,}", cleaned_text))):
+            return True
+        return False
+
+    @staticmethod
     def assess_action_risk(action_data: dict) -> dict | None:
         """Identify visible controls that can create an external or destructive effect."""
         if not isinstance(action_data, dict):
@@ -141,6 +159,7 @@ class ActionRouter:
             ("external communication", r"\b(send|publish|post|share|upload|submit message)\b"),
             ("financial commitment", r"\b(pay|payment|purchase|buy|checkout|place order|transfer|confirm payment)\b"),
             ("access or security change", r"\b(allow|grant|permission|install|uninstall|reset password|disable security)\b"),
+            ("authentication or verification code", r"\b(otp|one[- ]time password|2fa|two[- ]factor|verification code|security code|authenticator|auth code|login code|passcode)\b"),
         )
         if tool_name == "click_and_type":
             element = str(action_data.get("element") or "")
@@ -272,6 +291,12 @@ class ActionRouter:
                     return {"success": False, "detail": "Text action exceeds the configured safety limit.", "is_done": False}
                 if not isinstance(submit, bool) or not isinstance(clear_existing, bool):
                     return {"success": False, "detail": "Flags submit and clear_existing must be booleans.", "is_done": False}
+                if self.is_dummy_verification_code(text, element):
+                    return {
+                        "success": False,
+                        "detail": "Dummy verification code blocked. Never guess OTPs or verification codes. Request human intervention using hitl_intervention.",
+                        "is_done": False,
+                    }
 
                 x, y = coords
                 win32_input.mouse_click(x, y)
@@ -349,6 +374,12 @@ class ActionRouter:
                         "success": False,
                         "detail": "Text submit flag must be a boolean.",
                         "is_done": False
+                    }
+                if self.is_dummy_verification_code(text, action_data.get("element", "")):
+                    return {
+                        "success": False,
+                        "detail": "Dummy verification code blocked. Never guess OTPs or verification codes. Request human intervention using hitl_intervention.",
+                        "is_done": False,
                     }
                 interval = self.config.execution.typing_interval
                 if not win32_input.paste_text_preserving_clipboard(text):

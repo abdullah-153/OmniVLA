@@ -156,7 +156,9 @@ class UserProfileMemory:
             return (
                 f"<user_memory>\n"
                 f"Preferred email: {service} ({account}) via Microsoft Edge. "
-                f"Do not switch to desktop Outlook unless user specifically commands it.\n"
+                f"Do not switch to desktop Outlook unless user specifically commands it. "
+                f"For logins/account choosers, select {account} if present, or use saved passwords. "
+                f"If account is ambiguous or for OTP/verification, request help via hitl_intervention.\n"
                 f"</user_memory>"
             )
 

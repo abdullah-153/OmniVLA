@@ -113,6 +113,7 @@ def _empty_execution_snapshot() -> dict[str, Any]:
         "step": 0,
         "total_time_ms": 0,
         "current_action": "Ready",
+        "hitl_question": "",
         "current_thought": "",
         "paused": False,
         "steps": [],
@@ -134,6 +135,7 @@ def _normalize_execution_snapshot(value: Any) -> dict[str, Any]:
     snapshot["status"] = str(value.get("status") or "idle")[:32]
     snapshot["phase"] = str(value.get("phase") or snapshot["status"])[:32]
     snapshot["current_action"] = str(value.get("current_action") or "Ready")[:500]
+    snapshot["hitl_question"] = str(value.get("hitl_question") or "")[:2000]
     snapshot["current_thought"] = ""
     snapshot["paused"] = bool(value.get("paused", False))
     for key, maximum in (("step", 10_000), ("total_time_ms", 24 * 60 * 60 * 1_000)):
@@ -781,9 +783,10 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             key: safe_live_state.get(key)
             for key in (
                 "execution_chat_id", "status", "phase", "phase_started_at", "step",
-                "total_time_ms", "current_action", "current_thought", "paused", "steps", "timing",
+                "total_time_ms", "current_action", "current_thought", "paused", "steps", "timing", "hitl_question",
             )
         }
+        agent_state["hitl_question"] = safe_live_state.get("hitl_question", "")
         agent_state["chat_history"] = list(active.get("chat_history", []))
         agent_state["current_task"] = active.get("current_task", "")
         agent_state["active_intent"] = active.get("intent", "")

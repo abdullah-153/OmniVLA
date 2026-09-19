@@ -303,8 +303,9 @@ class CogniAgent:
         required_action_evidence = self._required_action_evidence(task)
         successful_tool_names: set[str] = set()
         
+        configured_ceiling = max(1, int(getattr(self.config.safety, "max_steps_per_task", 60))) if getattr(self, "config", None) and getattr(self.config, "safety", None) else 60
         max_steps = self.resolve_step_budget(task, max_steps)
-        step_ceiling = max_steps
+        step_ceiling = max(configured_ceiling, max_steps)
         recent_action_signatures: list[str] = []
         consecutive_failures = 0
         consecutive_model_failures = 0
@@ -440,19 +441,27 @@ class CogniAgent:
                 break
 
             action_risk = None
-            if parsed_action.get("tool_name") in {"click", "double_click", "right_click", "drag", "click_and_type", "compound_action"}:
+            if parsed_action.get("tool_name") in {"click", "double_click", "right_click", "drag", "type", "click_and_type", "compound_action"}:
                 action_risk = self.executor.assess_action_risk(parsed_action)
             if action_risk and self.action_policy.get("mode", "supervised") == "supervised":
                 reasons = ", ".join(action_risk["reasons"])
-                question = (
-                    f"Approve this just-in-time action? {action_desp} on "
-                    f"‘{action_risk['target']}’ ({reasons}). Reply Approve to continue or Deny to block it."
-                )
+                is_auth_risk = "authentication or verification code" in action_risk.get("reasons", [])
+                if is_auth_risk:
+                    question = (
+                        f"Verification code required for ‘{action_risk['target']}’. "
+                        "Please enter the OTP / verification code (or reply Deny):"
+                    )
+                else:
+                    question = (
+                        f"Approve this just-in-time action? {action_desp} on "
+                        f"‘{action_risk['target']}’ ({reasons}). Reply Approve to continue or Deny to block it."
+                    )
                 logger.info("High-impact action paused for just-in-time approval: %s", reasons)
                 self._notify("hitl", question)
                 response = self.wait_for_hitl_response() if callable(self.wait_for_hitl_response) else "deny"
-                approved_words = {"approve", "approved", "yes", "continue"}
-                if str(response).strip().casefold() not in approved_words:
+                clean_response = str(response or "").strip()
+                denied_words = {"deny", "denied", "stop", "cancel", "no"}
+                if not clean_response or clean_response.casefold() in denied_words:
                     result = {
                         "success": False,
                         "detail": "High-impact action denied or not explicitly approved by the operator.",
@@ -460,6 +469,11 @@ class CogniAgent:
                     }
                     exec_time = int((time.time() - exec_start) * 1000)
                 else:
+                    if is_auth_risk and clean_response.casefold() not in {"approve", "approved", "yes", "continue"}:
+                        if parsed_action.get("tool_name") in {"type", "click_and_type"}:
+                            parsed_action["text"] = clean_response
+                            if isinstance(vlm_result.get("parsed_action"), dict):
+                                vlm_result["parsed_action"]["text"] = clean_response
                     result = self.executor.execute_vlm_action(vlm_result, orig_dims)
                     exec_time = int((time.time() - exec_start) * 1000)
 
@@ -512,14 +526,14 @@ class CogniAgent:
                 exec_time = int((time.time() - exec_start) * 1000)
             elif (
                 action_signature
-                and action_desp in {"click", "double_click", "right_click"}
+                and action_desp in {"click", "double_click", "right_click", "type", "click_and_type"}
                 and recent_action_signatures.count(action_signature) >= 2
                 and action_signature in recent_action_signatures[-8:]
             ):
-                # Detect cycling loops: clicking the exact same item repeatedly across recent turns
+                # Detect cycling loops: clicking or typing repeatedly across recent turns
                 result = {
                     "success": False,
-                    "detail": f"Cycle detected: you already clicked this target ({parsed_action.get('element', 'target')}) recently. Do NOT open it again. Choose a different item or conclude the task.",
+                    "detail": f"Cycle detected: you already performed this action ({action_desp} on target '{parsed_action.get('element', 'input')}') recently. Do NOT repeat it. Request human help via hitl_intervention or choose a different action.",
                     "is_done": False,
                 }
                 exec_time = int((time.time() - exec_start) * 1000)
@@ -538,6 +552,14 @@ class CogniAgent:
                     "detail": f"Human responded: {user_msg}",
                     "is_done": False
                 }
+                user_msg_clean = str(user_msg or "").strip()
+                if user_msg_clean and user_msg_clean.lower() not in {"no response", "stop", "exit", "quit"}:
+                    messages.append({
+                        "role": "user",
+                        "content": f"Operator response to your question: {user_msg_clean}"
+                    })
+                    consecutive_failures = 0
+                    has_unresolved_failure = False
             else:
                 result = self.executor.execute_vlm_action(vlm_result, orig_dims)
                 exec_time = int((time.time() - exec_start) * 1000)
@@ -711,11 +733,9 @@ class CogniAgent:
             
             # Human Intervention at step limit
             if step_idx + 1 >= max_steps and not result.get("is_done"):
-                hard_ceiling = max_steps
-                can_extend = hard_ceiling < step_ceiling and consecutive_failures < 3
                 question = (
-                    f"The task used its current {max_steps}-action budget. "
-                    + ("Choose Continue to add a small recovery budget, or give a correction." if can_extend else "Give a correction or stop the task.")
+                    f"The task reached its limit of {max_steps} steps. "
+                    "Type 'continue' to add 10 more steps, provide new instructions, or type 'stop' to end."
                 )
                 logger.info(f"Task limit reached. Requesting Human Intervention: {question}")
                 self._notify("hitl", question)
@@ -724,14 +744,23 @@ class CogniAgent:
                 if callable(self.wait_for_hitl_response):
                     user_msg = self.wait_for_hitl_response()
                 
-                if user_msg.lower() not in ["stop", "exit", "quit", "no"] and can_extend:
-                    max_steps = min(step_ceiling, max_steps + 8)
-                    if user_msg.lower() not in ["continue", "done", "yes"]:
+                user_msg_clean = str(user_msg or "").strip()
+                if user_msg_clean.lower() not in ["stop", "exit", "quit", "no", "deny"]:
+                    max_steps += 10
+                    consecutive_failures = 0
+                    has_unresolved_failure = False
+                    if user_msg_clean.lower() not in ["continue", "yes", "proceed", "done"]:
                         messages.append({
                             "role": "user",
-                            "content": f"User intervention/instruction: {user_msg}"
+                            "content": f"Operator instruction: {user_msg_clean}"
                         })
                         segment_counter += 1
+                    else:
+                        messages.append({
+                            "role": "user",
+                            "content": "Operator approved continuing the task. Inspect the current screen and proceed."
+                        })
+                    self._notify("acting", "Resuming task with extended step limit")
                 else:
                     break
             

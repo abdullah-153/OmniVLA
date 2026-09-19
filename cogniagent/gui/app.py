@@ -84,6 +84,7 @@ agent_status = {
     "step": 0,
     "total_time_ms": 0,
     "current_action": "None",
+    "hitl_question": "",
     "execution_task": "",
     "execution_chat_id": None,
     "latest_screenshot_b64": "",
@@ -498,6 +499,7 @@ def execute_agent_task(task, run_policy=None):
         agent_status["step"] = 0
         agent_status["total_time_ms"] = 0
         agent_status["current_action"] = "Reading the screen"
+        agent_status["hitl_question"] = ""
         agent_status["latest_screenshot_b64"] = ""
         agent_status["steps"] = []
         agent_status["current_task"] = task
@@ -578,6 +580,10 @@ def execute_agent_task(task, run_policy=None):
                 if agent_status.get("phase") != status:
                     agent_status["phase_started_at"] = time.time()
                 agent_status["phase"] = status
+                if status == "hitl":
+                    agent_status["hitl_question"] = detail
+                elif status in {"acting", "thinking", "verifying", "done", "failed", "stopped"}:
+                    agent_status["hitl_question"] = ""
                 if "|" in detail:
                     action, thought = detail.split("|", 1)
                     agent_status["current_action"] = action
@@ -585,6 +591,12 @@ def execute_agent_task(task, run_policy=None):
                 else:
                     agent_status["current_action"] = detail
                     agent_status["current_thought"] = ""
+            if status == "hitl":
+                try:
+                    from cogniagent.gui.server import persist_chat_execution
+                    persist_chat_execution(run_chat_id, get_safe_status(include_media=False))
+                except Exception:
+                    pass
                     
         agent.on_status_change = on_status_update
 
@@ -599,43 +611,30 @@ def execute_agent_task(task, run_policy=None):
                 return
             timing_samples[phase].append(max(0, int(duration_ms)))
             with status_lock:
-                timings = agent_status.setdefault("timing", {})
-                timings[timing_key] = int(duration_ms)
-                timings["updated_at"] = time.time()
+                agent_status["timing"][timing_key] = max(0, int(duration_ms))
+                agent_status["timing"]["updated_at"] = time.time()
 
-        agent.on_timing_update = on_timing_update
+        agent.on_timing_sample = on_timing_update
+
+        def on_critic_eval(step_num, eval_state, reason="", improved_prompt=""):
+            with status_lock:
+                agent_status["critic_review"] = {
+                    "step": step_num,
+                    "status": eval_state,
+                    "reason": reason,
+                    "improved_prompt": improved_prompt
+                }
+            
+        agent.on_critic_evaluation = on_critic_eval
 
         def on_step_complete(step_info):
+            if stop_requested:
+                raise Exception("Task stopped manually.")
+                
             screenshot_b64 = step_info.get("screenshot_b64", "")
             if not screenshot_b64:
                 try:
-                    from PIL import Image, ImageGrab
-                    if sys.platform == "win32":
-                        try:
-                            import ctypes
-                            user32 = ctypes.windll.user32
-                            hdesk = user32.OpenDesktopW("default", 0, False, 0x01FF)
-                            if hdesk:
-                                user32.SetThreadDesktop(hdesk)
-                        except Exception:
-                            pass
-                    img = None
-                    try:
-                        with mss.mss() as sct:
-                            monitor = sct.monitors[1] if len(sct.monitors) > 1 else sct.monitors[0]
-                            sct_img = sct.grab(monitor)
-                            img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
-                    except Exception:
-                        try:
-                            img = ImageGrab.grab().convert("RGB")
-                        except Exception:
-                            pass
-
-                    if img is not None:
-                        img.thumbnail((360, 220), Image.Resampling.BILINEAR)
-                        buffered = BytesIO()
-                        img.save(buffered, format="JPEG", quality=60)
-                        screenshot_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                    screenshot_b64 = capture_screen_base64(max_width=360, max_height=220, quality=60)
                 except Exception as se:
                     logging.error(f"Failed to capture direct screen on step completion: {se}")
 
@@ -668,7 +667,10 @@ def execute_agent_task(task, run_policy=None):
                 if stop_requested:
                     raise Exception("Task stopped manually during intervention.")
                 time.sleep(0.2)
-            return hitl_response[0] if hitl_response else "No response"
+            resp = hitl_response[0] if hitl_response else "No response"
+            with status_lock:
+                agent_status["hitl_question"] = ""
+            return resp
             
         agent.wait_for_hitl_response = wait_for_hitl
         

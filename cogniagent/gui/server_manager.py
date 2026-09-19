@@ -659,7 +659,7 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
             "   Prescribed Steps: 25\n"
             "   ```\n"
             "   Do NOT emit `[BROWSER_SEARCH]` when asked to search manually from the user's system or in Edge/Chrome!\n"
-            "4. USER PREFERENCES: Respect <user_profile_and_lifetime_memory> defaults (e.g. Gmail ak1399er@gmail.com via Microsoft Edge).\n"
+            "4. USER PREFERENCES: Respect profile defaults (e.g. ak1399er@gmail.com via Edge). For logins, use saved passwords/autofill, else ask user; never guess OTPs.\n"
             "5. CONVERSATIONAL TONE: Speak directly to the user. No scratchpad monologues or <think> tags."
         )
 
