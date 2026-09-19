@@ -17,7 +17,11 @@ from cogniagent.runtime.cuda_runtime import cuda_backend_available, driver_runti
 ROOT = Path(__file__).resolve().parent
 DEFAULT_VLA = ROOT / "models" / "Holo-3.1-4B-abliterated-rdo.Q4_K_M.gguf"
 DEFAULT_PROJECTOR = ROOT / "models" / "Holo-3.1-4B.mmproj-f16.gguf"
-DEFAULT_PLANNER = ROOT / "models" / "Qwen3.5-4B.Q4_K_M.gguf"
+DEFAULT_PLANNER = (
+    ROOT / "models" / "Spark-X2.5-4B-Q4_K_M.gguf"
+    if (ROOT / "models" / "Spark-X2.5-4B-Q4_K_M.gguf").exists()
+    else ROOT / "models" / "Qwen3.5-4B.Q4_K_M.gguf"
+)
 
 
 def _gpu_facts() -> dict[str, Any]:

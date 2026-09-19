@@ -26,13 +26,17 @@ class LLMConfig:
     base_url: str = "http://127.0.0.1:8089/v1"
     planner_url: str = "http://127.0.0.1:8090/v1"
     model: str = "models/Holo-3.1-4B-abliterated-rdo.Q4_K_M.gguf"
-    planner_model: str = "models/Qwen3.5-4B.Q4_K_M.gguf"
+    planner_model: str = (
+        "models/Spark-X2.5-4B-Q4_K_M.gguf"
+        if os.path.exists("models/Spark-X2.5-4B-Q4_K_M.gguf")
+        else "models/Qwen3.5-4B.Q4_K_M.gguf"
+    )
     model_type: str = "local"
     api_key: str = ""
     context_size: int = 4096
     # Includes the model's private reasoning plus one native tool call.
     # This is a ceiling, not a forced generation length.
-    max_tokens: int = 384
+    max_tokens: int = 512
     temperature: float = 0.2
     gpu_layers: int = 99
 

@@ -171,7 +171,6 @@ class SkillDefinition:
             "author": self.author,
             "version": self.version,
             "tags": self.tags,
-            "created_at": self.created_at,
         }
         fm_str = (
             yaml.safe_dump(frontmatter, sort_keys=False, allow_unicode=True).strip()

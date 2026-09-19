@@ -29,34 +29,24 @@ function shutdownBackendAndQuit() {
 
 function revealWindow(window) {
   if (!window || window.isDestroyed()) return;
-  if (typeof window.setOpacity !== 'function') {
-    window.show();
-    return;
-  }
-
-  window.setOpacity(0);
-  window.show();
-  const frames = 9;
-  let frame = 0;
-  const fadeTimer = setInterval(() => {
-    if (!window || window.isDestroyed()) {
-      clearInterval(fadeTimer);
-      return;
+  try {
+    if (typeof window.setOpacity === 'function') {
+      window.setOpacity(1);
     }
-    frame += 1;
-    window.setOpacity(Math.min(1, frame / frames));
-    if (frame >= frames) clearInterval(fadeTimer);
-  }, 20);
+  } catch (_) {}
+  window.show();
+  window.focus();
 }
 
 function createWindow() {
   win = new BrowserWindow({
+    title: "OmniVLA",
     width: 1280,
     height: 820,
     minWidth: 1000,
     minHeight: 700,
     frame: false, // Make window frameless for custom title bar
-    show: false,
+    show: true,
     backgroundColor: "#faf9f5",
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -69,6 +59,8 @@ function createWindow() {
 
   function loadApp() {
     if (win) {
+      win.webContents.session.clearCache().catch(() => {});
+      win.webContents.session.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] }).catch(() => {});
       win.loadURL('http://127.0.0.1:8000/?t=' + Date.now());
     }
   }
@@ -91,6 +83,10 @@ function createWindow() {
   });
 
   win.once('ready-to-show', () => {
+    revealWindow(win);
+  });
+
+  win.webContents.on('did-finish-load', () => {
     revealWindow(win);
   });
 

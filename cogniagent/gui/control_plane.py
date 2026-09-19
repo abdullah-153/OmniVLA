@@ -8,6 +8,7 @@ high-impact intent visible and requires an explicit, just-in-time approval.
 from __future__ import annotations
 
 import ipaddress
+import os
 import re
 import secrets
 import threading
@@ -111,7 +112,7 @@ def validate_settings(payload: dict[str, Any], current: dict[str, Any]) -> tuple
 
     settings = {
         "model_path": current.get("model_path", "models/Holo-3.1-4B-abliterated-rdo.Q4_K_M.gguf"),
-        "planner_model_path": current.get("planner_model_path", "models/Qwen3.5-4B.Q4_K_M.gguf"),
+        "planner_model_path": current.get("planner_model_path", "models/Spark-X2.5-4B-Q4_K_M.gguf" if os.path.exists("models/Spark-X2.5-4B-Q4_K_M.gguf") else "models/Qwen3.5-4B.Q4_K_M.gguf"),
         "temperature": current.get("temperature", 0.2),
         "max_steps": current.get("max_steps", 15),
         "enable_recording": current.get("enable_recording", False),

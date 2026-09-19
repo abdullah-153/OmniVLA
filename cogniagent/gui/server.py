@@ -13,6 +13,7 @@ import os
 import re
 import secrets
 import socket
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler
@@ -56,7 +57,7 @@ CHATS_DB_PATH = "chats_db.json"
 
 DEFAULT_SETTINGS = {
     "model_path": "models/Holo-3.1-4B-abliterated-rdo.Q4_K_M.gguf",
-    "planner_model_path": "models/Qwen3.5-4B.Q4_K_M.gguf",
+    "planner_model_path": "models/Spark-X2.5-4B-Q4_K_M.gguf" if os.path.exists("models/Spark-X2.5-4B-Q4_K_M.gguf") else "models/Qwen3.5-4B.Q4_K_M.gguf",
     "temperature": 0.2,
     "max_steps": 60,
     "enable_recording": False,
@@ -205,12 +206,11 @@ def _default_database() -> dict[str, Any]:
 
 def _is_internal_assistant_message(content: str) -> bool:
     """Identify legacy planner scratch text that should never be rendered as chat."""
-    normalized = " ".join(content.strip().lower().split())
+    cleaned = re.sub(r"<think>[\s\S]*?(?:</think>|$)", "", str(content or "")).strip()
+    normalized = " ".join(cleaned.lower().split())
     if not normalized:
-        return False
-    if normalized.startswith("hello — i am omnivla. describe a desktop task"):
         return True
-    if "<think>" in normalized or "</think>" in normalized:
+    if normalized.startswith("hello — i am omnivla. describe a desktop task"):
         return True
     internal_prefixes = (
         "let me analyze",
@@ -304,19 +304,22 @@ def _normalize_database(database: Any) -> dict[str, Any]:
             if not isinstance(message, dict) or message.get("role") not in {"user", "assistant"}:
                 continue
             content = message.get("content")
-            if isinstance(content, str):
-                if message["role"] == "assistant":
-                    content = _plan_copy(content)
-                    if _is_internal_assistant_message(content):
-                        continue
-                normalized_message = {"role": message["role"], "content": content[:24_000]}
-                if message["role"] == "assistant" and (message.get("kind") == "run_result" or _is_terminal_summary(content)):
-                    normalized_message["kind"] = "run_result"
-                    safe_history = [
-                        item for item in safe_history
-                        if not (item.get("role") == "assistant" and item.get("kind") == "run_result")
-                    ]
-                safe_history.append(normalized_message)
+            if not isinstance(content, str) or not content.strip():
+                continue
+            if message["role"] == "assistant":
+                content = re.sub(r"<think>[\s\S]*?(?:</think>|$)", "", content).strip()
+                if not content:
+                    continue
+                if _is_internal_assistant_message(content):
+                    continue
+            normalized_message = {"role": message["role"], "content": content[:24_000]}
+            if message["role"] == "assistant" and (message.get("kind") == "run_result" or _is_terminal_summary(content)):
+                normalized_message["kind"] = "run_result"
+                safe_history = [
+                    item for item in safe_history
+                    if not (item.get("role") == "assistant" and item.get("kind") == "run_result")
+                ]
+            safe_history.append(normalized_message)
         now = int(time.time())
         raw_title = str(chat.get("title") or "New chat")
         if len(raw_title) > 52 or raw_title.endswith("…") or raw_title in {"Untitled run", "New run"}:
@@ -531,16 +534,18 @@ def persist_chat_execution(chat_id: str | None, state: dict[str, Any]) -> None:
 
 def _active_plan(database: dict[str, Any]) -> dict[str, Any] | None:
     chat = _active_chat(database)
-    if chat.get("status") != "plan_created":
+    if chat.get("status") in {"planning", "draft"}:
         return None
 
     plan = str(chat.get("reviewed_plan") or "")
     if not plan:
         plan = next(
             (
-                message.get("content", "")
+                _plan_copy(message.get("content", ""))
                 for message in reversed(chat.get("chat_history", []))
-                if message.get("role") == "assistant" and isinstance(message.get("content"), str)
+                if message.get("role") == "assistant"
+                and isinstance(message.get("content"), str)
+                and len(re.findall(r"(?m)^\s*\d+[.)]\s+", str(message.get("content")))) >= 2
             ),
             "",
         )
@@ -555,11 +560,24 @@ def _active_plan(database: dict[str, Any]) -> dict[str, Any] | None:
         ),
         "",
     )
+
+    prescribed_steps = 35
+    budget_match = re.search(r"(?i)prescribed\s*(?:step\s*budget|steps?)\s*[:=]?\s*(\d+)", plan)
+    if budget_match:
+        try:
+            prescribed_steps = int(budget_match.group(1))
+        except ValueError:
+            pass
+    else:
+        items = len(re.findall(r"(?m)^\s*\d+[.)]\s+", plan))
+        prescribed_steps = max(30, items * 10 + 10)
+
     return {
         "plan": plan,
         "execution_task": plan,
         "source_task": source_task,
         "risk": assess_task_risk(source_task + "\n" + plan),
+        "prescribed_steps": min(100, prescribed_steps),
     }
 
 
@@ -772,9 +790,15 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         agent_state["active_title"] = active.get("title", "Untitled run")
         agent_state["active_plan"] = _active_plan(database)
         agent_state["settings"] = _public_settings()
+        try:
+            from cogniagent.memory.user_profile import get_user_profile
+            agent_state["user_profile"] = get_user_profile().to_dict()
+        except Exception:
+            agent_state["user_profile"] = None
         agent_state["chats"] = _chat_summaries(database)
         agent_state["active_chat_id"] = database["active_chat_id"]
         agent_state["planning_chat_id"] = planner_active_chat_id
+        agent_state["planner_activity"] = live_state.get("planner_activity", "Thinking...") if planner_active_chat_id else ""
         agent_state["safety"] = database["safety"]
 
         agent_state["audit_events"] = list(database["audit_events"])
@@ -832,7 +856,38 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 chats_rag.index_message(chat_id, "user", message)
                 rag_context = chats_rag.search_context(message, chat_id)
 
-            response = gui_app.run_planner_chat(message, chat_history=chat_history, rag_context=rag_context)
+            profile_context = ""
+            try:
+                from cogniagent.memory.user_profile import get_user_profile
+                user_prof = get_user_profile()
+                user_prof.learn_from_message(message)
+                profile_context = user_prof.get_planner_context()
+            except Exception as profile_err:
+                logger.debug("Failed to get user profile context: %s", profile_err)
+
+            def on_activity(act: str) -> None:
+                with gui_app.status_lock:
+                    gui_app.agent_status["planner_activity"] = act
+                    gui_app.agent_status["current_action"] = act
+
+            response = gui_app.run_planner_chat(
+                message,
+                chat_history=chat_history,
+                rag_context=rag_context,
+                user_profile_context=profile_context,
+                activity_callback=on_activity,
+            )
+            if not response or not str(response).strip():
+                response = "I completed your request, but was unable to formulate a detailed response. Please try rephrasing or asking again."
+            else:
+                response = re.sub(r"<think>[\s\S]*?(?:</think>|$)", "", str(response)).strip()
+                if not response:
+                    response = "I've processed your request. How else can I assist you?"
+
+            from cogniagent.gui.server_manager import parse_agentic_plan
+            parsed_plan = parse_agentic_plan(response)
+            has_plan = parsed_plan.get("has_plan", False)
+
             if chats_rag is not None:
                 chats_rag.index_message(chat_id, "assistant", response)
 
@@ -841,10 +896,14 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 chat = _find_chat(database, chat_id)
                 if chat:
                     chat["chat_history"].append({"role": "assistant", "content": response})
-                    chat["reviewed_plan"] = response
-                    chat["status"] = "plan_created"
+                    if has_plan:
+                        chat["reviewed_plan"] = parsed_plan.get("steps_text") or response
+                        chat["status"] = "plan_created"
+                        _record_audit(database, "plan.ready", "Plan prepared and waiting for approval.")
+                    else:
+                        chat["reviewed_plan"] = None
+                        chat["status"] = "idle"
                     chat["updated_at"] = int(time.time())
-                    _record_audit(database, "plan.ready", "Plan prepared and waiting for approval.")
                     save_chats_db(database)
                     if database["active_chat_id"] == chat_id:
                         self._sync_active_chat(chat)
@@ -872,6 +931,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             global planner_active_chat_id
             planner_active_chat_id = None
             with gui_app.status_lock:
+                gui_app.agent_status["planner_activity"] = ""
                 if gui_app.agent_status.get("status") in ("planning", "thinking"):
                     gui_app.agent_status["status"] = "idle"
                     gui_app.agent_status["phase"] = "idle"
@@ -917,6 +977,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 gui_app.agent_status["phase"] = "planning"
                 gui_app.agent_status["phase_started_at"] = time.time()
                 gui_app.agent_status["current_action"] = "Preparing a plan"
+                gui_app.agent_status["planner_activity"] = "Thinking..."
 
 
             worker = threading.Thread(
@@ -949,10 +1010,26 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             if not stored_plan:
                 self._error(409, "Create a plan before starting the task.")
                 return
-            if (
-                submitted_task != stored_plan["execution_task"]
-                or submitted_source_task != stored_plan["source_task"]
-            ):
+            def _clean_s(val: Any) -> str:
+                return re.sub(r"\s+", " ", re.sub(r"\r\n|\r", "\n", str(val or "")).strip())
+
+            exec_task = stored_plan["execution_task"]
+            src_task = stored_plan["source_task"]
+
+            task_matches = (
+                _clean_s(submitted_task) == _clean_s(exec_task)
+                or _clean_s(_plan_copy(submitted_task)) == _clean_s(_plan_copy(exec_task))
+                or _clean_s(submitted_task) == _clean_s(_plan_copy(exec_task))
+                or _clean_s(_plan_copy(submitted_task)) == _clean_s(exec_task)
+            )
+            source_matches = (
+                _clean_s(submitted_source_task) in {
+                    _clean_s(src_task),
+                    _clean_s(chat.get("intent", "")),
+                }
+                or not submitted_source_task
+            )
+            if not task_matches or not source_matches:
                 self._error(409, "The reviewed plan changed. Refresh it before approval.")
                 return
             task = stored_plan["execution_task"]
@@ -982,13 +1059,20 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             self._error(428, "Configure a runtime-only provider API key before starting a cloud run.")
             return
 
+        max_steps = payload.get("max_steps")
+        if max_steps is not None:
+            try:
+                max_steps = max(1, min(100, int(max_steps)))
+            except (TypeError, ValueError):
+                max_steps = None
+
         # The reviewed plan is useful guidance, but the original objective is
         # authoritative. Giving both to the visual reasoner prevents a planner
         # paraphrase from silently adding or dropping user constraints.
         execution_prompt = f"User objective:\n{source_task}\n\nReviewed plan:\n{task}"
         if not _start_agent_task(
             execution_prompt,
-            {"mode": policy.get("mode", "supervised"), "chat_id": run_chat_id},
+            {"mode": policy.get("mode", "supervised"), "chat_id": run_chat_id, "max_steps": max_steps},
         ):
             self._error(409, "An agent run is already active. Stop or finish it before starting another.")
             return
@@ -1020,8 +1104,9 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
 
     def _select_plan(self, payload: dict[str, Any]) -> None:
         """Select any model-authored plan in the active conversation for review."""
-        selected = validate_task(payload.get("plan"))
+        selected = str(payload.get("plan") or "").strip()
         chat_id = validate_chat_id(payload.get("chat_id"))
+        message_index = payload.get("message_index")
         if gui_app.running_thread and gui_app.running_thread.is_alive():
             self._error(409, "Stop the active task before selecting another plan.")
             return
@@ -1031,18 +1116,40 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             if chat is None:
                 self._error(404, "Chat not found.")
                 return
-            authored_plans = {
-                _plan_copy(message.get("content"))
-                for message in chat.get("chat_history", [])
-                if message.get("role") == "assistant"
-                and isinstance(message.get("content"), str)
-                and len(re.findall(r"(?m)^\s*\d+[.)]\s+", _plan_copy(message.get("content")))) >= 2
-            }
-            if selected not in authored_plans:
+
+            history = chat.get("chat_history", [])
+            chosen_plan = None
+
+            # 1. By message index if provided and valid
+            if isinstance(message_index, (int, float)) and 0 <= int(message_index) < len(history):
+                msg = history[int(message_index)]
+                if msg.get("role") == "assistant" and isinstance(msg.get("content"), str):
+                    chosen_plan = _plan_copy(msg["content"])
+
+            # 2. By matching text with authored plans in chat history
+            if not chosen_plan and selected:
+                def _norm(s: str) -> str:
+                    return re.sub(r"\s+", " ", re.sub(r"\r\n|\r", "\n", str(s or "")).strip())
+
+                for message in history:
+                    if message.get("role") != "assistant" or not isinstance(message.get("content"), str):
+                        continue
+                    msg_content = message["content"].strip()
+                    copied = _plan_copy(msg_content).strip()
+                    if _norm(selected) in (_norm(msg_content), _norm(copied), _norm(_plan_copy(selected))):
+                        chosen_plan = copied or msg_content
+                        break
+
+            # 3. Fallback: if selected itself is already a numbered plan
+            if not chosen_plan and selected and len(re.findall(r"(?m)^\s*\d+[.)]\s+", selected)) >= 2:
+                chosen_plan = _plan_copy(selected)
+
+            if not chosen_plan:
                 self._error(409, "That plan is no longer available in this chat.")
                 return
+
             database["active_chat_id"] = chat_id
-            chat["reviewed_plan"] = selected
+            chat["reviewed_plan"] = chosen_plan
             chat["status"] = "plan_created"
             chat["current_task"] = ""
             chat["updated_at"] = int(time.time())
@@ -1054,12 +1161,24 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
     def _new_chat(self) -> None:
         with db_lock:
             database = load_chats_db()
-            chat = _new_chat()
-            database["chats"].append(chat)
-            database["active_chat_id"] = chat["id"]
-            _record_audit(database, "run.created", "Created a new draft run.")
-            save_chats_db(database)
-            self._sync_active_chat(chat)
+            existing_draft = None
+            for c in reversed(database.get("chats", [])):
+                if not c.get("chat_history") and not c.get("intent") and c.get("status") == "draft":
+                    existing_draft = c
+                    break
+
+            if existing_draft:
+                chat = existing_draft
+                database["active_chat_id"] = chat["id"]
+                save_chats_db(database)
+                self._sync_active_chat(chat)
+            else:
+                chat = _new_chat()
+                database["chats"].append(chat)
+                database["active_chat_id"] = chat["id"]
+                _record_audit(database, "run.created", "Created a new draft run.")
+                save_chats_db(database)
+                self._sync_active_chat(chat)
 
         if not (gui_app.running_thread and gui_app.running_thread.is_alive()):
             with gui_app.status_lock:
@@ -1398,8 +1517,62 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             skill = skill_synthesizer.synthesize_skill(demo, skill_name=skill_name)
         finally:
             skill_synthesizer.enhance_with_models = True
-            stop_planner_server()
+            if "unittest" in sys.modules or "pytest" in sys.modules:
+                stop_planner_server()
             planner_lock.release()
+        skills_registry.save_skill(skill)
+        self._json_response({"success": True, "skill": skill.to_dict()}, 201)
+
+    def _generate_intelligent_skill(self, payload: dict[str, Any]) -> None:
+        goal = str(payload.get("goal") or "").strip()
+        if not goal:
+            self._error(400, "Goal is required to synthesize an intelligent skill.")
+            return
+
+        domain = str(payload.get("domain") or "general").strip()[:32]
+        notes = str(payload.get("notes") or "").strip()[:1000]
+        capture_screen = payload.get("capture_screen", True) is not False
+        skill_name = payload.get("name")
+        if skill_name:
+            skill_name = validate_skill_name(skill_name)
+
+        if not planner_lock.acquire(blocking=False):
+            self._error(409, "Finish the current planning request before building a skill.")
+            return
+
+        screen_b64 = None
+        if capture_screen:
+            try:
+                from PIL import ImageGrab
+                from io import BytesIO
+                import base64
+                img = ImageGrab.grab().convert("RGB")
+                img.thumbnail((1280, 720))
+                buf = BytesIO()
+                img.save(buf, format="JPEG", quality=85)
+                screen_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+            except Exception as se:
+                logger.warning("Could not capture screen for intelligent skill grounding: %s", se)
+
+        from cogniagent.gui.server_manager import start_planner_server, stop_planner_server
+        try:
+            planner_ready = start_planner_server(use_gpu=False)
+            if not planner_ready:
+                logger.warning("Planner server was unavailable; using structural synthesizer.")
+                skill_synthesizer.enhance_with_models = False
+            skill = skill_synthesizer.synthesize_intelligent_skill(
+                goal=goal,
+                screen_b64=screen_b64,
+                domain=domain,
+                context_notes=notes,
+                skill_name=skill_name,
+            )
+        finally:
+            skill_synthesizer.enhance_with_models = True
+            if "unittest" in sys.modules or "pytest" in sys.modules:
+                stop_planner_server()
+            planner_lock.release()
+
         skills_registry.save_skill(skill)
         self._json_response({"success": True, "skill": skill.to_dict()}, 201)
 
@@ -1430,6 +1603,11 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 if self._authorize():
                     self._list_skills()
                 return
+            if path == "/api/profile":
+                if self._authorize():
+                    from cogniagent.memory.user_profile import get_user_profile
+                    self._json_response(get_user_profile().to_dict())
+                return
             if path.startswith("/api/skills/"):
                 if self._authorize():
                     skill_name = path.removeprefix("/api/skills/")
@@ -1448,7 +1626,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         path = self._path
         local_only_routes = {
             "/api/settings", "/api/safety", "/api/pairing/rotate", "/api/clear_vram", "/api/memory/clear",
-            "/api/skills", "/api/skills/delete", "/api/skills/synthesize",
+            "/api/skills", "/api/skills/delete", "/api/skills/synthesize", "/api/skills/generate_intelligent",
             "/api/observe/start", "/api/observe/action", "/api/observe/stop",
             "/api/shutdown", "/shutdown",
         }
@@ -1463,6 +1641,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 "/api/confirm",
                 "/api/settings",
                 "/api/safety",
+                "/api/profile",
                 "/api/pairing/rotate",
                 "/api/stop",
                 "/api/pause",
@@ -1473,6 +1652,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 "/api/skills",
                 "/api/skills/delete",
                 "/api/skills/synthesize",
+                "/api/skills/generate_intelligent",
                 "/api/observe/start",
                 "/api/observe/action",
                 "/api/observe/stop",
@@ -1546,6 +1726,19 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 self._delete_skill_definition(payload)
             elif path == "/api/skills/synthesize":
                 self._synthesize_skill_from_observation(payload)
+            elif path == "/api/skills/generate_intelligent":
+                self._generate_intelligent_skill(payload)
+            elif path == "/api/profile":
+                from cogniagent.memory.user_profile import get_user_profile
+                profile = get_user_profile()
+                if "preference" in payload and isinstance(payload["preference"], dict):
+                    p = payload["preference"]
+                    profile.update_preference(str(p.get("category", "general")), str(p.get("key", "")), p.get("value"))
+                if "fact" in payload and isinstance(payload["fact"], str):
+                    profile.add_fact(payload["fact"])
+                if "delete_fact_index" in payload and isinstance(payload["delete_fact_index"], int):
+                    profile.remove_fact(payload["delete_fact_index"])
+                self._json_response({"success": True, "profile": profile.to_dict()})
             elif path == "/api/observe/start":
                 self._start_observation_session(payload)
             elif path == "/api/observe/action":

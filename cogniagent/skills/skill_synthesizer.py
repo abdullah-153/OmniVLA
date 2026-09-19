@@ -203,6 +203,152 @@ Output ONLY the complete SKILL.md content starting with '---' and ending with ma
         logger.info("Successfully synthesized SkillDefinition: '%s' (%s)", skill.name, skill.title)
         return skill
 
+    def synthesize_intelligent_skill(
+        self,
+        goal: str,
+        screen_b64: Optional[str] = None,
+        domain: str = "general",
+        context_notes: str = "",
+        skill_name: Optional[str] = None,
+    ) -> SkillDefinition:
+        """Synthesize a production-ready procedural skill for Holo 3.1 using visual grounding and reasoning.
+
+        Eliminates the fragile click-recording workflow by using Holo VLM to parse live UI landmarks
+        and Qwen Planner to synthesize generalized procedural strategy, trigger phrases, and parameters.
+        """
+        task_goal = goal.strip()
+        if not task_goal:
+            task_goal = "Desktop Workflow"
+        logger.info("Synthesizing intelligent skill for goal: '%s' (domain: %s, has_screen: %s)", task_goal, domain, bool(screen_b64))
+
+        visual_analysis = ""
+        if screen_b64 and self.enhance_with_models:
+            try:
+                visual_analysis = self.analyze_visual_context_with_holo([screen_b64], task_goal)
+            except Exception as e:
+                logger.warning("Visual analysis with Holo failed: %s", e)
+
+        skill_markdown = ""
+        if self.enhance_with_models:
+            prompt = f"""You are an expert AI skill architect for a screenshot-grounded desktop VLA agent (Holo 3.1).
+Your task is to synthesize a reusable, generalized, high-level intelligent skill in standard Markdown format (SKILL.md).
+
+TASK GOAL: {task_goal}
+TARGET DOMAIN: {domain}
+USER NOTES / WORKFLOW GUIDANCE: {context_notes or "None provided"}
+
+VISUAL INTERFACE LANDMARKS & LAYOUT (FROM ACTIVE SCREEN):
+{visual_analysis or "Standard desktop/browser application interface"}
+
+INSTRUCTIONS FOR HOLO 3.1 COMPATIBILITY:
+1. Synthesize a clean, parameterized skill in standard SKILL.md format with YAML frontmatter.
+2. The frontmatter MUST include:
+   - name: lower_snake_case identifier (e.g. check_email, search_orders)
+   - title: Clear, descriptive human-readable title
+   - description: 1-2 sentence description of what this skill achieves
+   - domain: {domain}
+   - triggers: list of 3-5 intuitive trigger phrases (e.g. ["check * emails", "read my inbox"])
+   - parameters: list of dynamic parameters with name, description, default_value, required (identify any variable query or input like {{query}})
+   - tags: list of 3-5 keyword tags
+3. The body MUST have these exact Markdown sections:
+   - ## Cognitive Strategy & Workflow: Step-by-step reasoning instructions for Holo VLA, referencing {{param_name}} placeholders. Focus on visual intent, NEVER hardcoded coordinates.
+   - ## Visual Landmarks & Grounding Cues: Specific anchor elements (icons, button shapes, colors, labels, text placeholders) Holo must look for.
+   - ## Failure Modes & Recovery: Specific fallback heuristics (e.g. if dialog appears, if no search results match, if loading spinner is visible).
+4. Output ONLY the complete SKILL.md content starting with '---' and ending with markdown sections. No conversational filler."""
+
+            try:
+                resp = requests.post(
+                    f"{self.planner_endpoint}/chat/completions",
+                    json={
+                        "model": "Qwen3.5-4B",
+                        "messages": [
+                            {"role": "system", "content": "You are a specialized AI skill synthesis compiler for Holo 3.1 VLA."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        "max_tokens": 800,
+                        "temperature": 0.2,
+                    },
+                    timeout=90,
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    raw_out = data["choices"][0]["message"]["content"].strip()
+                    if raw_out.startswith("```markdown"):
+                        raw_out = raw_out[11:].strip()
+                    elif raw_out.startswith("```"):
+                        raw_out = raw_out[3:].strip()
+                    if raw_out.endswith("```"):
+                        raw_out = raw_out[:-3].strip()
+                    skill_markdown = raw_out
+            except Exception as e:
+                logger.warning("Qwen planner intelligent synthesis call failed: %s. Falling back to heuristic.", e)
+
+        if not skill_markdown or not skill_markdown.startswith("---"):
+            skill_markdown = self._heuristic_intelligent_synthesis(task_goal, domain, visual_analysis, context_notes, skill_name)
+
+        skill = SkillDefinition.from_markdown(skill_markdown)
+        if skill_name:
+            skill.name = skill_name
+        skill.author = "intelligent_synthesis"
+        logger.info("Successfully created intelligent SkillDefinition: '%s' (%s)", skill.name, skill.title)
+        return skill
+
+    def _heuristic_intelligent_synthesis(
+        self,
+        goal: str,
+        domain: str,
+        visual_analysis: str,
+        context_notes: str = "",
+        skill_name: Optional[str] = None,
+    ) -> str:
+        """Construct a high-quality SKILL.md when neural models are unavailable."""
+        import re
+        slug = skill_name or re.sub(r"[^a-zA-Z0-9]+", "_", goal.lower()).strip("_")[:32]
+        if not slug or not slug[0].isalpha():
+            slug = f"skill_{slug}" if slug else "intelligent_skill"
+        title = goal.title()[:60]
+        notes_step = f"\n- {context_notes}" if context_notes else ""
+        landmarks = visual_analysis.strip() if visual_analysis and "standard desktop" not in visual_analysis.lower() else (
+            "- Primary application window controls, search fields, and action buttons.\n"
+            "- Prominent interactive icons and navigation bars."
+        )
+
+        return f"""---
+name: {slug}
+title: {title}
+description: Procedural guidance for accomplishing: {goal}.
+domain: {domain or 'general'}
+triggers:
+  - {goal.lower()}
+  - {slug.replace('_', ' ')}
+  - perform {slug.replace('_', ' ')}
+parameters:
+  - name: query
+    description: Target search value or parameters for {title}
+    type: string
+    default: ""
+    required: false
+tags:
+  - {domain or 'productivity'}
+  - automated_skill
+  - holo_guidance
+---
+
+## Cognitive Strategy & Workflow
+1. Verify the target application is focused and visible on screen.
+2. Locate the primary search or input control and enter {{query}} if provided.{notes_step}
+3. Identify and activate the target action or item from the rendered results.
+4. Verify the visual state changed to confirm completion before concluding.
+
+## Visual Landmarks & Grounding Cues
+{landmarks}
+
+## Failure Modes & Recovery
+- If the target window is minimized or covered, bring it to the foreground before interacting.
+- If a modal confirmation or cookie banner appears, dismiss it before proceeding.
+- If no results appear after typing, clear the input and retry with a broader query.
+"""
+
     def _heuristic_synthesis(self, demo: ObservationDemonstration, visual_analysis: str) -> str:
         """Build a coordinate-free recovery skill when model enhancement is unavailable."""
         skill = self.compiler.compile_observation(demo)

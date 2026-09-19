@@ -50,10 +50,10 @@ class TestPerformanceProfile(unittest.TestCase):
         self.assertIn("--no-op-offload", command)
         self.assertEqual(command[command.index("-np") + 1], "1")
         self.assertEqual(command[command.index("-c") + 1], "2048")
-        self.assertEqual(command[command.index("--reasoning") + 1], "on")
-        self.assertEqual(command[command.index("--reasoning-format") + 1], "deepseek")
-        self.assertEqual(command[command.index("--batch-size") + 1], "128")
-        self.assertEqual(command[command.index("--ubatch-size") + 1], "128")
+        self.assertEqual(command[command.index("--reasoning") + 1], "off")
+        self.assertIn("--cache-prompt", command)
+        self.assertEqual(command[command.index("--batch-size") + 1], "512")
+        self.assertEqual(command[command.index("--ubatch-size") + 1], "256")
 
     def test_planner_output_never_leaks_private_reasoning(self):
         raw = "<think>private analysis</think>\n1. Inspect the current state.\n2. Complete and verify the task."

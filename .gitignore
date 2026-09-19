@@ -1,7 +1,11 @@
 models/
 llama-cpp/
+llama-cpp*/
 omnivla_memory_v2/
 node_modules/
+**/node_modules/
+.env
+*.env
 __pycache__/
 *.py[cod]
 .pytest_cache/

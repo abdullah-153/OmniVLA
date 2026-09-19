@@ -351,6 +351,99 @@ class TestCommandCenterControlPlane(unittest.TestCase):
         self.assertEqual(retried["reviewed_plan"], "Open the report and prepare a concise summary.")
         handler._json_response.assert_called_once_with({"success": True}, 201)
 
+    def test_select_plan_with_message_index_and_formatting_variants(self):
+        raw_msg = "Here is the plan:\n1. Open Microsoft Edge.\n2. Navigate to webmail.\n3. Check inbox."
+        clean_plan = "1. Open Microsoft Edge.\n2. Navigate to webmail.\n3. Check inbox."
+        database = {
+            "active_chat_id": "chat-42",
+            "chats": [{
+                "id": "chat-42",
+                "title": "Check mail",
+                "status": "failed",
+                "intent": "Check my unread mail in Edge",
+                "reviewed_plan": clean_plan,
+                "current_task": "",
+                "updated_at": 1,
+                "chat_history": [
+                    {"role": "user", "content": "Check my unread mail in Edge"},
+                    {"role": "assistant", "content": raw_msg},
+                ],
+            }],
+            "settings": {},
+            "safety": default_safety_policy(),
+            "audit_events": [],
+        }
+        handler = object.__new__(command_server.WebUIRequestHandler)
+        handler._error = MagicMock()
+        handler._json_response = MagicMock()
+        handler._sync_active_chat = MagicMock()
+
+        with (
+            patch.object(command_server, "load_chats_db", return_value=database),
+            patch.object(command_server, "save_chats_db"),
+        ):
+            # Test selecting by message_index
+            handler._select_plan({"chat_id": "chat-42", "plan": raw_msg, "message_index": 1})
+        self.assertEqual(database["chats"][0]["status"], "plan_created")
+        self.assertEqual(database["chats"][0]["reviewed_plan"], clean_plan)
+        handler._json_response.assert_called_once_with({"success": True})
+
+    def test_confirm_allows_whitespace_and_newline_variants(self):
+        database = {
+            "active_chat_id": "run-2",
+            "chats": [{
+                "id": "run-2",
+                "title": "Email check",
+                "status": "plan_created",
+                "intent": "Check mail",
+                "reviewed_plan": "1. Open Edge.\n2. Check mail.",
+                "chat_history": [],
+                "current_task": "",
+            }],
+            "settings": {"model_type": "local"},
+            "safety": default_safety_policy(),
+            "audit_events": [],
+        }
+        handler = object.__new__(command_server.WebUIRequestHandler)
+        handler._error = MagicMock()
+        handler._json_response = MagicMock()
+
+        with (
+            patch.object(command_server, "load_chats_db", return_value=database),
+            patch.object(command_server, "save_chats_db"),
+            patch.object(command_server, "_start_agent_task", return_value=True) as start_task,
+            patch.object(command_server, "assess_task_risk", return_value={"requires_explicit_acknowledgement": False, "reasons": []}),
+        ):
+            # Send with Windows \r\n and leading/trailing whitespace
+            handler._confirm_run({
+                "task": "1. Open Edge.\r\n2. Check mail.  \r\n",
+                "source_task": "Check mail ",
+                "approved": True,
+                "risk_acknowledged": True,
+            })
+        handler._error.assert_not_called()
+        self.assertTrue(start_task.called)
+
+    def test_active_plan_preserved_on_stopped_or_failed_status(self):
+        database = {
+            "active_chat_id": "run-fail",
+            "chats": [{
+                "id": "run-fail",
+                "title": "Failed run",
+                "status": "failed",
+                "intent": "Inspect screen",
+                "reviewed_plan": "1. Look at screen.\n2. Report findings.",
+                "chat_history": [],
+                "current_task": "",
+            }],
+            "settings": {},
+            "safety": default_safety_policy(),
+            "audit_events": [],
+        }
+        active_plan = command_server._active_plan(database)
+        self.assertIsNotNone(active_plan)
+        self.assertEqual(active_plan["execution_task"], "1. Look at screen.\n2. Report findings.")
+
 
 if __name__ == "__main__":
     unittest.main()

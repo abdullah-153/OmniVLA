@@ -199,6 +199,16 @@ class SkillRegistry:
         query = raw_query.lower()
         if not query:
             return None, {}
+
+        # Check for explicit @skill_name mention in task prompt
+        mentions = re.findall(r"@([A-Za-z0-9_-]+)", raw_query)
+        for mention in mentions:
+            mention_clean = mention.lower().replace("-", "_")
+            for sname, sdef in self._skills_cache.items():
+                if sname.lower().replace("-", "_") == mention_clean:
+                    logger.info("Explicit @%s skill mention detected. Forcing skill match.", sname)
+                    return sdef, {}
+
         query_tokens = self._tokens(query)
         ranked = []
 

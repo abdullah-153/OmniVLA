@@ -45,6 +45,8 @@ tags: [desktop]
     requestInFlight: false,
     settingsSignature: "",
     renderSignatures: {},
+    autocomplete: { open: false, query: "", selectedIndex: 0, matches: [], triggerPos: 0 },
+    latestIntelligentSkill: null,
   };
 
   const icon = (name) => `<svg aria-hidden="true"><use href="#i-${name}" /></svg>`;
@@ -59,7 +61,8 @@ tags: [desktop]
     return escapeHtml(value)
       .replace(/`([^`]+)`/g, "<code>$1</code>")
       .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-      .replace(/\*([^*]+)\*/g, "<em>$1</em>");
+      .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+      .replace(/@([A-Za-z0-9_-]+)/g, '<span class="skill-mention">@$1</span>');
   }
 
   function renderMarkdown(value) {
@@ -218,8 +221,7 @@ tags: [desktop]
     state.renderSignatures.sidebar = signature;
     $("chat-list").innerHTML = chats.length ? chats.map((chat, index) => {
       const active = chat.id === data.active_chat_id;
-      const running = chat.id === data.execution_live?.execution_chat_id && isLiveWorking(data);
-      return `<div class="chat-row is-entering${active ? " is-active" : ""}" style="--item-index:${index}" data-chat-id="${escapeHtml(chat.id)}"><button class="chat-row-open" type="button"><span class="chat-row-title">${escapeHtml(chat.title || "New chat")}</span><span class="chat-row-meta"><i class="chat-status${running ? " is-running" : ""}" data-tone="${phaseTone(chat.status)}"></i>${escapeHtml(running ? "Working" : humanStatus(chat.status))}</span></button><button class="chat-row-delete" type="button" title="Chat options" aria-label="Options for ${escapeHtml(chat.title || "chat")}">${icon("more")}</button></div>`;
+      return `<div class="chat-row is-entering${active ? " is-active" : ""}" style="--item-index:${index}" data-chat-id="${escapeHtml(chat.id)}"><button class="chat-row-open" type="button"><span class="chat-row-title">${escapeHtml(chat.title || "New chat")}</span></button><button class="chat-row-delete" type="button" title="Delete chat" aria-label="Delete ${escapeHtml(chat.title || "chat")}">${icon("trash")}</button></div>`;
     }).join("") : `<p class="sidebar-empty">No matching chats</p>`;
   }
 
@@ -231,13 +233,138 @@ tags: [desktop]
     document.title = `${String(data.active_title || "New chat").slice(0, 48)} · OmniVLA`;
     const retryable = ["success", "failed", "stopped"].includes(chat.status) && Boolean(chat.intent);
     $("retry-chat").hidden = !retryable;
-    $("delete-chat").disabled = (data.chats || []).length <= 1 || chat.status === "running";
+    if ($("delete-chat")) $("delete-chat").disabled = (data.chats || []).length <= 1 || chat.status === "running";
+  }
+
+  function extractPlanCardData(content) {
+    const text = String(content || "").trim();
+    const codeBlockMatch = text.match(/```(?:desktop-plan|plan)?\s*([\s\S]+?)```/i);
+    let planSource = "";
+    let preface = "";
+    let outro = "";
+
+    if (codeBlockMatch) {
+      planSource = codeBlockMatch[1].trim();
+      preface = text.slice(0, codeBlockMatch.index).trim();
+      outro = text.slice(codeBlockMatch.index + codeBlockMatch[0].length).trim();
+    } else {
+      const hasKeywords = /(?:prescribed|estimated)\s*steps?|expected\s+(?:output|deliverable|result)/i.test(text);
+      const actionMatches = text.match(/^\s*(?:[-*]\s*)?(?:step\s*)?\d+[.):]\s*(?:open|click|press|launch|navigate|type|switch|close|focus|select|scroll|drag|move|download|verify|inspect|start|run)\b/gim);
+      if (hasKeywords || (actionMatches && actionMatches.length >= 2)) {
+        const firstStepIdx = text.search(/^\s*(?:[-*]\s*)?(?:step\s*)?\d+[.):]\s+/m);
+        if (firstStepIdx !== -1) {
+          preface = text.slice(0, firstStepIdx).trim();
+          planSource = text.slice(firstStepIdx).trim();
+        }
+      }
+    }
+
+    if (!planSource) return null;
+
+    const stepLines = [];
+    const outputLines = [];
+    let prescribedSteps = 35;
+
+    const budgetMatch = planSource.match(/(?:prescribed|estimated)\s*(?:step\s*budget|steps?)?\s*[:=]?\s*(\d+)/i);
+    if (budgetMatch) {
+      prescribedSteps = parseInt(budgetMatch[1], 10) || 35;
+    }
+
+    let inOutput = false;
+    for (const line of planSource.split("\n")) {
+      const clean = line.trim();
+      if (!clean) continue;
+      if (/^\*{0,2}expected\s+(?:output|deliverable|result)\*{0,2}\s*[:=]?/i.test(clean)) {
+        inOutput = true;
+        const remainder = clean.replace(/^\*{0,2}expected\s+(?:output|deliverable|result)\*{0,2}\s*[:=]?\s*/i, "").trim();
+        if (remainder) outputLines.push(remainder);
+        continue;
+      }
+      if (/^(?:prescribed|estimated)\s*steps?\b/i.test(clean)) continue;
+
+      const stepMatch = clean.match(/^\s*(?:[-*]\s*)?(?:step\s*)?(\d+)[.):]\s*(.+?)$/i);
+      if (stepMatch) {
+        if (!codeBlockMatch && /^\[.+?\]\(https?:\/\//i.test(stepMatch[2].trim())) {
+          return null;
+        }
+        inOutput = false;
+        stepLines.push(stepMatch[2].trim());
+        continue;
+      }
+
+      if (inOutput) {
+        outputLines.push(clean);
+      } else if (stepLines.length > 0) {
+        stepLines[stepLines.length - 1] += " " + clean;
+      }
+    }
+
+    if (stepLines.length < 2) return null;
+
+    return {
+      preface,
+      outro,
+      steps: stepLines,
+      expectedOutput: outputLines.join(" ").trim(),
+      prescribedSteps,
+    };
+  }
+
+  function renderAssistantMessageBody(content, messageIndex, isLatest) {
+    const plan = extractPlanCardData(content);
+    if (!plan) {
+      return renderMarkdown(content);
+    }
+
+    const prefaceHtml = plan.preface ? renderMarkdown(plan.preface) : "";
+    const outroHtml = plan.outro ? renderMarkdown(plan.outro) : "";
+
+    const stepsHtml = plan.steps.map((step, idx) => `
+      <li class="plan-card-step-item">
+        <span class="plan-card-step-num">${idx + 1}</span>
+        <span class="plan-card-step-text">${inlineMarkdown(step)}</span>
+      </li>
+    `).join("");
+
+    const outputHtml = plan.expectedOutput ? `
+      <div class="plan-card-output">
+        <strong>Expected Output:</strong>
+        <span>${escapeHtml(plan.expectedOutput)}</span>
+      </div>
+    ` : "";
+
+    const cardHtml = `
+      <div class="message-plan-card">
+        <div class="plan-card-header">
+          <div class="plan-card-title-group">
+            <span class="plan-card-icon"><svg><use href="#i-terminal" /></svg></span>
+            <strong>Proposed Action Plan</strong>
+          </div>
+          <span class="plan-card-budget">~${plan.prescribedSteps} steps</span>
+        </div>
+        <div class="plan-card-body">
+          <ol class="plan-card-steps">
+            ${stepsHtml}
+          </ol>
+          ${outputHtml}
+        </div>
+        <div class="plan-card-footer">
+          <button class="plan-card-execute" data-plan-index="${messageIndex}" data-execute="true" type="button">
+            <svg><use href="#i-play" /></svg>
+            <span>Execute Plan</span>
+          </button>
+        </div>
+      </div>
+    `;
+
+    return `${prefaceHtml}${cardHtml}${outroHtml}`;
   }
 
   function renderConversation(data) {
     const history = Array.isArray(data.chat_history) ? data.chat_history : [];
     const planning = data.planning_chat_id === data.active_chat_id;
-    const signature = JSON.stringify([data.active_chat_id, history, planning]);
+    const activity = data.planner_activity || "Thinking...";
+    const signature = JSON.stringify([data.active_chat_id, history, planning, activity]);
     if (state.renderSignatures.conversation === signature) return;
     const scroller = $("chat-scroll");
     const nearBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 120;
@@ -245,13 +372,51 @@ tags: [desktop]
     state.renderSignatures.conversation = signature;
     state.renderSignatures.conversationChat = data.active_chat_id;
     $("chat-empty").hidden = history.some((message) => message.role === "user") || planning;
+
+    let latestPlanIndex = -1;
+    history.forEach((msg, idx) => {
+      if (msg.role === "assistant" && extractPlanCardData(msg.content)) {
+        latestPlanIndex = idx;
+      }
+    });
+
     const messages = history.map((message, messageIndex) => {
       const role = message.role === "user" ? "user" : "assistant";
-      const isPlan = role === "assistant" && (String(message.content || "").match(/^\s*\d+[.)]\s+/gm) || []).length >= 2;
-      const choose = isPlan ? `<button class="plan-choice" data-plan-index="${messageIndex}" type="button">${icon("play")}<span>Use this plan</span></button>` : "";
-      return `<article class="message is-${role}"><div class="message-avatar" aria-hidden="true">${role === "user" ? "You" : "O"}</div><div class="message-body">${renderMarkdown(message.content)}${choose}</div></article>`;
+      const isLatest = messageIndex === latestPlanIndex;
+      const bodyHtml = role === "assistant"
+        ? renderAssistantMessageBody(message.content, messageIndex, isLatest)
+        : renderMarkdown(message.content);
+      return `<article class="message is-${role}"><div class="message-avatar" aria-hidden="true">${role === "user" ? "You" : "O"}</div><div class="message-body">${bodyHtml}</div></article>`;
     });
-    if (planning) messages.push(`<article class="message is-assistant is-pending"><div class="message-avatar skeleton-avatar" aria-hidden="true"></div><div class="message-body message-skeleton" aria-label="Preparing a plan"><span></span><span></span><span></span></div></article>`);
+    if (planning) {
+      const isSearch = /search|browse|web/i.test(activity);
+      const isRead = /read|page|article/i.test(activity);
+      const isFile = /file|find|local/i.test(activity);
+      const isSynth = /synth|answer|prose/i.test(activity);
+      let iconBadge = '<span class="thinking-pulse-dot" aria-hidden="true"></span>';
+      if (isSearch) {
+        iconBadge = `<span class="thinking-badge-icon">${icon("search")}</span>`;
+      } else if (isRead || isFile) {
+        iconBadge = `<span class="thinking-badge-icon">${icon("file")}</span>`;
+      } else if (isSynth) {
+        iconBadge = `<span class="thinking-badge-icon">${icon("spark")}</span>`;
+      }
+      messages.push(`
+        <article class="message is-assistant is-pending">
+          <div class="message-avatar" aria-hidden="true">O</div>
+          <div class="message-body message-thinking">
+            <div class="thinking-progress-pill" aria-live="polite">
+              ${iconBadge}
+              <span class="thinking-label">${escapeHtml(activity)}</span>
+              <span class="thinking-shimmer" aria-hidden="true"></span>
+            </div>
+            <div class="message-skeleton" aria-hidden="true">
+              <span></span><span></span><span></span>
+            </div>
+          </div>
+        </article>
+      `);
+    }
     $("conversation").innerHTML = messages.join("");
     if (previousChat !== data.active_chat_id || nearBottom) window.requestAnimationFrame(() => { scroller.scrollTop = scroller.scrollHeight; });
   }
@@ -346,14 +511,54 @@ tags: [desktop]
     // The planner intentionally loads only while preparing a plan. Requiring
     // it to remain resident made a healthy idle app look permanently busy.
     const ready = Boolean(telemetry.vla_gpu);
-    $("local-state-label").textContent = ready ? "Ready" : "Starting";
-    $("local-state-dot").dataset.state = ready ? "ready" : "starting";
-    $("settings-service-label").textContent = ready ? "Ready for tasks" : "Getting ready";
-    $("settings-service-dot").dataset.state = ready ? "ready" : "starting";
+    if ($("local-state-label")) $("local-state-label").textContent = ready ? "Ready" : "Starting";
+    if ($("local-state-dot")) $("local-state-dot").dataset.state = ready ? "ready" : "starting";
+    if ($("settings-service-label")) $("settings-service-label").textContent = ready ? "Ready for tasks" : "Getting ready";
+    if ($("settings-service-dot")) $("settings-service-dot").dataset.state = ready ? "ready" : "starting";
+  }
+
+
+  function renderProfileFacts(facts) {
+    const list = $("profile-facts-list");
+    if (!list) return;
+    if (!facts || facts.length === 0) {
+      list.innerHTML = `<li class="panel-empty" style="padding: 4px 0;">No learned rules yet.</li>`;
+      return;
+    }
+    list.innerHTML = facts.map((fact, idx) => `
+      <li class="profile-fact-item">
+        <span>${escapeHtml(fact)}</span>
+        <button type="button" class="profile-fact-del" data-fact-index="${idx}" aria-label="Delete rule">
+          <svg><use href="#i-close" /></svg>
+        </button>
+      </li>
+    `).join("");
+    list.querySelectorAll(".profile-fact-del").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const index = Number(btn.dataset.factIndex);
+        try {
+          const res = await api("/api/profile", { method: "POST", body: { delete_fact_index: index } });
+          if (res?.profile?.facts) renderProfileFacts(res.profile.facts);
+          toast("Rule removed from memory.");
+        } catch (err) { toast(err.message, true); }
+      });
+    });
+  }
+
+  async function addProfileFact() {
+    const input = $("new-fact-input");
+    const val = input ? input.value.trim() : "";
+    if (!val) return;
+    try {
+      const res = await api("/api/profile", { method: "POST", body: { fact: val } });
+      input.value = "";
+      if (res?.profile?.facts) renderProfileFacts(res.profile.facts);
+      toast("Learned rule added to memory.");
+    } catch (err) { toast(err.message, true); }
   }
 
   function renderSettings(data) {
-    const signature = JSON.stringify([data.settings, data.safety]);
+    const signature = JSON.stringify([data.settings, data.safety, data.user_profile]);
     if (state.settingsSignature === signature || $("settings-form").contains(document.activeElement)) return;
     state.settingsSignature = signature;
     $("max-steps").value = data.settings?.max_steps ?? 60;
@@ -361,11 +566,45 @@ tags: [desktop]
     $("enable-recording").checked = Boolean(data.settings?.enable_recording);
     $("safety-mode").value = data.safety?.mode || "supervised";
     $("require-plan-approval").checked = data.safety?.require_plan_approval !== false;
+
+    const profile = data.user_profile || {};
+    const emailPref = profile.preferences?.email || {};
+    const browserPref = profile.preferences?.browser || {};
+    if ($("pref-email-account")) $("pref-email-account").value = emailPref.account || "ak1399er@gmail.com";
+    if ($("pref-email-service")) $("pref-email-service").value = emailPref.service || "Gmail";
+    if ($("pref-browser")) $("pref-browser").value = browserPref.default || "Microsoft Edge";
+    renderProfileFacts(profile.facts || []);
+  }
+
+  function updateExecutionVisibility(data) {
+    const activeSelected = isSelectedExecution(data) && isLiveWorking(data);
+    const chat = (data.chats || []).find((item) => item.id === data.active_chat_id) || {};
+    const chatWorking = ["running", "executing", "working", "hitl"].includes(chat.status);
+    const isExecuting = activeSelected || chatWorking;
+
+    const hasPlan = Boolean(data.active_plan);
+    const hasExecutableTask = hasPlan || isExecuting;
+
+    document.body.classList.toggle("has-executable-task", hasExecutableTask);
+    document.body.classList.toggle("is-executing", isExecuting);
+
+    if (isExecuting) {
+      document.body.classList.remove("execution-closed");
+    } else if (!hasExecutableTask) {
+      document.body.classList.add("execution-closed");
+    }
+
+    const toggleBtn = $("toggle-execution");
+    if (toggleBtn) {
+      const isClosed = document.body.classList.contains("execution-closed");
+      toggleBtn.setAttribute("aria-expanded", String(!isClosed));
+    }
   }
 
   function renderStatus(data) {
     state.status = data;
     document.body.dataset.executionTone = phaseTone(data.phase || data.status);
+    updateExecutionVisibility(data);
     renderSidebar(data);
     renderHeader(data);
     renderConversation(data);
@@ -381,8 +620,8 @@ tags: [desktop]
     try {
       renderStatus(await api("/api/status"));
     } catch (error) {
-      $("local-state-label").textContent = "Unavailable";
-      $("local-state-dot").dataset.state = "error";
+      if ($("local-state-label")) $("local-state-label").textContent = "Unavailable";
+      if ($("local-state-dot")) $("local-state-dot").dataset.state = "error";
     } finally {
       state.requestInFlight = false;
       const quick = state.status?.planning_chat_id || isLiveWorking(state.status);
@@ -420,10 +659,18 @@ tags: [desktop]
   }
 
   async function createChat() {
+    const existingDraft = (state.status?.chats || []).find(
+      (c) => (!c.chat_history || c.chat_history.length === 0) && !c.intent && c.status === "draft"
+    );
+    if (existingDraft) {
+      return switchChat(existingDraft.id);
+    }
     try {
       await api("/api/chats/new", { method: "POST", body: {} });
       state.currentScreen = null;
       state.renderSignatures = {};
+      document.body.classList.remove("has-executable-task", "is-executing");
+      document.body.classList.add("execution-closed");
       openWorkspace("chat");
       await fetchStatus();
     } catch (error) { toast(error.message, true); }
@@ -459,15 +706,99 @@ tags: [desktop]
     menu.hidden = false;
   }
 
-  async function selectPlan(messageIndex) {
+  async function selectPlan(messageIndex, executeNow = false) {
     const plan = state.status?.chat_history?.[Number(messageIndex)]?.content;
     if (!plan) return;
     try {
-      await api("/api/plans/select", { method: "POST", body: { chat_id: state.status.active_chat_id, plan } });
+      const res = await api("/api/plans/select", {
+        method: "POST",
+        body: { chat_id: state.status.active_chat_id, plan, message_index: Number(messageIndex) }
+      });
       state.renderSignatures = {};
+      if (res?.plan && state.status) {
+        state.status.active_plan = res.plan;
+      }
       await fetchStatus();
-      toast("Plan selected for review.");
+      if (executeNow) {
+        document.body.classList.remove("execution-closed");
+        if ($("risk-ack")) $("risk-ack").checked = true;
+        await runPlan();
+      } else {
+        document.body.classList.remove("execution-closed");
+        toast("Plan selected for review.");
+      }
     } catch (error) { toast(error.message, true); }
+  }
+
+  function handleComposerAutocomplete() {
+    const input = $("composer-input");
+    if (!input) return;
+    const val = input.value;
+    const cursorPos = input.selectionStart;
+    const textBeforeCursor = val.slice(0, cursorPos);
+    const atMatch = textBeforeCursor.match(/@([a-zA-Z0-9_-]*)$/);
+
+    if (!atMatch || !state.skills || state.skills.length === 0) {
+      closeAutocomplete();
+      return;
+    }
+
+    const query = atMatch[1].toLowerCase();
+    state.autocomplete.triggerPos = atMatch.index;
+    state.autocomplete.query = query;
+    const matches = state.skills.filter((s) =>
+      s.name.toLowerCase().includes(query) || (s.title && s.title.toLowerCase().includes(query))
+    );
+
+    if (matches.length === 0) {
+      closeAutocomplete();
+      return;
+    }
+
+    state.autocomplete.open = true;
+    state.autocomplete.matches = matches;
+    state.autocomplete.selectedIndex = Math.min(state.autocomplete.selectedIndex, matches.length - 1);
+    renderAutocomplete();
+  }
+
+  function closeAutocomplete() {
+    state.autocomplete.open = false;
+    state.autocomplete.selectedIndex = 0;
+    const el = $("skill-autocomplete");
+    if (el) el.hidden = true;
+  }
+
+  function renderAutocomplete() {
+    const el = $("skill-autocomplete");
+    if (!el || !state.autocomplete.open) return;
+    el.hidden = false;
+    el.innerHTML = state.autocomplete.matches.map((skill, index) => {
+      const isSelected = index === state.autocomplete.selectedIndex;
+      return `
+        <div class="skill-autocomplete-item${isSelected ? " is-selected" : ""}" data-skill-index="${index}">
+          <div class="skill-autocomplete-left">
+            <strong class="skill-autocomplete-title">${escapeHtml(skill.title || skill.name)}</strong>
+            <span class="skill-autocomplete-desc">${escapeHtml(skill.description || "")}</span>
+          </div>
+          <span class="skill-autocomplete-tag">@${escapeHtml(skill.name)}</span>
+        </div>
+      `;
+    }).join("");
+  }
+
+  function insertAutocompleteSkill(index) {
+    const skill = state.autocomplete.matches[index];
+    if (!skill) return;
+    const input = $("composer-input");
+    const val = input.value;
+    const prefix = val.slice(0, state.autocomplete.triggerPos);
+    const suffix = val.slice(input.selectionStart);
+    const inserted = `@${skill.name} `;
+    input.value = prefix + inserted + suffix;
+    input.selectionStart = input.selectionEnd = prefix.length + inserted.length;
+    closeAutocomplete();
+    input.focus();
+    resizeComposer();
   }
 
   async function retryChat() {
@@ -480,19 +811,34 @@ tags: [desktop]
   }
 
   async function runPlan() {
-    const plan = state.status?.active_plan;
-    if (!plan) return;
+    let plan = state.status?.active_plan;
+    if (!plan) {
+      await fetchStatus();
+      plan = state.status?.active_plan;
+    }
+    if (!plan) {
+      toast("No active plan to run. Please select or prepare a plan first.", true);
+      return;
+    }
     const highRisk = Boolean(plan.risk?.requires_explicit_acknowledgement);
-    if (highRisk && !$("risk-ack").checked) return;
+    if (highRisk && !$("risk-ack")?.checked) {
+      document.body.classList.remove("execution-closed");
+      $("risk-ack")?.focus();
+      toast("Please acknowledge task permissions in the panel to start.", true);
+      return;
+    }
     setBusy($("run-plan"), true, "Starting");
+    const chosenSteps = Number(plan.prescribed_steps || 35);
     try {
       await api("/api/confirm", { method: "POST", body: {
-        task: plan.execution_task,
+        task: plan.execution_task || plan.plan,
         source_task: plan.source_task,
         approved: true,
-        risk_acknowledged: !highRisk || $("risk-ack").checked,
-        chat_id: state.status.active_chat_id,
+        risk_acknowledged: !highRisk || Boolean($("risk-ack")?.checked),
+        chat_id: state.status?.active_chat_id,
+        max_steps: chosenSteps,
       } });
+      document.body.classList.remove("execution-closed");
       await fetchStatus();
     } catch (error) { toast(error.message, true); }
     finally { setBusy($("run-plan"), false); }
@@ -526,10 +872,104 @@ tags: [desktop]
     }
   }
 
+  function insertSkillInChat(skillName) {
+    if (!skillName) return;
+    openWorkspace("chat");
+    const input = $("composer-input");
+    if (!input) return;
+    const tag = `@${skillName} `;
+    if (!input.value.includes(tag)) {
+      input.value = `${tag}${input.value}`.trimStart();
+    }
+    resizeComposer();
+    input.focus();
+    toast(`Inserted @${skillName} into composer.`);
+  }
+
+  async function deleteNamedSkill(skillName) {
+    if (!skillName || !window.confirm(`Delete skill “${skillName}”?`)) return;
+    try {
+      await api("/api/skills/delete", { method: "POST", body: { name: skillName } });
+      if (state.editingSkill === skillName) {
+        state.editingSkill = null;
+      }
+      await loadSkills();
+      toast("Skill deleted.");
+    } catch (error) {
+      toast(error.message, true);
+    }
+  }
+
+  function insertSnippet(text) {
+    const textarea = $("skill-markdown");
+    if (!textarea) return;
+    const start = textarea.selectionStart || 0;
+    const end = textarea.selectionEnd || 0;
+    const before = textarea.value.substring(0, start);
+    const after = textarea.value.substring(end);
+    textarea.value = before + text + after;
+    textarea.selectionStart = textarea.selectionEnd = start + text.length;
+    textarea.focus();
+  }
+
   function renderSkills() {
-    const query = $("skill-search").value.trim().toLowerCase();
-    const skills = state.skills.filter((skill) => [skill.name, skill.title, skill.description, ...(skill.tags || [])].join(" ").toLowerCase().includes(query));
-    $("skill-list").innerHTML = skills.length ? skills.map((skill) => `<button class="skill-row" data-skill-name="${escapeHtml(skill.name)}" type="button"><div><strong>${escapeHtml(skill.title || skill.name)}</strong><p>${escapeHtml(skill.description || "No description")}</p></div><span>${escapeHtml(skill.domain || "desktop")}</span></button>`).join("") : `<div class="utility-empty"><span class="empty-mark"><i></i><i></i></span><h2>${query ? "No matching skills" : "No skills yet"}</h2><p>${query ? "Try another search." : "Create one with Markdown or teach a workflow by example."}</p></div>`;
+    const query = ($("skill-search")?.value || "").trim().toLowerCase();
+    const filter = state.skillDomainFilter || "all";
+
+    const filtered = (state.skills || []).filter((skill) => {
+      const text = [skill.name, skill.title, skill.description, ...(skill.tags || [])].join(" ").toLowerCase();
+      const matchesQuery = !query || text.includes(query);
+      const matchesFilter = filter === "all" || (skill.domain || "general").toLowerCase() === filter.toLowerCase();
+      return matchesQuery && matchesFilter;
+    });
+
+    const badge = $("skill-count-badge");
+    if (badge) {
+      badge.textContent = `${filtered.length} ${filtered.length === 1 ? "skill" : "skills"}`;
+    }
+
+    const listEl = $("skill-list");
+    if (!listEl) return;
+
+    if (!filtered.length) {
+      listEl.innerHTML = `<div class="utility-empty"><span class="empty-mark"><i></i><i></i></span><h2>${query || filter !== "all" ? "No matching skills" : "No skills yet"}</h2><p>${query || filter !== "all" ? "Try another search or filter." : "Create one with the Intelligent Studio or Markdown editor."}</p></div>`;
+      return;
+    }
+
+    listEl.innerHTML = filtered.map((skill) => {
+      const triggers = Array.isArray(skill.triggers) ? skill.triggers : [];
+      const triggersHtml = triggers.slice(0, 3).map((t) => `<span class="intel-chip intel-chip-trigger">${escapeHtml(t)}</span>`).join("");
+      const extraTriggers = triggers.length > 3 ? `<span class="intel-chip-empty">+${triggers.length - 3} more</span>` : "";
+
+      return `
+        <div class="skill-card" data-skill-name="${escapeHtml(skill.name)}">
+          <div class="skill-card-top">
+            <div class="skill-card-title-wrap">
+              <h3 class="skill-card-title">${escapeHtml(skill.title || skill.name)}</h3>
+              <span class="skill-card-slug">@${escapeHtml(skill.name)}</span>
+            </div>
+            <span class="intel-pill intel-pill-domain">${escapeHtml(skill.domain || "general")}</span>
+          </div>
+          <p class="skill-card-desc">${escapeHtml(skill.description || "No description provided.")}</p>
+          ${triggersHtml ? `<div class="skill-card-triggers">${triggersHtml}${extraTriggers}</div>` : ""}
+          <div class="skill-card-bottom">
+            <div class="skill-card-actions">
+              <button class="primary-button" data-skill-action="use" type="button" title="Use @${escapeHtml(skill.name)} in chat">
+                <svg><use href="#i-chat" /></svg>
+                <span>Use</span>
+              </button>
+              <button class="secondary-button" data-skill-action="edit" type="button" title="Edit in Markdown">
+                <svg><use href="#i-file" /></svg>
+                <span>Edit</span>
+              </button>
+            </div>
+            <button class="danger-text" data-skill-action="delete" type="button" title="Delete skill">
+              <svg><use href="#i-trash" /></svg>
+            </button>
+          </div>
+        </div>
+      `;
+    }).join("");
   }
 
   function startSkillEditor(skill = null) {
@@ -579,67 +1019,120 @@ tags: [desktop]
     } catch (_) { toast("The file could not be read.", true); }
   }
 
-  function updateRecordingTime() {
-    if (!state.recording) return;
-    const seconds = Math.floor((Date.now() - state.recordingStartedAt) / 1000);
-    $("recording-time").textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  function renderIntelligentSkillPreview(skill) {
+    if (!skill) return;
+    state.latestIntelligentSkill = skill;
+    const placeholder = $("intel-preview-placeholder");
+    const card = $("intel-preview-card");
+    if (placeholder) placeholder.hidden = true;
+    if (card) card.hidden = false;
+
+    if ($("preview-skill-title")) $("preview-skill-title").textContent = skill.title || skill.name;
+    if ($("preview-skill-slug")) $("preview-skill-slug").textContent = `@${skill.name}`;
+    if ($("preview-skill-domain")) $("preview-skill-domain").textContent = skill.domain || "general";
+    if ($("preview-skill-desc")) $("preview-skill-desc").textContent = skill.description || "Synthesized procedural skill for Holo 3.1.";
+
+    // Triggers
+    const triggers = Array.isArray(skill.triggers) ? skill.triggers : [];
+    if ($("preview-triggers")) {
+      $("preview-triggers").innerHTML = triggers.length
+        ? triggers.map((t) => `<span class="intel-chip intel-chip-trigger">${escapeHtml(t)}</span>`).join("")
+        : `<span class="intel-chip-empty">No trigger phrases</span>`;
+    }
+
+    // Parameters
+    const params = Array.isArray(skill.parameters) ? skill.parameters : [];
+    if ($("preview-parameters")) {
+      $("preview-parameters").innerHTML = params.length
+        ? params.map((p) => `<span class="intel-chip intel-chip-param"><strong>${escapeHtml(p.name || "param")}</strong>: ${escapeHtml(p.description || p.type || "value")}${p.required ? " (required)" : ""}</span>`).join("")
+        : `<span class="intel-chip-empty">No dynamic parameters</span>`;
+    }
+
+    // Strategy & Visual Grounding
+    const strategy = [
+      skill.strategy ? `### Cognitive Strategy\n${skill.strategy}` : "",
+      skill.visual_landmarks ? `### Visual Landmarks\n${skill.visual_landmarks}` : "",
+      skill.failure_recovery ? `### Failure Recovery\n${skill.failure_recovery}` : ""
+    ].filter(Boolean).join("\n\n") || skill.raw_markdown || "";
+
+    if ($("preview-strategy")) {
+      $("preview-strategy").innerHTML = strategy
+        ? `<pre class="intel-strategy-text">${escapeHtml(strategy.trim())}</pre>`
+        : `<p class="intel-chip-empty">Standard procedural guidance generated.</p>`;
+    }
   }
 
-  function syncRecordingButton() {
-    if (!state.recording) $("toggle-recording").disabled = !$("teach-goal").value.trim();
-  }
-
-  async function toggleRecording() {
-    const button = $("toggle-recording");
-    if (!state.recording) {
-      const goal = $("teach-goal").value.trim();
-      if (!goal) return toast("Describe the workflow first.", true);
-      setBusy(button, true, "Starting");
-      try {
-        await api("/api/observe/start", { method: "POST", body: { task_goal: goal } });
-        state.recording = true;
-        state.recordingStartedAt = Date.now();
-        button.dataset.label = "Start demonstration";
-        button.classList.add("is-recording");
-        button.querySelector("span").textContent = "Stop demonstration";
-        button.disabled = false;
-        $("recording-status").hidden = false;
-        $("captured-count").textContent = "0";
-        $("captured-list").innerHTML = `<p class="panel-empty">Recording clicks, app changes, and shortcuts.</p>`;
-        $("create-from-demo").hidden = true;
-        state.recordingTimer = window.setInterval(updateRecordingTime, 500);
-      } catch (error) { toast(error.message, true); setBusy(button, false); syncRecordingButton(); }
+  async function generateIntelligentSkill(event) {
+    if (event) event.preventDefault();
+    const goal = $("intel-goal")?.value.trim();
+    if (!goal) {
+      toast("Please enter a task goal.", true);
+      $("intel-goal")?.focus();
       return;
     }
 
-    setBusy(button, true, "Stopping");
+    const domain = $("intel-domain")?.value || "general";
+    const name = $("intel-name")?.value.trim() || undefined;
+    const captureScreen = $("intel-screen") ? $("intel-screen").checked : true;
+    const notes = $("intel-notes")?.value.trim() || undefined;
+
+    const generateBtn = $("generate-intel-skill");
+    const spinner = $("intel-spinner");
+    const spinnerText = $("intel-spinner-text");
+
+    if (generateBtn) generateBtn.disabled = true;
+    if (spinner) spinner.hidden = false;
+    if (spinnerText) {
+      spinnerText.textContent = captureScreen
+        ? "Grounding with screen landmarks & synthesizing procedural skill…"
+        : "Synthesizing procedural skill with Qwen…";
+    }
+
     try {
-      const result = await api("/api/observe/stop", { method: "POST", body: {} });
-      const actions = result.demonstration?.actions || [];
-      state.recording = false;
-      window.clearInterval(state.recordingTimer);
-      button.classList.remove("is-recording");
-      button.disabled = false;
-      button.querySelector("span").textContent = "Start demonstration";
-      $("recording-status").hidden = true;
-      $("captured-count").textContent = String(actions.length);
-      $("captured-list").innerHTML = actions.length ? actions.slice(0, 60).map((action, index) => `<div class="captured-row" style="animation-delay:${Math.min(index * 28, 220)}ms"><span>${index + 1}</span><div><strong>${escapeHtml(formatAction(action.action_type))}</strong><small>${escapeHtml(action.window_title || "Desktop")}${action.text ? " · private value removed" : ""}</small></div></div>`).join("") : `<p class="panel-empty">No input was captured. Try the demonstration again.</p>`;
-      $("create-from-demo").hidden = actions.length === 0;
-      syncRecordingButton();
-    } catch (error) { toast(error.message, true); button.disabled = false; syncRecordingButton(); }
+      const result = await api("/api/skills/generate_intelligent", {
+        method: "POST",
+        body: {
+          goal,
+          domain,
+          name,
+          capture_screen: captureScreen,
+          notes,
+        },
+      });
+
+      if (result.skill) {
+        renderIntelligentSkillPreview(result.skill);
+        await loadSkills();
+        toast(`Skill @${result.skill.name} synthesized and saved!`);
+      }
+    } catch (error) {
+      toast(error.message, true);
+    } finally {
+      if (generateBtn) generateBtn.disabled = false;
+      if (spinner) spinner.hidden = true;
+    }
   }
 
-  async function createTaughtSkill() {
-    const button = $("create-taught-skill");
-    const name = $("taught-skill-name").value.trim();
-    setBusy(button, true, "Learning workflow");
-    try {
-      const result = await api("/api/skills/synthesize", { method: "POST", body: name ? { name } : {} });
-      await loadSkills();
-      openSkillTab("library");
-      toast(`Created ${result.skill?.title || "skill"}.`);
-    } catch (error) { toast(error.message, true); }
-    finally { setBusy(button, false); }
+  function useIntelligentSkillInChat() {
+    const skill = state.latestIntelligentSkill;
+    if (!skill) return;
+    openWorkspace("chat");
+    const input = $("composer-input");
+    if (!input) return;
+    const tag = `@${skill.name} `;
+    if (!input.value.includes(tag)) {
+      input.value = `${tag}${input.value}`.trimStart();
+    }
+    resizeComposer();
+    input.focus();
+    toast(`Inserted @${skill.name} into composer.`);
+  }
+
+  function editIntelligentSkillMarkdown() {
+    const skill = state.latestIntelligentSkill;
+    if (!skill) return;
+    const existing = state.skills.find((s) => s.name === skill.name);
+    startSkillEditor(existing || skill);
   }
 
   async function saveSettings(event) {
@@ -655,10 +1148,26 @@ tags: [desktop]
         mode: $("safety-mode").value,
         require_plan_approval: $("require-plan-approval").checked,
       } });
+      if ($("pref-email-account")) {
+        await api("/api/profile", { method: "POST", body: {
+          preference: { category: "email", key: "account", value: $("pref-email-account").value.trim() }
+        } });
+      }
+      if ($("pref-email-service")) {
+        await api("/api/profile", { method: "POST", body: {
+          preference: { category: "email", key: "service", value: $("pref-email-service").value }
+        } });
+      }
+      if ($("pref-browser")) {
+        await api("/api/profile", { method: "POST", body: {
+          preference: { category: "browser", key: "default", value: $("pref-browser").value.trim() }
+        } });
+      }
       $("settings-save-state").textContent = "Saved";
       await fetchStatus();
     } catch (error) { $("settings-save-state").textContent = error.message; toast(error.message, true); }
   }
+
 
   async function quitApplication() {
     if (!window.confirm("Quit OmniVLA? This stops the active task and releases its memory.")) return;
@@ -681,77 +1190,203 @@ tags: [desktop]
     document.querySelectorAll("[data-window-control]").forEach((button) => button.addEventListener("click", () => {
       window.desktopAPI?.windowControl?.(button.dataset.windowControl);
     }));
-    $("quit-app").addEventListener("click", quitApplication);
-    $("new-chat").addEventListener("click", createChat);
-    $("chat-search").addEventListener("input", () => state.status && renderSidebar(state.status));
-    $("chat-list").addEventListener("click", (event) => {
+    $("quit-app")?.addEventListener("click", quitApplication);
+    $("new-chat")?.addEventListener("click", createChat);
+    $("chat-search")?.addEventListener("input", () => state.status && renderSidebar(state.status));
+    $("chat-list")?.addEventListener("click", (event) => {
       const row = event.target.closest("[data-chat-id]");
       if (!row) return;
-      if (event.target.closest(".chat-row-delete")) openChatMenu(event.target.closest(".chat-row-delete"), row.dataset.chatId);
-      else if (event.target.closest(".chat-row-open")) switchChat(row.dataset.chatId);
+      if (event.target.closest(".chat-row-delete")) {
+        event.stopPropagation();
+        deleteChat(row.dataset.chatId);
+      } else if (event.target.closest(".chat-row-open")) {
+        switchChat(row.dataset.chatId);
+      }
     });
-    $("menu-delete-chat").addEventListener("click", () => { const id = state.menuChatId; $("chat-menu").hidden = true; state.menuChatId = null; if (id) deleteChat(id); });
-    document.addEventListener("click", (event) => { if (!event.target.closest(".chat-row-delete") && !event.target.closest("#chat-menu")) { $("chat-menu").hidden = true; state.menuChatId = null; } });
-    $("conversation").addEventListener("click", (event) => {
+    $("menu-delete-chat")?.addEventListener("click", () => { const id = state.menuChatId; if ($("chat-menu")) $("chat-menu").hidden = true; state.menuChatId = null; if (id) deleteChat(id); });
+    document.addEventListener("click", (event) => {
+      if (!event.target.closest(".chat-row-delete") && !event.target.closest("#chat-menu")) { if ($("chat-menu")) $("chat-menu").hidden = true; state.menuChatId = null; }
+      if (!event.target.closest(".composer-wrap")) closeAutocomplete();
+    });
+    $("conversation")?.addEventListener("click", (event) => {
       const choice = event.target.closest("[data-plan-index]");
-      if (choice) selectPlan(choice.dataset.planIndex);
+      if (choice) {
+        const executeNow = choice.dataset.execute === "true";
+        selectPlan(choice.dataset.planIndex, executeNow);
+      }
     });
-    $("open-sidebar").addEventListener("click", () => { document.body.classList.add("sidebar-open"); $("sidebar-scrim").hidden = false; });
-    $("close-sidebar").addEventListener("click", closeMobileSidebar);
-    $("sidebar-scrim").addEventListener("click", closeMobileSidebar);
-    $("open-skills").addEventListener("click", () => openWorkspace("skills"));
-    $("open-settings").addEventListener("click", () => openWorkspace("settings"));
+    $("open-sidebar")?.addEventListener("click", () => { document.body.classList.add("sidebar-open"); if ($("sidebar-scrim")) $("sidebar-scrim").hidden = false; });
+    $("close-sidebar")?.addEventListener("click", closeMobileSidebar);
+    $("sidebar-scrim")?.addEventListener("click", closeMobileSidebar);
+    $("open-skills")?.addEventListener("click", () => openWorkspace("skills"));
+    $("open-settings")?.addEventListener("click", () => openWorkspace("settings"));
     document.querySelectorAll(".back-to-chat").forEach((button) => button.addEventListener("click", () => openWorkspace("chat")));
 
-    $("composer-form").addEventListener("submit", (event) => { event.preventDefault(); sendMessage(); });
-    $("composer-input").addEventListener("input", resizeComposer);
-    $("teach-goal").addEventListener("input", syncRecordingButton);
-    $("composer-input").addEventListener("keydown", (event) => {
-      if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendMessage(); }
+    $("composer-form")?.addEventListener("submit", (event) => { event.preventDefault(); sendMessage(); });
+    $("composer-input")?.addEventListener("input", () => {
+      resizeComposer();
+      handleComposerAutocomplete();
     });
-    document.querySelectorAll("[data-suggestion]").forEach((button) => button.addEventListener("click", () => { $("composer-input").value = button.dataset.suggestion; resizeComposer(); $("composer-input").focus(); }));
+    $("composer-input")?.addEventListener("keydown", (event) => {
+      if (state.autocomplete?.open) {
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          state.autocomplete.selectedIndex = (state.autocomplete.selectedIndex + 1) % state.autocomplete.matches.length;
+          renderAutocomplete();
+          return;
+        }
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          state.autocomplete.selectedIndex = (state.autocomplete.selectedIndex - 1 + state.autocomplete.matches.length) % state.autocomplete.matches.length;
+          renderAutocomplete();
+          return;
+        }
+        if (event.key === "Enter" || event.key === "Tab") {
+          event.preventDefault();
+          insertAutocompleteSkill(state.autocomplete.selectedIndex);
+          return;
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          closeAutocomplete();
+          return;
+        }
+      }
+      if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+        event.preventDefault();
+        sendMessage();
+      }
+    });
+    $("skill-autocomplete")?.addEventListener("click", (event) => {
+      const item = event.target.closest("[data-skill-index]");
+      if (item) insertAutocompleteSkill(Number(item.dataset.skillIndex));
+    });
+    $("chat-empty")?.addEventListener("click", (event) => {
+      const card = event.target.closest("[data-suggestion]");
+      if (card && $("composer-input")) {
+        $("composer-input").value = card.dataset.suggestion;
+        resizeComposer();
+        $("composer-input").focus();
+      }
+    });
+    document.querySelectorAll("[data-suggestion]").forEach((button) => button.addEventListener("click", () => { if ($("composer-input")) { $("composer-input").value = button.dataset.suggestion; resizeComposer(); $("composer-input").focus(); } }));
 
-    $("toggle-execution").addEventListener("click", () => document.body.classList.toggle("execution-closed"));
-    $("close-execution").addEventListener("click", () => document.body.classList.add("execution-closed"));
-    $("delete-chat").addEventListener("click", () => deleteChat());
-    $("retry-chat").addEventListener("click", retryChat);
-    $("risk-ack").addEventListener("change", () => { state.renderSignatures.execution = null; if (state.status) renderExecution(state.status); });
-    $("run-plan").addEventListener("click", runPlan);
-    $("pause-run").addEventListener("click", togglePause);
-    $("stop-run").addEventListener("click", stopRun);
-    $("operator-form").addEventListener("submit", async (event) => {
-      event.preventDefault(); const response = $("operator-input").value.trim(); if (!response) return;
-      try { await api("/api/hitl_submit", { method: "POST", body: { response } }); $("operator-input").value = ""; await fetchStatus(); }
+    $("toggle-execution")?.addEventListener("click", () => {
+      document.body.classList.toggle("execution-closed");
+      const isClosed = document.body.classList.contains("execution-closed");
+      $("toggle-execution")?.setAttribute("aria-expanded", String(!isClosed));
+    });
+    $("close-execution")?.addEventListener("click", () => {
+      document.body.classList.add("execution-closed");
+      $("toggle-execution")?.setAttribute("aria-expanded", "false");
+    });
+    $("delete-chat")?.addEventListener("click", () => deleteChat());
+    $("retry-chat")?.addEventListener("click", retryChat);
+    $("risk-ack")?.addEventListener("change", () => { state.renderSignatures.execution = null; if (state.status) renderExecution(state.status); });
+    $("run-plan")?.addEventListener("click", runPlan);
+    $("add-fact-btn")?.addEventListener("click", addProfileFact);
+    $("new-fact-input")?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        addProfileFact();
+      }
+    });
+    $("pause-run")?.addEventListener("click", togglePause);
+    $("stop-run")?.addEventListener("click", stopRun);
+    $("operator-form")?.addEventListener("submit", async (event) => {
+      event.preventDefault(); const response = $("operator-input")?.value.trim(); if (!response) return;
+      try { await api("/api/hitl_submit", { method: "POST", body: { response } }); if ($("operator-input")) $("operator-input").value = ""; await fetchStatus(); }
       catch (error) { toast(error.message, true); }
     });
 
     document.querySelectorAll("[data-skill-tab]").forEach((button) => button.addEventListener("click", () => openSkillTab(button.dataset.skillTab)));
-    $("new-skill").addEventListener("click", () => startSkillEditor());
-    $("skill-search").addEventListener("input", renderSkills);
-    $("skill-list").addEventListener("click", (event) => { const row = event.target.closest("[data-skill-name]"); if (row) startSkillEditor(state.skills.find((skill) => skill.name === row.dataset.skillName)); });
-    $("skill-editor").addEventListener("submit", (event) => { event.preventDefault(); saveSkill(); });
-    $("reset-skill").addEventListener("click", () => { $("skill-markdown").value = SKILL_TEMPLATE; state.editingSkill = null; $("delete-skill").hidden = true; });
-    $("delete-skill").addEventListener("click", deleteSkill);
-    $("skill-file").addEventListener("change", (event) => importSkillFile(event.target.files[0]));
-    ["dragenter", "dragover"].forEach((name) => $("import-zone").addEventListener(name, (event) => { event.preventDefault(); $("import-zone").classList.add("is-dragging"); }));
-    ["dragleave", "drop"].forEach((name) => $("import-zone").addEventListener(name, (event) => { event.preventDefault(); $("import-zone").classList.remove("is-dragging"); if (name === "drop") importSkillFile(event.dataTransfer.files[0]); }));
-    $("toggle-recording").addEventListener("click", toggleRecording);
-    $("create-taught-skill").addEventListener("click", createTaughtSkill);
+    $("new-skill")?.addEventListener("click", () => startSkillEditor());
+    $("skill-search")?.addEventListener("input", renderSkills);
+    $("library-filters")?.addEventListener("click", (event) => {
+      const chip = event.target.closest(".filter-chip");
+      if (!chip) return;
+      document.querySelectorAll(".library-filter-chips .filter-chip").forEach((c) => c.classList.remove("is-active"));
+      chip.classList.add("is-active");
+      state.skillDomainFilter = chip.dataset.filter || "all";
+      renderSkills();
+    });
+    $("skill-list")?.addEventListener("click", (event) => {
+      const card = event.target.closest("[data-skill-name]");
+      if (!card) return;
+      const skillName = card.dataset.skillName;
+      const skill = state.skills.find((s) => s.name === skillName);
+      const actionBtn = event.target.closest("[data-skill-action]");
+      const action = actionBtn ? actionBtn.dataset.skillAction : "open";
+      if (action === "use") {
+        insertSkillInChat(skillName);
+      } else if (action === "delete") {
+        deleteNamedSkill(skillName);
+      } else {
+        startSkillEditor(skill);
+      }
+    });
+    $("insert-frontmatter-snippet")?.addEventListener("click", () => {
+      insertSnippet(`---
+name: custom_task
+title: Custom Task Workflow
+description: Automates a specific desktop workflow
+domain: productivity
+triggers:
+  - run custom task
+  - execute custom workflow
+parameters:
+  - name: target_item
+    type: string
+    description: Item or text to target
+    required: true
+---
 
-    $("settings-form").addEventListener("submit", saveSettings);
-    $("clear-memory").addEventListener("click", async () => {
+`);
+    });
+    $("insert-step-snippet")?.addEventListener("click", () => {
+      insertSnippet(`
+### Step N: Action Name
+- **Visual Target:** Search bar or primary action button
+- **Action:** Click or type {{target_item}}
+`);
+    });
+    $("insert-recovery-snippet")?.addEventListener("click", () => {
+      insertSnippet(`
+### Failure Recovery Heuristics
+- If the application window is minimized, bring it to the foreground.
+- If a dialog or overlay blocks the view, dismiss or confirm it.
+`);
+    });
+    $("skill-editor")?.addEventListener("submit", (event) => { event.preventDefault(); saveSkill(); });
+    $("reset-skill")?.addEventListener("click", () => { if ($("skill-markdown")) $("skill-markdown").value = SKILL_TEMPLATE; state.editingSkill = null; if ($("delete-skill")) $("delete-skill").hidden = true; });
+    $("delete-skill")?.addEventListener("click", deleteSkill);
+    $("skill-file")?.addEventListener("change", (event) => importSkillFile(event.target.files[0]));
+    ["dragenter", "dragover"].forEach((name) => $("import-zone")?.addEventListener(name, (event) => { event.preventDefault(); $("import-zone")?.classList.add("is-dragging"); }));
+    ["dragleave", "drop"].forEach((name) => $("import-zone")?.addEventListener(name, (event) => { event.preventDefault(); $("import-zone")?.classList.remove("is-dragging"); if (name === "drop") importSkillFile(event.dataTransfer.files[0]); }));
+    $("intel-skill-form")?.addEventListener("submit", generateIntelligentSkill);
+    $("edit-intel-markdown")?.addEventListener("click", editIntelligentSkillMarkdown);
+    $("use-intel-in-chat")?.addEventListener("click", useIntelligentSkillInChat);
+    $("intel-open-lib")?.addEventListener("click", () => openSkillTab("library"));
+
+    $("settings-form")?.addEventListener("submit", saveSettings);
+    $("clear-memory")?.addEventListener("click", async () => {
       if (!window.confirm("Clear locally stored conversation recall? Chat history will remain.")) return;
       try { const result = await api("/api/memory/clear", { method: "POST", body: {} }); toast(`Cleared ${result.stores_cleared} local stores.`); }
       catch (error) { toast(error.message, true); }
     });
-    $("restart-models").addEventListener("click", async () => {
+    $("restart-models")?.addEventListener("click", async () => {
       try { await api("/api/clear_vram", { method: "POST", body: {} }); toast("OmniVLA is restarting."); }
       catch (error) { toast(error.message, true); }
     });
 
     document.addEventListener("keydown", (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "n") { event.preventDefault(); createChat(); }
-      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "e") { event.preventDefault(); document.body.classList.toggle("execution-closed"); }
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "e") {
+        event.preventDefault();
+        document.body.classList.toggle("execution-closed");
+        const isClosed = document.body.classList.contains("execution-closed");
+        $("toggle-execution")?.setAttribute("aria-expanded", String(!isClosed));
+      }
       if (event.key === "Escape" && isSelectedExecution(state.status) && isLiveWorking(state.status)) stopRun();
     });
     document.addEventListener("visibilitychange", () => { if (!document.hidden) { window.clearTimeout(state.pollTimer); fetchStatus(); } });
@@ -761,6 +1396,7 @@ tags: [desktop]
     if (window.matchMedia("(max-width: 900px)").matches) document.body.classList.add("execution-closed");
     bindEvents();
     resizeComposer();
+    loadSkills();
     await fetchStatus();
     fetchScreen();
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});

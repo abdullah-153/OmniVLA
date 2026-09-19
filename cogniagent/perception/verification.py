@@ -76,6 +76,10 @@ class ScreenVerifier:
         if action.action_type in {"click", "double_click", "right_click"} and (execution_result or {}).get("focus_changed"):
             return None
 
+        # Scroll can reach boundary (top/bottom) or scroll content with subtle sub-pixel render
+        if action.action_type == "scroll":
+            return None
+
         if not diff_result.get("changed", True):
             return "No visible screen change after action"
 

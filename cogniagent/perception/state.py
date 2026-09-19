@@ -9,6 +9,14 @@ from typing import Optional, Tuple
 
 
 @dataclass
+class UIElement:
+    """A bounded UI automation element representation."""
+    label: Optional[str] = None
+    role: Optional[str] = None
+    bounding_box: Optional[Tuple[int, int, int, int]] = None
+
+
+@dataclass
 class VisualObservationState:
     """A snapshot of visual observation metadata."""
     window_title: str = ""
@@ -18,9 +26,13 @@ class VisualObservationState:
     summary: str = ""
     is_available: bool = True
     source: str = "vlm"
+    app: str = ""
+    layout_type: str = ""
+    is_dialog: bool = False
+    visible_text_summary: str = ""
+    elements: list[UIElement] = field(default_factory=list)
 
 
 # Backwards compatibility alias
 SemanticState = VisualObservationState
-UIElement = object
 

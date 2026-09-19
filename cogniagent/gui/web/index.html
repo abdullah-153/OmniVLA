@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="/assets/app.css?v=18" />
     <title>OmniVLA</title>
   </head>
-  <body>
+  <body class="execution-closed">
     <svg class="icon-sprite" aria-hidden="true" focusable="false">
       <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
       <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></symbol>
@@ -35,6 +35,11 @@
       <symbol id="i-maximize" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1" /></symbol>
       <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v9M7.1 5.8a8 8 0 1 0 9.8 0" /></symbol>
       <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></symbol>
+      <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></symbol>
+      <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></symbol>
+      <symbol id="i-code" viewBox="0 0 24 24"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6" /></symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></symbol>
+      <symbol id="i-terminal" viewBox="0 0 24 24"><path d="m4 17 6-6-6-6M12 19h8" /></symbol>
     </svg>
 
     <a class="skip-link" href="#workspace">Skip to conversation</a>
@@ -50,18 +55,25 @@
     <div class="app" id="app">
       <div class="sidebar-scrim" id="sidebar-scrim" hidden></div>
       <aside class="sidebar" id="sidebar" aria-label="Conversations">
-        <div class="sidebar-brand">
+        <div class="sidebar-top-bar">
+          <button class="new-chat" id="new-chat" type="button">
+            <svg><use href="#i-plus" /></svg>
+            <span>New chat</span>
+            <kbd>Ctrl N</kbd>
+          </button>
           <button class="icon-button mobile-only" id="close-sidebar" type="button" aria-label="Close sidebar"><svg><use href="#i-close" /></svg></button>
         </div>
 
-        <button class="new-chat" id="new-chat" type="button"><svg><use href="#i-plus" /></svg><span>New chat</span><kbd>Ctrl N</kbd></button>
-        <label class="chat-search"><svg><use href="#i-search" /></svg><span class="sr-only">Search chats</span><input id="chat-search" type="search" placeholder="Search chats" autocomplete="off" /></label>
-        <nav class="chat-list" id="chat-list" aria-label="Chat history"></nav>
+        <label class="chat-search"><svg><use href="#i-search" /></svg><span class="sr-only">Search chats</span><input id="chat-search" type="search" placeholder="Search chats..." autocomplete="off" /></label>
+        
+        <div class="chat-list-wrapper">
+          <div class="chat-section-label">Recent Chats</div>
+          <nav class="chat-list" id="chat-list" aria-label="Chat history"></nav>
+        </div>
 
-        <div class="sidebar-footer">
-          <button class="sidebar-link" id="open-skills" type="button"><svg><use href="#i-spark" /></svg><span>Skills &amp; Studio</span></button>
-          <button class="sidebar-link" id="open-settings" type="button"><svg><use href="#i-settings" /></svg><span>Settings</span></button>
-          <div class="local-state"><span class="state-dot" id="local-state-dot"></span><span id="local-state-label">Starting</span></div>
+        <div class="sidebar-footer-card">
+          <button class="sidebar-link" id="open-skills" type="button"><svg><use href="#i-spark" /></svg><span>Skills Studio</span></button>
+          <button class="sidebar-link" id="open-settings" type="button"><svg><use href="#i-settings" /></svg><span>Settings &amp; Memory</span></button>
         </div>
       </aside>
 
@@ -72,23 +84,51 @@
             <div class="session-title"><strong id="session-title">New chat</strong><span id="session-status">Ready</span></div>
             <div class="session-actions">
               <button class="icon-button" id="retry-chat" type="button" title="Retry this task" aria-label="Retry this task"><svg><use href="#i-retry" /></svg></button>
-              <button class="icon-button" id="delete-chat" type="button" title="Delete chat" aria-label="Delete chat"><svg><use href="#i-trash" /></svg></button>
-              <button class="panel-button is-active" id="toggle-execution" type="button" aria-label="Execution details"><svg><use href="#i-panel" /></svg><span>Execution</span></button>
+              <button class="panel-button" id="toggle-execution" type="button" aria-label="Execution details"><svg><use href="#i-panel" /></svg><span>Execution</span></button>
             </div>
           </header>
+
 
           <div class="session-layout">
             <section class="chat-pane" aria-label="Chat">
               <div class="chat-scroll" id="chat-scroll">
                 <div class="chat-content">
                   <section class="chat-empty" id="chat-empty">
-                    <span class="empty-mark" aria-hidden="true"><i></i><i></i></span>
-                    <h1>What do you want to do?</h1>
-                    <p>Describe an outcome on your computer. You will review the plan before anything happens.</p>
-                    <div class="suggestions" aria-label="Examples">
-                      <button type="button" data-suggestion="Open my latest download and move it to Documents">Organize a downloaded file</button>
-                      <button type="button" data-suggestion="Open the browser and find the current time in London">Look something up</button>
-                      <button type="button" data-suggestion="Open Notepad and create a short meeting checklist">Create a quick note</button>
+                    <div class="chat-empty-badge">
+                      <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+                      <span>Desktop Intelligence</span>
+                    </div>
+                    <h1>What would you like to do?</h1>
+                    <p>Converse naturally or describe an outcome on your computer. OmniVLA learns your preferences across sessions and presents clear plans before acting.</p>
+                    <div class="empty-card-grid" aria-label="Quick actions">
+                      <button type="button" class="empty-card" data-suggestion="Check my unread emails from today">
+                        <div class="empty-card-icon"><svg><use href="#i-chat" /></svg></div>
+                        <div class="empty-card-content">
+                          <strong>Check unread emails</strong>
+                          <span>Summarize inbox in Gmail via Microsoft Edge</span>
+                        </div>
+                      </button>
+                      <button type="button" class="empty-card" data-suggestion="Open my latest download and move it to Documents">
+                        <div class="empty-card-icon"><svg><use href="#i-file" /></svg></div>
+                        <div class="empty-card-content">
+                          <strong>Organize downloads</strong>
+                          <span>Sort recent files from Downloads into Documents</span>
+                        </div>
+                      </button>
+                      <button type="button" class="empty-card" data-suggestion="Open the browser and search for latest AI research">
+                        <div class="empty-card-icon"><svg><use href="#i-search" /></svg></div>
+                        <div class="empty-card-content">
+                          <strong>Research in browser</strong>
+                          <span>Open Microsoft Edge and search web topic</span>
+                        </div>
+                      </button>
+                      <button type="button" class="empty-card" data-suggestion="Open Notepad and create a quick meeting checklist">
+                        <div class="empty-card-icon"><svg><use href="#i-terminal" /></svg></div>
+                        <div class="empty-card-content">
+                          <strong>Quick scratchpad note</strong>
+                          <span>Launch Notepad and create a meeting checklist</span>
+                        </div>
+                      </button>
                     </div>
                   </section>
                   <div class="conversation" id="conversation" aria-live="polite"></div>
@@ -96,11 +136,11 @@
               </div>
 
               <div class="composer-wrap">
+                <div class="skill-autocomplete" id="skill-autocomplete" hidden></div>
                 <form class="composer" id="composer-form">
                   <label class="sr-only" for="composer-input">Message</label>
-                  <textarea id="composer-input" rows="1" maxlength="8000" placeholder="Ask OmniVLA to do something on your computer"></textarea>
+                  <textarea id="composer-input" rows="1" maxlength="8000" placeholder="Ask OmniVLA to do something on your computer (type @ to use a skill)"></textarea>
                   <div class="composer-footer">
-                    <span class="composer-mode"><span class="state-dot"></span>Review before run</span>
                     <span class="composer-hint" id="composer-hint">Enter to send · Shift Enter for a new line</span>
                     <button class="send-button" id="send-message" type="submit" aria-label="Send message" disabled><svg><use href="#i-send" /></svg></button>
                   </div>
@@ -130,25 +170,232 @@
         </section>
 
         <section class="workspace-view utility-view" data-workspace-view="skills" aria-labelledby="skills-title">
-          <header class="utility-header"><div><button class="icon-button back-to-chat" type="button" aria-label="Back to chat"><svg><use href="#i-back" /></svg></button><h1 id="skills-title">Skills &amp; Studio</h1></div><button class="secondary-button" id="new-skill" type="button"><svg><use href="#i-plus" /></svg><span>New skill</span></button></header>
-          <div class="utility-tabs" role="tablist" aria-label="Skill tools"><button class="is-active" data-skill-tab="library" type="button">Library</button><button data-skill-tab="teach" type="button">Studio</button><button data-skill-tab="editor" type="button">Markdown</button></div>
-
-          <div class="skill-view is-active" data-skill-view="library">
-            <label class="utility-search"><svg><use href="#i-search" /></svg><span class="sr-only">Search skills</span><input id="skill-search" type="search" placeholder="Search skills" /></label>
-            <div class="skill-list" id="skill-list"></div>
+          <header class="utility-header">
+            <div>
+              <button class="icon-button back-to-chat" type="button" aria-label="Back to chat"><svg><use href="#i-back" /></svg></button>
+              <h1 id="skills-title">Skills &amp; Studio</h1>
+            </div>
+            <button class="secondary-button" id="new-skill" type="button"><svg><use href="#i-plus" /></svg><span>New skill</span></button>
+          </header>
+          <div class="utility-tabs" role="tablist" aria-label="Skill tools">
+            <button class="is-active" data-skill-tab="library" type="button">Library</button>
+            <button data-skill-tab="teach" type="button">Studio</button>
+            <button data-skill-tab="editor" type="button">Markdown</button>
           </div>
 
-          <div class="skill-view" data-skill-view="editor">
-            <div class="skill-editor-layout">
-              <section class="import-zone" id="import-zone"><svg><use href="#i-file" /></svg><h2>Import Markdown</h2><p>Drop a <code>.md</code>, <code>.markdown</code>, or <code>.mds</code> file here.</p><label class="secondary-button file-button"><input id="skill-file" type="file" accept=".md,.markdown,.mds,text/markdown" /><span>Choose file</span></label></section>
-              <form class="skill-editor" id="skill-editor"><div class="section-heading"><h2 id="skill-editor-title">New skill</h2><span id="skill-save-state"></span></div><label for="skill-markdown">Markdown</label><textarea id="skill-markdown" spellcheck="false" maxlength="48000"></textarea><div class="editor-actions"><button class="danger-text" id="delete-skill" type="button" hidden>Delete</button><span></span><button class="secondary-button" id="reset-skill" type="button">Reset</button><button class="primary-button" type="submit">Save skill</button></div></form>
+          <!-- Tab 1: Library View -->
+          <div class="skill-view is-active" data-skill-view="library">
+            <div class="library-header-bar">
+              <label class="utility-search">
+                <svg><use href="#i-search" /></svg>
+                <span class="sr-only">Search skills</span>
+                <input id="skill-search" type="search" placeholder="Search skills by title, trigger, or tag..." />
+              </label>
+              <div class="library-filter-chips" id="library-filters" role="group" aria-label="Filter skills by domain">
+                <button class="filter-chip is-active" data-filter="all" type="button">All</button>
+                <button class="filter-chip" data-filter="productivity" type="button">Productivity</button>
+                <button class="filter-chip" data-filter="browser" type="button">Browser</button>
+                <button class="filter-chip" data-filter="desktop" type="button">Desktop</button>
+                <button class="filter-chip" data-filter="system" type="button">System</button>
+              </div>
+              <span class="skill-count-badge" id="skill-count-badge">0 skills</span>
+            </div>
+            <div class="skill-list-scroll-wrap">
+              <div class="skill-list" id="skill-list"></div>
             </div>
           </div>
 
+          <!-- Tab 2: Markdown Editor View -->
+          <div class="skill-view" data-skill-view="editor">
+            <div class="skill-editor-layout">
+              <aside class="editor-sidebar" aria-label="Editor Tools &amp; Snippets">
+                <section class="import-zone" id="import-zone">
+                  <svg><use href="#i-file" /></svg>
+                  <h2>Import Skill</h2>
+                  <p>Drop a <code>.md</code> file here to edit.</p>
+                  <label class="secondary-button file-button">
+                    <input id="skill-file" type="file" accept=".md,.markdown,.mds,text/markdown" />
+                    <span>Choose file</span>
+                  </label>
+                </section>
+
+                <section class="snippets-section">
+                  <div class="snippets-header">
+                    <h3>Quick Snippets</h3>
+                    <small>Procedural templates</small>
+                  </div>
+                  <div class="snippets-grid">
+                    <button class="snippet-btn" id="insert-frontmatter-snippet" type="button">
+                      <strong>+ Frontmatter</strong>
+                      <small>Metadata &amp; triggers</small>
+                    </button>
+                    <button class="snippet-btn" id="insert-step-snippet" type="button">
+                      <strong>+ Action Step</strong>
+                      <small>Vision &amp; input cue</small>
+                    </button>
+                    <button class="snippet-btn" id="insert-recovery-snippet" type="button">
+                      <strong>+ Recovery Rule</strong>
+                      <small>Failure heuristic</small>
+                    </button>
+                  </div>
+                </section>
+              </aside>
+
+              <form class="skill-editor" id="skill-editor">
+                <div class="skill-editor-header">
+                  <div class="editor-title-wrap">
+                    <h2 id="skill-editor-title">New skill</h2>
+                    <span class="editor-state" id="skill-save-state"></span>
+                  </div>
+                </div>
+                <div class="editor-textarea-wrap">
+                  <label for="skill-markdown" class="sr-only">Markdown Editor</label>
+                  <textarea id="skill-markdown" spellcheck="false" maxlength="48000" placeholder="---&#10;name: my_skill&#10;title: My Skill&#10;description: Perform a desktop workflow&#10;domain: productivity&#10;triggers:&#10;  - do task&#10;---&#10;&#10;## Procedural Steps&#10;1. Locate the application window..."></textarea>
+                </div>
+                <div class="editor-actions">
+                  <button class="danger-text" id="delete-skill" type="button" hidden>Delete</button>
+                  <span class="editor-actions-spacer"></span>
+                  <button class="secondary-button" id="reset-skill" type="button">Reset</button>
+                  <button class="primary-button" type="submit">Save skill</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <!-- Tab 3: Studio View -->
           <div class="skill-view" data-skill-view="teach">
-            <div class="teach-layout">
-              <section class="teach-intro"><h2>Skill Studio</h2><p>Demonstrate a workflow once. Studio studies the visible states and action sequence, removes private typed values, and creates adaptable guidance—not a coordinate macro.</p><label class="field"><span>What should this skill accomplish?</span><input id="teach-goal" maxlength="500" placeholder="For example: Find an order in the support portal" /></label><button class="record-button" id="toggle-recording" type="button" disabled><svg><use href="#i-record" /></svg><span>Start demonstration</span></button><div class="recording-status" id="recording-status" hidden><span class="recording-dot"></span><div><strong>Learning</strong><small id="recording-time">0:00</small></div><p>Complete the workflow, then return and stop.</p></div></section>
-              <section class="teach-result"><div class="section-heading"><h2>Observed actions</h2><span id="captured-count">0</span></div><div class="captured-list" id="captured-list"><p class="panel-empty">Visible actions will appear here after the demonstration.</p></div><div class="create-from-demo" id="create-from-demo" hidden><label class="field"><span>Skill name</span><input id="taught-skill-name" maxlength="64" placeholder="Optional name" /></label><button class="primary-button" id="create-taught-skill" type="button">Build intelligent skill</button></div></section>
+            <div class="intel-studio-layout">
+              <section class="intel-creator-panel" aria-label="Intelligent Skill Creator Form">
+                <div class="intel-panel-header">
+                  <div>
+                    <h2>Intelligent Skill Creator</h2>
+                    <p>Synthesize reusable procedural skills grounded to your desktop visuals and natural triggers.</p>
+                  </div>
+                  <span class="intel-badge">Vision Grounded</span>
+                </div>
+
+                <form class="intel-form" id="intel-skill-form">
+                  <div class="form-group">
+                    <label class="field" for="intel-goal">
+                      <span>Workflow Goal <strong class="req-star">*</strong></span>
+                      <input id="intel-goal" maxlength="500" required placeholder="e.g. Check unread emails in Gmail and summarize the latest 3" />
+                      <small>Describe the desktop or web task OmniVLA should learn to perform.</small>
+                    </label>
+                  </div>
+
+                  <div class="intel-form-grid">
+                    <div class="form-group">
+                      <label class="field" for="intel-domain">
+                        <span>Domain</span>
+                        <div class="select-wrap">
+                          <select id="intel-domain">
+                            <option value="productivity" selected>Productivity &amp; Email</option>
+                            <option value="browser">Browser &amp; Web</option>
+                            <option value="desktop">Desktop Application</option>
+                            <option value="system">System &amp; Settings</option>
+                            <option value="general">General Workflow</option>
+                          </select>
+                          <svg class="select-chevron" aria-hidden="true"><use href="#i-chevron-down" /></svg>
+                        </div>
+                      </label>
+                    </div>
+                    <div class="form-group">
+                      <label class="field" for="intel-name">
+                        <span>Skill Identifier (optional)</span>
+                        <input id="intel-name" maxlength="40" placeholder="e.g. check_gmail_inbox" />
+                        <small>Identifier for <code>@mention</code> in chat.</small>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="intel-grounding-card">
+                      <div class="intel-grounding-info">
+                        <span class="intel-grounding-title">
+                          <svg class="intel-icon"><use href="#i-spark" /></svg>
+                          <strong>Anchor with Active Desktop Screen</strong>
+                        </span>
+                        <small>Scans current window layout to anchor buttons, search inputs, and visual landmarks.</small>
+                      </div>
+                      <input id="intel-screen" type="checkbox" checked />
+                    </label>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="field" for="intel-notes">
+                      <span>Workflow Guidance &amp; Visual Anchors (optional)</span>
+                      <textarea id="intel-notes" rows="3" maxlength="1000" placeholder="e.g. Locate search bar at top, filter unread, open the first thread, note sender &amp; subject"></textarea>
+                      <small>Provide visual landmarks, recovery rules, or custom preferences.</small>
+                    </label>
+                  </div>
+
+                  <div class="intel-form-footer">
+                    <button class="primary-button intel-generate-button" id="generate-intel-skill" type="submit">
+                      <svg><use href="#i-spark" /></svg>
+                      <span>Synthesize Intelligent Skill</span>
+                    </button>
+                    <div class="intel-spinner" id="intel-spinner" hidden>
+                      <span class="spinner"></span>
+                      <strong id="intel-spinner-text">Synthesizing procedural skill…</strong>
+                    </div>
+                  </div>
+                </form>
+              </section>
+
+              <section class="intel-result-panel" aria-label="Generated Skill Preview">
+                <div class="intel-preview-placeholder" id="intel-preview-placeholder">
+                  <svg><use href="#i-spark" /></svg>
+                  <strong>No Skill Generated Yet</strong>
+                  <p>Define your workflow goal on the left and click "Synthesize Intelligent Skill". OmniVLA will generate a robust procedural skill with triggers, parameters, visual anchors, and failure recovery.</p>
+                </div>
+
+                <div class="intel-preview-card" id="intel-preview-card" hidden>
+                  <div class="intel-preview-header">
+                    <div class="intel-preview-title-wrap">
+                      <h3 id="preview-skill-title">Skill Title</h3>
+                      <div class="intel-preview-badges">
+                        <span class="intel-pill intel-pill-slug" id="preview-skill-slug">@skill_name</span>
+                        <span class="intel-pill intel-pill-domain" id="preview-skill-domain">productivity</span>
+                        <span class="intel-pill intel-pill-vla">Vision Grounded</span>
+                      </div>
+                    </div>
+                    <div class="intel-preview-actions">
+                      <button class="secondary-button" id="edit-intel-markdown" type="button" title="View/Edit in Markdown Editor">
+                        <svg><use href="#i-file" /></svg>
+                        <span>Markdown</span>
+                      </button>
+                      <button class="primary-button" id="use-intel-in-chat" type="button" title="Insert @skill into Chat">
+                        <svg><use href="#i-chat" /></svg>
+                        <span>Use in Chat (@)</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <p class="preview-skill-desc" id="preview-skill-desc"></p>
+
+                  <div class="intel-preview-scroll-content">
+                    <div class="preview-block">
+                      <strong>Natural Trigger Phrases</strong>
+                      <div class="preview-chips" id="preview-triggers"></div>
+                    </div>
+
+                    <div class="preview-block">
+                      <strong>Dynamic Parameters</strong>
+                      <div class="preview-chips" id="preview-parameters"></div>
+                    </div>
+
+                    <div class="preview-block">
+                      <strong>Procedural Strategy &amp; Visual Grounding</strong>
+                      <div class="preview-strategy-content" id="preview-strategy"></div>
+                    </div>
+                  </div>
+
+                  <div class="intel-preview-bottom">
+                    <span class="badge-safe" id="preview-save-indicator">Saved to Library</span>
+                    <button class="secondary-button" id="intel-open-lib" type="button">View in Library</button>
+                  </div>
+                </div>
+              </section>
             </div>
           </div>
         </section>
@@ -156,8 +403,24 @@
         <section class="workspace-view utility-view" data-workspace-view="settings" aria-labelledby="settings-title">
           <header class="utility-header"><div><button class="icon-button back-to-chat" type="button" aria-label="Back to chat"><svg><use href="#i-back" /></svg></button><h1 id="settings-title">Settings</h1></div></header>
           <form class="settings-form" id="settings-form">
-            <section class="settings-section"><div><h2>Execution</h2><p>Choose when tasks may begin and keep them bounded.</p></div><div class="settings-fields"><label class="select-field"><span>Before a task starts</span><select id="safety-mode"><option value="supervised">Review the plan</option><option value="autonomous">Start immediately</option></select></label><label class="select-field"><span>Maximum actions per task</span><input id="max-steps" type="number" min="1" max="100" /></label><label class="toggle-row"><span><strong>Require plan approval</strong><small>Review every plan before the first action.</small></span><input id="require-plan-approval" type="checkbox" /></label></div></section>
+            <section class="settings-section"><div><h2>Execution</h2><p>Choose when tasks may begin and keep them bounded.</p></div><div class="settings-fields"><label class="select-field"><span>Before a task starts</span><div class="select-wrap"><select id="safety-mode"><option value="supervised">Review the plan</option><option value="autonomous">Start immediately</option></select><svg class="select-chevron" aria-hidden="true"><use href="#i-chevron-down" /></svg></div></label><label class="select-field"><span>Maximum actions per task</span><input id="max-steps" type="number" min="1" max="100" /></label><label class="toggle-row"><span><strong>Require plan approval</strong><small>Review every plan before the first action.</small></span><input id="require-plan-approval" type="checkbox" /></label></div></section>
             <section class="settings-section"><div><h2>Privacy</h2><p>Choose what this device keeps after a task finishes.</p></div><div class="settings-fields"><label class="toggle-row"><span><strong>Conversation recall</strong><small>Use redacted local history to help with later chats.</small></span><input id="memory-enabled" type="checkbox" /></label><label class="toggle-row"><span><strong>Record execution video</strong><small>Save a local video of each task. Off by default.</small></span><input id="enable-recording" type="checkbox" /></label><button class="danger-button" id="clear-memory" type="button">Clear conversation recall</button></div></section>
+            <section class="settings-section">
+              <div><h2>Personal Agent Memory</h2><p>Lifetime user profile and habits automatically injected into planning and execution.</p></div>
+              <div class="settings-fields">
+                <label class="select-field"><span>Primary email address</span><input id="pref-email-account" type="email" placeholder="ak1399er@gmail.com" /></label>
+                <label class="select-field"><span>Preferred email service</span><div class="select-wrap"><select id="pref-email-service"><option value="Gmail">Gmail (Web)</option><option value="Outlook">Desktop Outlook</option></select><svg class="select-chevron" aria-hidden="true"><use href="#i-chevron-down" /></svg></div></label>
+                <label class="select-field"><span>Default web browser</span><input id="pref-browser" type="text" placeholder="Microsoft Edge" /></label>
+                <div class="profile-facts-section">
+                  <span class="profile-facts-label">Learned Facts &amp; Rules</span>
+                  <ul class="profile-facts-list" id="profile-facts-list"></ul>
+                  <div class="add-fact-row">
+                    <input id="new-fact-input" type="text" placeholder="e.g. Always check inbox before archive..." />
+                    <button class="secondary-button" id="add-fact-btn" type="button">Add rule</button>
+                  </div>
+                </div>
+              </div>
+            </section>
             <section class="settings-section"><div><h2>App health</h2><p>Work stays on this computer. Restart OmniVLA only if tasks stop responding.</p></div><div class="settings-fields"><div class="service-state"><span class="state-dot" id="settings-service-dot"></span><strong id="settings-service-label">Checking</strong></div><button class="secondary-button" id="restart-models" type="button"><svg><use href="#i-retry" /></svg><span>Restart OmniVLA</span></button></div></section>
             <div class="settings-save"><span id="settings-save-state"></span><button class="primary-button" type="submit">Save settings</button></div>
           </form>

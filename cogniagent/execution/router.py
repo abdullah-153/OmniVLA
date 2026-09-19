@@ -293,7 +293,24 @@ class ActionRouter:
                         "detail": "Scroll direction must be 'up' or 'down'.",
                         "is_done": False
                     }
-                amount = 300 if direction == "up" else -300
+                # If coordinates were provided, hover over the target element first.
+                # Otherwise, center the cursor within the observed monitor to ensure wheel target is active.
+                if action_data.get("x") is not None and action_data.get("y") is not None:
+                    coords, _ = self.resolve_click_coordinates(
+                        action_data,
+                        original_dims,
+                        vlm_result.get("screen_origin", (0, 0)),
+                    )
+                    if coords:
+                        win32_input.set_cursor_pos(coords[0], coords[1])
+                        time.sleep(0.05)
+                else:
+                    origin_x, origin_y = vlm_result.get("screen_origin", (0, 0))
+                    orig_w, orig_h = original_dims if isinstance(original_dims, tuple) and len(original_dims) == 2 else (1920, 1080)
+                    win32_input.set_cursor_pos(origin_x + orig_w // 2, origin_y + orig_h // 2)
+                    time.sleep(0.05)
+
+                amount = 360 if direction == "up" else -360
                 win32_input.mouse_scroll(amount)
                 results.append(f"Scrolled {direction}")
                 time.sleep(self.config.execution.click_pause)

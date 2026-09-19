@@ -1,4 +1,4 @@
-const CACHE_NAME = "omnivla-app-v18";
+const CACHE_NAME = "omnivla-app-v18-fresh";
 const APP_SHELL = ["/", "/assets/app.css?v=18", "/assets/app.js?v=18", "/manifest.webmanifest", "/assets/icons/omnivla-mark.svg"];
 
 self.addEventListener("install", (event) => {
@@ -17,9 +17,6 @@ self.addEventListener("fetch", (event) => {
   const requestUrl = new URL(event.request.url);
   if (requestUrl.pathname.startsWith("/api/")) return;
 
-  // A cache-first HTML document can trap users on an old interface forever.
-  // Fetch navigations first, then retain the latest working shell for offline
-  // recovery. Versioned static assets remain fast cache-first below.
   if (event.request.mode === "navigate") {
     event.respondWith(
       fetch(event.request)
@@ -34,13 +31,16 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Network-first for application assets with fallback to cache
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request).then((response) => {
-      const copy = response.clone();
-      if (response.ok && requestUrl.origin === self.location.origin) {
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-      }
-      return response;
-    }))
+    fetch(event.request)
+      .then((response) => {
+        if (response.ok && requestUrl.origin === self.location.origin) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        }
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });

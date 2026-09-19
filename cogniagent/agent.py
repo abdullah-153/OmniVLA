@@ -162,7 +162,7 @@ class CogniAgent:
             required.add("type")
         return required
 
-    def _dynamic_step_budget(self, task: str, requested_steps: int | None = None) -> int:
+    def _dynamic_step_budget(self, task: str, ceiling: int | None = None) -> int:
         """Scale the action budget to the reviewed plan's observable work.
 
         Holo deliberately takes small screen-grounded actions. A fixed 15-step
@@ -170,16 +170,28 @@ class CogniAgent:
         stagnation. Each explicit plan item receives six actions plus a small
         recovery reserve, capped by the configured hard safety ceiling.
         """
-        configured_ceiling = max(1, int(getattr(self.config.safety, "max_steps_per_task", 60)))
-        try:
-            requested_ceiling = configured_ceiling if requested_steps is None else max(1, int(requested_steps))
-        except (TypeError, ValueError):
-            requested_ceiling = configured_ceiling
-        hard_ceiling = min(configured_ceiling, requested_ceiling)
+        configured_ceiling = max(1, int(getattr(self.config.safety, "max_steps_per_task", 60))) if getattr(self, "config", None) and getattr(self.config, "safety", None) else 60
+        hard_ceiling = configured_ceiling if ceiling is None else min(configured_ceiling, max(1, int(ceiling)))
         numbered = re.findall(r"(?m)^\s*(?:\d+[.)]|[-*])\s+\S", str(task or ""))
         plan_items = max(1, len(numbered))
         derived = plan_items * 6 + 6
         return min(hard_ceiling, derived)
+
+    def resolve_step_budget(self, task: str, requested_steps: int | None = None) -> int:
+        """Resolve the active step limit for a task execution.
+
+        If an explicit step limit is requested (from the user UI or planner),
+        respect it directly up to the safety ceiling. Otherwise, scale dynamically based
+        on the reviewed plan items.
+        """
+        configured_ceiling = max(1, int(getattr(self.config.safety, "max_steps_per_task", 60))) if getattr(self, "config", None) and getattr(self.config, "safety", None) else 60
+        if requested_steps is not None:
+            try:
+                user_requested = max(1, int(requested_steps))
+                return min(configured_ceiling, user_requested)
+            except (TypeError, ValueError):
+                pass
+        return self._dynamic_step_budget(task, configured_ceiling)
 
     @staticmethod
     def _tool_observation(vlm_result: dict, tool_name: str, detail: str, success: bool) -> dict:
@@ -208,6 +220,16 @@ class CogniAgent:
                     logger.info("Skill '%s' matched. Injected procedural guidance into Holo VLM prompt.", matched_skill.name)
             except Exception as se:
                 logger.debug("Skill selection skipped: %s", se)
+
+        # Inject lifetime user preferences & personal memory into VLA guidance
+        try:
+            from cogniagent.memory.user_profile import get_user_profile
+            user_profile = get_user_profile()
+            vla_guidance = user_profile.get_vla_context()
+            if vla_guidance:
+                active_task_prompt += f"\n\n{vla_guidance}"
+        except Exception as profile_error:
+            logger.debug("User profile guidance skipped: %s", profile_error)
 
         # Successful local episodes are advisory evidence, never replayable
         # macros. The visual model still reasons from the current screenshot
@@ -245,13 +267,8 @@ class CogniAgent:
         required_action_evidence = self._required_action_evidence(task)
         successful_tool_names: set[str] = set()
         
-        configured_ceiling = max(1, int(getattr(self.config.safety, "max_steps_per_task", 60)))
-        try:
-            requested_ceiling = configured_ceiling if max_steps is None else max(1, int(max_steps))
-        except (TypeError, ValueError):
-            requested_ceiling = configured_ceiling
-        step_ceiling = min(configured_ceiling, requested_ceiling)
-        max_steps = self._dynamic_step_budget(task, step_ceiling)
+        max_steps = self.resolve_step_budget(task, max_steps)
+        step_ceiling = max_steps
         recent_action_signatures: list[str] = []
         consecutive_failures = 0
         consecutive_model_failures = 0
@@ -457,6 +474,19 @@ class CogniAgent:
                     "is_done": False,
                 }
                 exec_time = int((time.time() - exec_start) * 1000)
+            elif (
+                action_signature
+                and action_desp in {"click", "double_click", "right_click"}
+                and recent_action_signatures.count(action_signature) >= 2
+                and action_signature in recent_action_signatures[-8:]
+            ):
+                # Detect cycling loops: clicking the exact same item repeatedly across recent turns
+                result = {
+                    "success": False,
+                    "detail": f"Cycle detected: you already clicked this target ({parsed_action.get('element', 'target')}) recently. Do NOT open it again. Choose a different item or conclude the task.",
+                    "is_done": False,
+                }
+                exec_time = int((time.time() - exec_start) * 1000)
             elif action_desp == "hitl_intervention":
                 question = parsed_action.get("question", "Verification or input required.")
                 logger.info(f"VLM requested Human Intervention: {question}")
@@ -479,7 +509,7 @@ class CogniAgent:
             self._record_timing("action", exec_time)
             if action_signature:
                 recent_action_signatures.append(action_signature)
-                del recent_action_signatures[:-4]
+                del recent_action_signatures[:-10]
 
             if action_desp == "terminate" and not result.get("success", False):
                 critic_results[step_idx + 1] = {

@@ -18,10 +18,11 @@ logger = logging.getLogger(__name__)
 
 
 class NativeObservationRecorder:
-    """Capture human desktop input with low-level Windows hooks.
+    """Capture human desktop input safely using non-blocking Windows polling.
 
-    Hook callbacks only enqueue compact events. Screenshot capture and skill
-    bookkeeping run on a worker thread so Windows input is never blocked.
+    Uses GetAsyncKeyState and GetCursorPos on a background thread instead of
+    synchronous WH_MOUSE_LL / WH_KEYBOARD_LL hooks. This guarantees that human
+    keyboard and mouse input is NEVER blocked, delayed, or frozen by Python.
     Printable text is deliberately represented by a redacted placeholder;
     demonstrations must not become a credential logger.
     """
@@ -30,14 +31,8 @@ class NativeObservationRecorder:
         self.observer = observer
         self._active = False
         self._events: queue.Queue = queue.Queue(maxsize=256)
-        self._hook_thread: Optional[threading.Thread] = None
+        self._poll_thread: Optional[threading.Thread] = None
         self._consumer_thread: Optional[threading.Thread] = None
-        self._ready = threading.Event()
-        self._thread_id = 0
-        self._mouse_hook = None
-        self._keyboard_hook = None
-        self._mouse_callback = None
-        self._keyboard_callback = None
         self._started_at = 0.0
 
     @property
@@ -50,13 +45,9 @@ class NativeObservationRecorder:
             return False
         if self._active:
             return True
-        # A previous stopped session leaves a sentinel in its queue. Each
-        # recording owns a fresh bounded queue so restarting cannot silently
-        # discard every event.
         self._events = queue.Queue(maxsize=256)
         self._active = True
         self._started_at = time.time()
-        self._ready.clear()
         user32 = ctypes.windll.user32
         width = int(user32.GetSystemMetrics(78)) or 1920   # SM_CXVIRTUALSCREEN
         height = int(user32.GetSystemMetrics(79)) or 1080  # SM_CYVIRTUALSCREEN
@@ -68,34 +59,27 @@ class NativeObservationRecorder:
         if getattr(self.observer, "_current_demo", None):
             self.observer._current_demo.screen_dims = (width, height)
         self._consumer_thread = threading.Thread(target=self._consume, name="omnivla-observation-events", daemon=True)
-        self._hook_thread = threading.Thread(target=self._hook_loop, name="omnivla-observation-hooks", daemon=True)
+        self._poll_thread = threading.Thread(target=self._poll_loop, name="omnivla-observation-polling", daemon=True)
         self._consumer_thread.start()
-        self._hook_thread.start()
-        self._ready.wait(timeout=2.0)
-        if not self._mouse_hook or not self._keyboard_hook:
-            self.stop()
-            return False
-        logger.info("Native desktop observation hooks started.")
+        self._poll_thread.start()
+        logger.info("Non-blocking desktop observation polling recorder started.")
         return True
 
     def stop(self) -> None:
-        if not self._active and not self._hook_thread:
+        if not self._active:
             return
         self._active = False
-        if self._thread_id and os.name == "nt":
-            ctypes.windll.user32.PostThreadMessageW(self._thread_id, 0x0012, 0, 0)  # WM_QUIT
         try:
             self._events.put_nowait(None)
         except queue.Full:
             pass
-        if self._hook_thread and self._hook_thread is not threading.current_thread():
-            self._hook_thread.join(timeout=2.0)
+        if self._poll_thread and self._poll_thread is not threading.current_thread():
+            self._poll_thread.join(timeout=1.0)
         if self._consumer_thread and self._consumer_thread is not threading.current_thread():
-            self._consumer_thread.join(timeout=2.0)
-        self._hook_thread = None
+            self._consumer_thread.join(timeout=1.0)
+        self._poll_thread = None
         self._consumer_thread = None
-        self._thread_id = 0
-        logger.info("Native desktop observation hooks stopped.")
+        logger.info("Non-blocking desktop observation polling recorder stopped.")
 
     def _enqueue(self, event: tuple) -> None:
         if not self._active or time.time() - self._started_at < 0.35:
@@ -107,12 +91,19 @@ class NativeObservationRecorder:
 
     @staticmethod
     def _foreground_title() -> str:
-        user32 = ctypes.windll.user32
-        handle = user32.GetForegroundWindow()
-        length = min(200, max(0, user32.GetWindowTextLengthW(handle)))
-        buffer = ctypes.create_unicode_buffer(length + 1)
-        user32.GetWindowTextW(handle, buffer, len(buffer))
-        return buffer.value
+        try:
+            user32 = ctypes.windll.user32
+            handle = user32.GetForegroundWindow()
+            if not handle:
+                return "Desktop"
+            length = min(200, max(0, user32.GetWindowTextLengthW(handle)))
+            if length <= 0:
+                return "Desktop"
+            buffer = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(handle, buffer, len(buffer))
+            return buffer.value or "Desktop"
+        except Exception:
+            return "Desktop"
 
     def _consume(self) -> None:
         while self._active or not self._events.empty():
@@ -133,100 +124,79 @@ class NativeObservationRecorder:
             except Exception as error:
                 logger.warning("Unable to record observed %s event: %s", kind, error)
 
-    def _hook_loop(self) -> None:
+    def _poll_loop(self) -> None:
         from ctypes import wintypes
-
-        class MSLLHOOKSTRUCT(ctypes.Structure):
-            _fields_ = [
-                ("pt", wintypes.POINT),
-                ("mouseData", wintypes.DWORD),
-                ("flags", wintypes.DWORD),
-                ("time", wintypes.DWORD),
-                ("dwExtraInfo", ctypes.c_size_t),
-            ]
-
-        class KBDLLHOOKSTRUCT(ctypes.Structure):
-            _fields_ = [
-                ("vkCode", wintypes.DWORD),
-                ("scanCode", wintypes.DWORD),
-                ("flags", wintypes.DWORD),
-                ("time", wintypes.DWORD),
-                ("dwExtraInfo", ctypes.c_size_t),
-            ]
-
         user32 = ctypes.windll.user32
-        kernel32 = ctypes.windll.kernel32
-        callback_type = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM)
-        kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
-        kernel32.GetModuleHandleW.restype = ctypes.c_void_p
-        user32.SetWindowsHookExW.restype = ctypes.c_void_p
-        user32.SetWindowsHookExW.argtypes = [ctypes.c_int, callback_type, ctypes.c_void_p, wintypes.DWORD]
-        user32.CallNextHookEx.restype = ctypes.c_ssize_t
-        modifiers: set[int] = set()
-        modifier_names = {0x10: "shift", 0x11: "ctrl", 0x12: "alt", 0x5B: "win", 0x5C: "win"}
+
+        prev_lbutton = False
+        prev_rbutton = False
+        prev_keys: set[int] = set()
+
+        modifier_vks = {0x10: "shift", 0x11: "ctrl", 0x12: "alt", 0x5B: "win", 0x5C: "win"}
         key_names = {
             0x08: "backspace", 0x09: "tab", 0x0D: "enter", 0x1B: "esc", 0x20: "space",
             0x21: "pageup", 0x22: "pagedown", 0x23: "end", 0x24: "home", 0x25: "left",
             0x26: "up", 0x27: "right", 0x28: "down", 0x2D: "insert", 0x2E: "delete",
         }
-        last_redacted_text = [0.0]
+        last_type_time = 0.0
+        pt = wintypes.POINT()
 
-        def mouse_proc(code, message, data):
-            if code >= 0 and message in (0x0202, 0x0205):  # button-up events
-                info = ctypes.cast(data, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
-                if not (info.flags & 0x01):  # LLMHF_INJECTED
+        while self._active:
+            try:
+                # Poll mouse buttons
+                lbutton_down = bool(user32.GetAsyncKeyState(0x01) & 0x8000)
+                rbutton_down = bool(user32.GetAsyncKeyState(0x02) & 0x8000)
+                user32.GetCursorPos(ctypes.byref(pt))
+
+                # Button click completed (mouse up after mouse down)
+                if prev_lbutton and not lbutton_down:
+                    title = self._foreground_title()
                     self._enqueue(("click", {
-                        "x": int(info.pt.x), "y": int(info.pt.y),
-                        "button": "right" if message == 0x0205 else "left",
-                        "window_title": self._foreground_title(), "visual_cue": "",
+                        "x": int(pt.x), "y": int(pt.y),
+                        "button": "left",
+                        "window_title": title, "visual_cue": "",
                     }))
-            return user32.CallNextHookEx(self._mouse_hook, code, message, data)
+                elif prev_rbutton and not rbutton_down:
+                    title = self._foreground_title()
+                    self._enqueue(("click", {
+                        "x": int(pt.x), "y": int(pt.y),
+                        "button": "right",
+                        "window_title": title, "visual_cue": "",
+                    }))
 
-        def keyboard_proc(code, message, data):
-            if code >= 0:
-                info = ctypes.cast(data, ctypes.POINTER(KBDLLHOOKSTRUCT)).contents
-                vk = int(info.vkCode)
-                if info.flags & 0x10:  # LLKHF_INJECTED
-                    return user32.CallNextHookEx(self._keyboard_hook, code, message, data)
-                if message in (0x0101, 0x0105):  # key-up
-                    modifiers.discard(vk)
-                elif message in (0x0100, 0x0104):  # key-down
-                    if vk in modifier_names:
-                        modifiers.add(vk)
-                    else:
+                prev_lbutton = lbutton_down
+                prev_rbutton = rbutton_down
+
+                # Poll modifiers
+                active_modifiers = [name for vk, name in modifier_vks.items() if (user32.GetAsyncKeyState(vk) & 0x8000)]
+
+                # Poll key presses
+                check_vks = list(key_names.keys()) + list(range(0x30, 0x5B))
+                for vk in check_vks:
+                    is_down = bool(user32.GetAsyncKeyState(vk) & 0x8000)
+                    was_down = vk in prev_keys
+
+                    if is_down and not was_down:
+                        prev_keys.add(vk)
                         title = self._foreground_title()
-                        names = [modifier_names[item] for item in (0x11, 0x12, 0x10, 0x5B, 0x5C) if item in modifiers]
-                        key = key_names.get(vk) or (chr(vk).lower() if 0x30 <= vk <= 0x5A else f"vk_{vk}")
-                        if names or key in key_names.values():
-                            self._enqueue(("key", {"key": "+".join(names + [key]), "window_title": title}))
-                        elif time.time() - last_redacted_text[0] > 1.0:
-                            last_redacted_text[0] = time.time()
-                            self._enqueue(("type", {"text": "{{typed_value}}", "window_title": title}))
-            return user32.CallNextHookEx(self._keyboard_hook, code, message, data)
+                        k_name = key_names.get(vk) or chr(vk).lower()
+                        if active_modifiers:
+                            combo = "+".join(active_modifiers + [k_name])
+                            self._enqueue(("key", {"key": combo, "window_title": title}))
+                        elif vk in key_names:
+                            self._enqueue(("key", {"key": k_name, "window_title": title}))
+                        else:
+                            now = time.time()
+                            if now - last_type_time > 1.0:
+                                last_type_time = now
+                                self._enqueue(("type", {"text": "{{typed_value}}", "window_title": title}))
+                    elif not is_down and was_down:
+                        prev_keys.discard(vk)
 
-        self._mouse_callback = callback_type(mouse_proc)
-        self._keyboard_callback = callback_type(keyboard_proc)
-        self._thread_id = int(kernel32.GetCurrentThreadId())
-        module = kernel32.GetModuleHandleW(None)
-        self._mouse_hook = user32.SetWindowsHookExW(14, self._mouse_callback, module, 0)
-        self._keyboard_hook = user32.SetWindowsHookExW(13, self._keyboard_callback, module, 0)
-        self._ready.set()
-        if not self._mouse_hook or not self._keyboard_hook:
-            logger.error(
-                "Windows rejected one or more observation hooks (error %s).",
-                int(kernel32.GetLastError()),
-            )
-        else:
-            message = wintypes.MSG()
-            while self._active and user32.GetMessageW(ctypes.byref(message), None, 0, 0) > 0:
-                user32.TranslateMessage(ctypes.byref(message))
-                user32.DispatchMessageW(ctypes.byref(message))
-        if self._mouse_hook:
-            user32.UnhookWindowsHookEx(self._mouse_hook)
-        if self._keyboard_hook:
-            user32.UnhookWindowsHookEx(self._keyboard_hook)
-        self._mouse_hook = None
-        self._keyboard_hook = None
+            except Exception as e:
+                logger.debug("Observation polling error: %s", e)
+
+            time.sleep(0.03)
 
 
 @dataclass

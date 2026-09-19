@@ -1,5 +1,6 @@
 import sys
 import os
+import re
 os.environ["ANON_TELEMETRY"] = "False"
 os.environ["CHROMA_TELEMETRY_STATUS"] = "False"
 import time
@@ -90,10 +91,11 @@ agent_status = {
     "paused": False,
     "chat_history": [],
     "planner_synthesis": "",
+    "planner_activity": "",
     "ui_mode": "chat",
     "settings": {
         "model_path": "models/Holo-3.1-4B-abliterated-rdo.Q4_K_M.gguf",
-        "planner_model_path": "models/Qwen3.5-4B.Q4_K_M.gguf",
+        "planner_model_path": "models/Spark-X2.5-4B-Q4_K_M.gguf" if os.path.exists("models/Spark-X2.5-4B-Q4_K_M.gguf") else "models/Qwen3.5-4B.Q4_K_M.gguf",
         "temperature": 0.2,
         "max_steps": 60,
         "enable_recording": False,
@@ -161,6 +163,15 @@ def start_agent_task(task: str, run_policy: dict | None = None) -> bool:
 
 def recording_loop(output_path, monitor_idx=1, fps=10.0):
     global recording_active, recording_writer
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+            hdesk = user32.OpenDesktopW("default", 0, False, 0x01FF)
+            if hdesk:
+                user32.SetThreadDesktop(hdesk)
+        except Exception:
+            pass
     try:
         sct = mss.mss()
         if monitor_idx >= len(sct.monitors):
@@ -247,7 +258,7 @@ def start_planner_server(use_gpu=False):
     active_planner_gpu = sm.active_planner_gpu
     return res
 
-def run_planner_chat(message, chat_history=None, rag_context=""):
+def run_planner_chat(message, chat_history=None, rag_context="", user_profile_context="", activity_callback=None):
     import cogniagent.gui.server_manager as sm
     if chat_history is None:
         history = list(agent_status.get("chat_history", []))
@@ -256,7 +267,7 @@ def run_planner_chat(message, chat_history=None, rag_context=""):
     temp = agent_status["settings"].get("temperature", 0.2)
     max_tokens = min(640, max(160, int(agent_status["settings"].get("max_tokens", 640))))
     config.llm.planner_model = agent_status["settings"].get("planner_model_path", config.llm.planner_model)
-    return sm.run_planner_chat(message, history, temp, max_tokens, rag_context)
+    return sm.run_planner_chat(message, history, temp, max_tokens, rag_context, user_profile_context=user_profile_context, activity_callback=activity_callback)
 
 def start_llama_server(max_gpu=True):
     import cogniagent.gui.server_manager as sm
@@ -283,6 +294,181 @@ def summarize_timing_samples(samples):
     return {"count": len(values), "median_ms": median, "p95_ms": p95}
 
 
+def synthesize_task_summary(
+    user_intent: str,
+    status: str,
+    steps_executed: list,
+    terminal_reason: str = "",
+    final_thought: str = "",
+) -> str:
+    """Synthesize a clear, helpful, user-facing summary answering the user's intent.
+
+    Avoids leaking raw internal reasoning thoughts, token-truncated fragments,
+    or internal planning monologue.
+    """
+    user_intent = (user_intent or "").strip()
+    status_success = (status == "success")
+    clean_terminal = (terminal_reason or "").strip()
+
+    monologue_starters = (
+        "i need to", "let me", "i can see", "currently viewing", "i am", "rrently viewing",
+        "i will", "first i", "next i", "we need to"
+    )
+    is_terminal_monologue = any(clean_terminal.lower().startswith(p) for p in monologue_starters)
+
+    # Blacklist of raw actions, control primitives, and non-semantic tokens
+    ignored_action_tokens = {
+        "scroll", "finish task", "terminate", "wait", "none", "null", "undefined",
+        "action completed", "click", "double click", "right click", "use", "open",
+        "drag", "press key", "point to", "bring forward", "type", "reading the screen",
+        "wait for operator input"
+    }
+
+    findings = []
+    actions_taken = []
+    seen_items = set()
+
+    for s in steps_executed:
+        action = str(s.get("action", "")).strip().lower()
+        raw_text = s.get("action_text")
+        action_text = str(raw_text).strip() if raw_text is not None else ""
+        raw_note = s.get("note")
+        note = str(raw_note).strip() if raw_note is not None else ""
+
+        if note and note.lower() not in ignored_action_tokens and len(note) >= 3 and note not in seen_items:
+            seen_items.add(note)
+            findings.append(note)
+
+        if " · " in action_text:
+            target = action_text.split(" · ", 1)[1].strip()
+            if (
+                target
+                and target.lower() not in ("microsoft edge", "google chrome", "notepad", "5s", "3s", "1s", "2s")
+                and target.lower() not in ignored_action_tokens
+                and len(target) >= 3
+            ):
+                if target not in seen_items:
+                    seen_items.add(target)
+                    actions_taken.append(target)
+        elif action_text and action not in ("wait", "get_open_apps", "terminate", "scroll", "none"):
+            if (
+                action_text.lower() not in ignored_action_tokens
+                and not any(action_text.lower() == tok for tok in ignored_action_tokens)
+                and len(action_text) >= 3
+                and action_text not in seen_items
+            ):
+                seen_items.add(action_text)
+                actions_taken.append(action_text)
+
+    # Check if clean_terminal provides an articulate, self-contained outcome
+    has_substantive_terminal = bool(
+        clean_terminal
+        and not is_terminal_monologue
+        and len(clean_terminal) >= 40
+        and clean_terminal.lower() != user_intent.lower()
+    )
+
+    # 1. Neural Planner Post-Execution Synthesis (Holo -> Planner)
+    # The Planner (Spark-X) transforms Holo's raw on-screen observations, notes,
+    # and terminal outcome into a warm, natural, personal-assistant debrief.
+    if user_intent and (actions_taken or findings or clean_terminal):
+        for port in (8090, 8089):
+            try:
+                summary_context_lines = []
+                if clean_terminal and not is_terminal_monologue:
+                    summary_context_lines.append(f"Holo Execution Summary: {clean_terminal}")
+                if actions_taken:
+                    summary_context_lines.append("Items & Elements Inspected:")
+                    for item in actions_taken[:8]:
+                        summary_context_lines.append(f"- {item}")
+                if findings:
+                    summary_context_lines.append("On-Screen Observations:")
+                    for f in findings[:6]:
+                        summary_context_lines.append(f"- {f}")
+
+                evidence_block = "\n".join(summary_context_lines)
+                system_prompt = (
+                    "You are OmniVLA's personal desktop assistant. You take the raw on-screen execution summary and "
+                    "verified findings from the visual computer-use agent (Holo) and synthesize them into a warm, "
+                    "articulate, executive personal assistant response for the user.\n\n"
+                    "DIRECTIVES:\n"
+                    "- Directly address the user's objective in a polite, helpful, personal assistant tone.\n"
+                    "- Present the key findings, takeaways, or messages discovered on screen clearly and conversationally.\n"
+                    "- Do NOT echo the user's prompt mechanically (e.g. avoid 'I've completed the task: <prompt>').\n"
+                    "- Do NOT output raw action primitives, button clicks, click coordinates, or technical tool syntax.\n"
+                    "- Base your response strictly on the verified facts in Holo's summary. Do not invent unobserved facts.\n"
+                    "- Keep your debrief concise, focused, and under 120 words."
+                )
+                user_msg = (
+                    f"User Request: {user_intent}\n"
+                    f"Execution Status: {'Completed' if status_success else 'Stopped / Partial Progress'}\n\n"
+                    f"Holo's Verified Findings:\n{evidence_block}\n\n"
+                    "Please provide a user-facing assistant response answering my request."
+                )
+                payload = {
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_msg}
+                    ],
+                    "temperature": 0.3,
+                    "max_tokens": 180,
+                }
+                resp = requests.post(f"http://127.0.0.1:{port}/v1/chat/completions", json=payload, timeout=30.0)
+                if resp.status_code == 200:
+                    answer = resp.json()["choices"][0]["message"].get("content", "").strip()
+                    if answer and not any(answer.lower().startswith(p) for p in monologue_starters):
+                        clean_answer = re.sub(r"<think>[\s\S]*?</think>", "", answer).strip()
+                        if clean_answer and len(clean_answer) >= 15:
+                            return clean_answer
+            except Exception:
+                continue
+
+    # Deterministic assistant response synthesizer
+    parts = []
+    clean_intent = re.sub(
+        r"^(?:can\s+you\s+|could\s+you\s+|please\s+)",
+        "",
+        user_intent,
+        flags=re.IGNORECASE,
+    ).strip()
+
+    if status_success:
+        if has_substantive_terminal:
+            # If the model already gave an articulate summary (e.g., "Successfully reviewed latest WhatsApp messages...")
+            # use that directly, avoiding redundant robotic prefaces like "I've completed the task: ..."
+            if any(clean_terminal.lower().startswith(p) for p in ("successfully", "completed", "reviewed", "checked", "found")):
+                parts.append(clean_terminal)
+            else:
+                headline = f"I've completed the task: **{clean_intent or user_intent}**."
+                parts.append(f"{headline}\n\n{clean_terminal}")
+        else:
+            headline = f"I've completed the task: **{clean_intent or user_intent}**."
+            parts.append(headline)
+            if clean_terminal and not is_terminal_monologue and clean_terminal.lower() != user_intent.lower():
+                parts.append(f"\n{clean_terminal}")
+    else:
+        if actions_taken or findings:
+            headline = f"Execution progressed across {len(steps_executed)} actions for **{clean_intent or user_intent}**:"
+            parts.append(headline)
+            if clean_terminal and not is_terminal_monologue:
+                parts.append(f"\n**Outcome note:** {clean_terminal}")
+        else:
+            parts.append(f"I was unable to complete the task: **{clean_intent or user_intent}**. Please review the active window and try again.")
+
+    # ONLY append Key Discovered Items & Interactions if we did NOT have a substantive terminal answer
+    # or if the task stopped with partial progress and needs evidence
+    if (not has_substantive_terminal or not status_success) and (actions_taken or findings):
+        parts.append("\n**Key Discovered Items & Interactions:**")
+        for item in actions_taken[:6]:
+            parts.append(f"- {item}")
+        for note in findings[:4]:
+            if note not in actions_taken:
+                parts.append(f"- {note}")
+
+    return "\n".join(parts)
+
+
+
 def execute_agent_task(task, run_policy=None):
     global running_thread, stop_requested, recording_active, overlay_process
     stop_requested = False
@@ -293,6 +479,16 @@ def execute_agent_task(task, run_policy=None):
     timing_samples = {"model": [], "action": [], "verification": [], "step": []}
     final_run_status = "error"
     final_step_count = 0
+
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+            hdesk = user32.OpenDesktopW("default", 0, False, 0x01FF)
+            if hdesk:
+                user32.SetThreadDesktop(hdesk)
+        except Exception:
+            pass
 
     with status_lock:
         agent_status["paused"] = False
@@ -414,6 +610,15 @@ def execute_agent_task(task, run_policy=None):
             if not screenshot_b64:
                 try:
                     from PIL import Image, ImageGrab
+                    if sys.platform == "win32":
+                        try:
+                            import ctypes
+                            user32 = ctypes.windll.user32
+                            hdesk = user32.OpenDesktopW("default", 0, False, 0x01FF)
+                            if hdesk:
+                                user32.SetThreadDesktop(hdesk)
+                        except Exception:
+                            pass
                     img = None
                     try:
                         with mss.mss() as sct:
@@ -472,7 +677,9 @@ def execute_agent_task(task, run_policy=None):
         time.sleep(0.1)
         
         with status_lock:
-            max_steps = agent_status["settings"]["max_steps"]
+            default_max = agent_status["settings"].get("max_steps", 60)
+        policy_max = (run_policy or {}).get("max_steps")
+        max_steps = policy_max if policy_max is not None else default_max
         result = agent.run_task(task, max_steps=max_steps)
         
         if stop_requested:
@@ -516,14 +723,15 @@ def execute_agent_task(task, run_policy=None):
 
         obs_text = "\n".join(observations) if observations else "The visual agent executed all steps successfully on screen."
 
-        # Finish immediately from grounded execution evidence. A second planner
-        # generation here used to keep the task locked after the desktop work
-        # was already complete and competed with the next chat for CPU memory.
-        result_text = (terminal_reason or final_thought or "").strip()
-        if status == "success":
-            summary = result_text or "Completed the task successfully."
-        else:
-            summary = result_text or "The task could not be completed. Review the execution details and try again."
+        # Synthesize a grounded, helpful final summary answering user_intent
+        # rather than dumping raw internal reasoning fragments or truncated text.
+        summary = synthesize_task_summary(
+            user_intent=user_intent,
+            status=status,
+            steps_executed=steps_executed,
+            terminal_reason=terminal_reason,
+            final_thought=final_thought,
+        )
 
         try:
             from cogniagent.gui.server import load_chats_db, save_chats_db, db_lock
@@ -546,11 +754,24 @@ def execute_agent_task(task, run_policy=None):
                         ]
                         c["chat_history"].append({"role": "assistant", "kind": "run_result", "content": summary})
                         save_chats_db(db)
+                        try:
+                            from cogniagent.memory.user_profile import get_user_profile
+                            get_user_profile().learn_from_task(user_intent, steps_executed, status, summary)
+                        except Exception as profile_learn_err:
+                            logging.debug("User profile habit reinforcement skipped: %s", profile_learn_err)
                         break
         except Exception as dbe:
             logging.error(f"Failed to update chat status in DB: {dbe}")
 
-            
+        # Send native Windows desktop notification upon task completion
+        try:
+            from cogniagent.tools.notifications import send_notification
+            notif_title = "OmniVLA Task Complete" if status == "success" else "OmniVLA Task Needs Attention"
+            notif_msg = f"{user_intent[:60] if user_intent else task[:60]}\nStatus: {status.upper()}"
+            send_notification(notif_title, notif_msg)
+        except Exception as notif_err:
+            logging.debug("Task completion notification skipped: %s", notif_err)
+
         with status_lock:
             agent_status["status"] = "done" if status == "success" else "failed"
             agent_status["phase"] = agent_status["status"]
@@ -571,13 +792,27 @@ def execute_agent_task(task, run_policy=None):
                 agent_status["ui_mode"] = "chat"
         else:
             final_run_status = "error"
-            logging.error(f"Error: {e}")
+            logging.exception(f"Execution error: {e}")
+            err_msg = str(e).strip() or "The task stopped unexpectedly."
             with status_lock:
                 agent_status["status"] = "error"
                 agent_status["phase"] = "error"
                 agent_status["phase_started_at"] = time.time()
-                agent_status["current_action"] = "The task stopped unexpectedly."
-                agent_status["current_thought"] = ""
+                agent_status["current_action"] = f"Error: {err_msg}"[:120]
+                agent_status["current_thought"] = err_msg
+            try:
+                from cogniagent.gui.server import load_chats_db, save_chats_db, db_lock
+                with db_lock:
+                    db = load_chats_db()
+                    target_id = run_chat_id or db.get("active_chat_id")
+                    for c in db.get("chats", []):
+                        if c["id"] == target_id:
+                            c["status"] = "failed"
+                            c["chat_history"].append({"role": "assistant", "kind": "run_result", "content": f"Execution error: {err_msg}"})
+                            save_chats_db(db)
+                            break
+            except Exception:
+                pass
     finally:
         duration_ms = max(0, int((time.perf_counter() - run_started_at) * 1000))
         with status_lock:
@@ -769,7 +1004,6 @@ def main():
                         [electron_path, "console-app"],
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
-                        creationflags=0x08000000
                     )
                 else:
                     npx_executable = shutil.which("npx.cmd") or shutil.which("npx") or "npx"
@@ -777,7 +1011,6 @@ def main():
                         [npx_executable, "electron", "console-app"],
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
-                        creationflags=0x08000000
                     )
                 
                 def log_stream(stream, prefix):
