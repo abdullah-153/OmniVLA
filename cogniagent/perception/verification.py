@@ -71,9 +71,9 @@ class ScreenVerifier:
         # Text, a caret, or a focus ring can affect far less than 1% of a
         # 1080p frame. They are meaningful outcomes even though they sit below
         # the navigation-oriented screen-change cutoff.
-        if action.action_type in {"type", "key_press"} and float(diff_result.get("diff_ratio", 0.0)) >= 0.00002:
+        if action.action_type in {"type", "key_press", "click_and_type", "compound_action"} and float(diff_result.get("diff_ratio", 0.0)) >= 0.00002:
             return None
-        if action.action_type in {"click", "double_click", "right_click"} and (execution_result or {}).get("focus_changed"):
+        if action.action_type in {"click", "double_click", "right_click", "click_and_type"} and (execution_result or {}).get("focus_changed"):
             return None
 
         # Scroll can reach boundary (top/bottom) or scroll content with subtle sub-pixel render

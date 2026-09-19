@@ -77,14 +77,15 @@ class ActionRouter:
         if not isinstance(action_data, dict):
             return None
         tool_name = action_data.get("tool_name")
+        def coordinate_bucket(value):
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                return value
+            return int(round(float(value) / 50.0) * 50)
+
         if tool_name in {"click", "double_click", "right_click", "move"}:
             label = action_data.get("element", "")
             if not isinstance(label, str):
                 label = ""
-            def coordinate_bucket(value):
-                if isinstance(value, bool) or not isinstance(value, (int, float)):
-                    return value
-                return int(round(float(value) / 50.0) * 50)
 
             generic_words = {"button", "control", "icon", "in", "on", "taskbar", "the", "windows"}
             label_tokens = [
@@ -96,6 +97,19 @@ class ActionRouter:
                 f"{tool_name}:{coordinate_bucket(action_data.get('x'))!r}:"
                 f"{coordinate_bucket(action_data.get('y'))!r}:{semantic_label}"
             )
+        if tool_name == "click_and_type":
+            coords = f"{coordinate_bucket(action_data.get('x'))!r}:{coordinate_bucket(action_data.get('y'))!r}"
+            text = action_data.get("text", "")
+            digest = hashlib.sha256(str(text).encode("utf-8")).hexdigest()[:16]
+            return f"click_and_type:{coords}:{len(text)}:{digest}:{bool(action_data.get('submit', False))}"
+        if tool_name == "compound_action":
+            sub_signatures = []
+            for sub in action_data.get("actions", []):
+                if isinstance(sub, dict):
+                    sub_sig = ActionRouter.action_signature({"parsed_action": sub})
+                    if sub_sig:
+                        sub_signatures.append(sub_sig)
+            return ("compound:" + "+".join(sub_signatures)) if sub_signatures else None
         if tool_name == "drag":
             values = ("from_x", "from_y", "to_x", "to_y")
             return "drag:" + ":".join(repr(action_data.get(key)) for key in values)
@@ -122,17 +136,41 @@ class ActionRouter:
         if not isinstance(action_data, dict):
             return None
         tool_name = action_data.get("tool_name")
-        if tool_name not in {"click", "double_click", "right_click", "drag"}:
-            return None
-        label = " ".join(
-            str(action_data.get(key) or "")
-            for key in ("element", "source_element", "target_element")
-        )
         rules = (
             ("destructive change", r"\b(delete|remove|erase|trash|discard|overwrite|format|factory reset)\b"),
             ("external communication", r"\b(send|publish|post|share|upload|submit message)\b"),
             ("financial commitment", r"\b(pay|payment|purchase|buy|checkout|place order|transfer|confirm payment)\b"),
             ("access or security change", r"\b(allow|grant|permission|install|uninstall|reset password|disable security)\b"),
+        )
+        if tool_name == "click_and_type":
+            element = str(action_data.get("element") or "")
+            text = str(action_data.get("text") or "")
+            label = f"{element} {text}"
+            reasons = [reason for reason, pattern in rules if re.search(pattern, label, re.I)]
+            if reasons:
+                return {"reasons": reasons, "target": label.strip()[:300], "tool_name": tool_name}
+            return None
+        if tool_name == "compound_action":
+            all_reasons = []
+            targets = []
+            for sub in action_data.get("actions", []):
+                if isinstance(sub, dict):
+                    sub_risk = ActionRouter.assess_action_risk(sub)
+                    if sub_risk:
+                        all_reasons.extend(sub_risk.get("reasons", []))
+                        targets.append(sub_risk.get("target", ""))
+            if all_reasons:
+                return {
+                    "reasons": sorted(list(set(all_reasons))),
+                    "target": " -> ".join(t for t in targets if t)[:300],
+                    "tool_name": tool_name,
+                }
+            return None
+        if tool_name not in {"click", "double_click", "right_click", "drag", "type"}:
+            return None
+        label = " ".join(
+            str(action_data.get(key) or "")
+            for key in ("element", "source_element", "target_element", "text")
         )
         reasons = [reason for reason, pattern in rules if re.search(pattern, label, re.I)]
         if not reasons:
@@ -213,6 +251,84 @@ class ActionRouter:
                 results.append(f"Dragged [{start[0]}, {start[1]}] to [{end[0]}, {end[1]}]")
                 time.sleep(self.config.execution.click_pause)
                     
+            elif action_type == "click_and_type":
+                focus_before = win32_input.get_focus_context()
+                coords, coordinate_error = self.resolve_click_coordinates(
+                    action_data,
+                    original_dims,
+                    vlm_result.get("screen_origin", (0, 0)),
+                )
+                element = action_data.get("element")
+                text = action_data.get("text", "")
+                submit = action_data.get("submit", False)
+                clear_existing = action_data.get("clear_existing", False)
+                if not isinstance(element, str) or not element.strip() or len(element) > 300:
+                    return {"success": False, "detail": "click_and_type requires a concise target description.", "is_done": False}
+                if coordinate_error:
+                    return {"success": False, "detail": coordinate_error, "is_done": False}
+                if not isinstance(text, str):
+                    return {"success": False, "detail": "Text action requires a string value.", "is_done": False}
+                if len(text) > self.config.safety.max_text_input_characters:
+                    return {"success": False, "detail": "Text action exceeds the configured safety limit.", "is_done": False}
+                if not isinstance(submit, bool) or not isinstance(clear_existing, bool):
+                    return {"success": False, "detail": "Flags submit and clear_existing must be booleans.", "is_done": False}
+
+                x, y = coords
+                win32_input.mouse_click(x, y)
+                results.append(f"Clicked [{x}, {y}] to focus '{element[:80]}'")
+                time.sleep(self.config.execution.click_pause)
+
+                if clear_existing:
+                    win32_input.hotkey("ctrl", "a")
+                    time.sleep(0.05)
+                    win32_input.key_press("backspace")
+                    time.sleep(0.05)
+                    results.append("Cleared existing text")
+
+                if text:
+                    interval = self.config.execution.typing_interval
+                    if not win32_input.paste_text_preserving_clipboard(text):
+                        win32_input.type_text(text, interval=interval)
+                    results.append(f"Typed {len(text)} character(s)")
+
+                if submit:
+                    win32_input.key_press("enter")
+                    results.append("Pressed Enter")
+
+                time.sleep(self.config.execution.click_pause)
+                focus_after = win32_input.get_focus_context()
+
+            elif action_type == "compound_action":
+                actions = action_data.get("actions", [])
+                if not isinstance(actions, list) or not actions:
+                    return {"success": False, "detail": "compound_action requires a non-empty list of actions.", "is_done": False}
+                if len(actions) > 5:
+                    return {"success": False, "detail": "compound_action exceeds maximum limit of 5 sub-actions.", "is_done": False}
+
+                sub_steps = []
+                for idx, sub_act in enumerate(actions):
+                    if not isinstance(sub_act, dict):
+                        return {"success": False, "detail": f"Sub-action {idx+1} is not a valid action dictionary.", "is_done": False}
+                    sub_vlm_result = {
+                        "parsed_action": sub_act,
+                        "screen_origin": vlm_result.get("screen_origin", (0, 0)),
+                        "action_desp": sub_act.get("tool_name", ""),
+                    }
+                    sub_res = self.execute_vlm_action(sub_vlm_result, original_dims)
+                    sub_steps.append(f"[{idx+1}] {sub_res.get('detail', '')}")
+                    if not sub_res.get("success", False):
+                        return {
+                            "success": False,
+                            "detail": f"Compound action stopped at step {idx+1}: {sub_res.get('detail', '')}",
+                            "is_done": False,
+                        }
+                    if sub_res.get("is_done", False):
+                        is_done = True
+                        break
+                    time.sleep(self.config.execution.click_pause)
+
+                results.append(" -> ".join(sub_steps))
+
             elif action_type == "type":
                 text = action_data.get("text", "")
                 submit = action_data.get("submit", False)
@@ -397,6 +513,6 @@ class ActionRouter:
             "detail": "; ".join(results), 
             "is_done": is_done
         }
-        if action_type in {"click", "double_click", "right_click"} and success:
+        if action_type in {"click", "double_click", "right_click", "click_and_type"} and success:
             response["focus_changed"] = focus_before != focus_after
         return response

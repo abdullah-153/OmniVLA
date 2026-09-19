@@ -77,6 +77,19 @@ class CogniAgent:
         if safe_action.get("tool_name") == "type":
             typed = safe_action.pop("text", "")
             safe_action["characters"] = len(typed) if isinstance(typed, str) else 0
+        elif safe_action.get("tool_name") == "click_and_type":
+            typed = safe_action.pop("text", "")
+            safe_action["characters"] = len(typed) if isinstance(typed, str) else 0
+        elif safe_action.get("tool_name") == "compound_action":
+            safe_subs = []
+            for sub in safe_action.get("actions", []):
+                if isinstance(sub, dict):
+                    s_sub = dict(sub)
+                    if "text" in s_sub:
+                        t = s_sub.pop("text", "")
+                        s_sub["characters"] = len(t) if isinstance(t, str) else 0
+                    safe_subs.append(s_sub)
+            safe_action["actions"] = safe_subs
         if safe_action.get("tool_name") == "hitl_intervention":
             safe_action.pop("question", None)
         return json.dumps(safe_action, ensure_ascii=False)
@@ -89,6 +102,29 @@ class CogniAgent:
             text = parsed_action.get("text")
             length = len(text) if isinstance(text, str) else 0
             return f"Enter {length} character{'s' if length != 1 else ''}"
+        if tool_name == "click_and_type":
+            target = str(parsed_action.get("element") or "input")[:80]
+            text = parsed_action.get("text")
+            length = len(text) if isinstance(text, str) else 0
+            submit_str = " (+Enter)" if parsed_action.get("submit") else ""
+            return f"Type {length} chars into '{target}'{submit_str}"
+        if tool_name == "compound_action":
+            actions = parsed_action.get("actions", [])
+            count = len(actions) if isinstance(actions, list) else 0
+            sub_desps = []
+            for act in (actions or [])[:3]:
+                if isinstance(act, dict):
+                    tn = act.get("tool_name", "")
+                    if tn in {"click", "double_click", "right_click"}:
+                        sub_desps.append(f"Click '{str(act.get('element', 'target'))[:20]}'")
+                    elif tn == "type":
+                        sub_desps.append(f"Type ({len(str(act.get('text', '')))}c)")
+                    elif tn == "key_press":
+                        sub_desps.append(f"Key '{act.get('key', '')}'")
+                    else:
+                        sub_desps.append(tn)
+            summary = " -> ".join(sub_desps)
+            return f"Compound ({count}): {summary}" if summary else f"Compound ({count} actions)"
         if tool_name == "hitl_intervention":
             return "Wait for operator input"
         if tool_name in {"click", "double_click", "right_click", "move"}:
@@ -404,7 +440,7 @@ class CogniAgent:
                 break
 
             action_risk = None
-            if parsed_action.get("tool_name") in {"click", "double_click", "right_click", "drag"}:
+            if parsed_action.get("tool_name") in {"click", "double_click", "right_click", "drag", "click_and_type", "compound_action"}:
                 action_risk = self.executor.assess_action_risk(parsed_action)
             if action_risk and self.action_policy.get("mode", "supervised") == "supervised":
                 reasons = ", ".join(action_risk["reasons"])
@@ -542,6 +578,8 @@ class CogniAgent:
                 args_list = [parsed_action["text"]]
             elif "key" in parsed_action:
                 args_list = [parsed_action["key"]]
+            elif parsed_action.get("tool_name") == "click_and_type":
+                args_list = [parsed_action.get("text", "")]
                 
             curr_action = AgentAction(
                 action_type=action_desp,
@@ -587,6 +625,13 @@ class CogniAgent:
                     has_unresolved_failure = False
                     verified_progress = True
                     successful_tool_names.add(action_desp)
+                    if action_desp == "click_and_type":
+                        successful_tool_names.add("click")
+                        successful_tool_names.add("type")
+                    elif action_desp == "compound_action":
+                        for sub in parsed_action.get("actions", []):
+                            if isinstance(sub, dict) and sub.get("tool_name"):
+                                successful_tool_names.add(sub["tool_name"])
                 tool_name = action_desp or "unknown"
                 detail = result.get("detail", "") if result else ""
                 messages.append(self._tool_observation(vlm_result, tool_name, detail, True))

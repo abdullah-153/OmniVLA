@@ -106,8 +106,36 @@ class MinimizeAllAppsArgs(BaseModel):
     """Minimize all open windows on the screen (show desktop)."""
     tool_name: Literal["minimize_all_apps"]
 
+class ClickAndTypeArgs(BaseModel):
+    """Click on an input element, type text, and optionally press Enter in a single step."""
+    tool_name: Literal["click_and_type"]
+    element: str = Field(min_length=1, max_length=300, description="Detailed description of the target input field or search bar")
+    x: int = Field(ge=0, le=1000, description="X coordinate as integer in [0, 1000]")
+    y: int = Field(ge=0, le=1000, description="Y coordinate as integer in [0, 1000]")
+    text: str = Field(max_length=5_000, description="Content to type into the field")
+    submit: bool = Field(default=False, description="Whether to press Enter after typing")
+    clear_existing: bool = Field(default=False, description="Whether to clear existing text with Ctrl+A Backspace before typing")
+
+class SubAction(BaseModel):
+    """A single primitive sub-action in a compound sequence."""
+    tool_name: Literal["click", "double_click", "right_click", "move", "type", "key_press", "scroll", "wait"]
+    element: str | None = Field(default=None, max_length=300, description="Target UI element description")
+    x: int | None = Field(default=None, ge=0, le=1000, description="X coordinate in [0, 1000]")
+    y: int | None = Field(default=None, ge=0, le=1000, description="Y coordinate in [0, 1000]")
+    text: str | None = Field(default=None, max_length=5_000, description="Content to type")
+    submit: bool | None = Field(default=False, description="Whether to press Enter after typing")
+    clear_existing: bool | None = Field(default=False, description="Whether to clear existing text before typing")
+    key: str | None = Field(default=None, max_length=64, description="The key to press, e.g. 'enter'")
+    direction: Literal["up", "down"] | None = Field(default=None, description="Scroll direction")
+    duration: float | None = Field(default=None, ge=0.1, le=10.0, description="Wait duration in seconds")
+
+class CompoundActionArgs(BaseModel):
+    """Execute a sequence of multiple primitive actions in a single step without re-inferring."""
+    tool_name: Literal["compound_action"]
+    actions: list[SubAction] = Field(min_length=1, max_length=5, description="Sequential list of actions to execute")
+
 class Step(BaseModel):
-    tool_call: ClickArgs | DoubleClickArgs | RightClickArgs | MoveArgs | DragArgs | TypeArgs | KeyPressArgs | ScrollArgs | TerminateArgs | HITLInterventionArgs | WaitArgs | GetOpenAppsArgs | SwitchToAppArgs | OpenAppArgs | MinimizeAllAppsArgs
+    tool_call: ClickArgs | DoubleClickArgs | RightClickArgs | MoveArgs | DragArgs | TypeArgs | KeyPressArgs | ScrollArgs | TerminateArgs | HITLInterventionArgs | WaitArgs | GetOpenAppsArgs | SwitchToAppArgs | OpenAppArgs | MinimizeAllAppsArgs | ClickAndTypeArgs | CompoundActionArgs
     note: str | None = Field(
         default=None,
         max_length=4000,
@@ -119,6 +147,7 @@ TOOL_MODELS = (
     ClickArgs, DoubleClickArgs, RightClickArgs, MoveArgs, DragArgs, TypeArgs,
     KeyPressArgs, ScrollArgs, TerminateArgs, HITLInterventionArgs, WaitArgs,
     GetOpenAppsArgs, SwitchToAppArgs, OpenAppArgs, MinimizeAllAppsArgs,
+    ClickAndTypeArgs, CompoundActionArgs,
 )
 
 
@@ -127,14 +156,23 @@ def native_tool_definitions() -> list[dict]:
     tools = []
     for model in TOOL_MODELS:
         schema = copy.deepcopy(model.model_json_schema())
+        # Inline nested $defs (e.g. SubAction for CompoundActionArgs) for broad model compatibility
+        if "$defs" in schema:
+            defs = schema.pop("$defs")
+            if "SubAction" in defs and "actions" in schema.get("properties", {}):
+                sub_schema = copy.deepcopy(defs["SubAction"])
+                sub_schema.pop("title", None)
+                sub_props = sub_schema.get("properties", {})
+                for p_val in sub_props.values():
+                    if isinstance(p_val, dict):
+                        p_val.pop("title", None)
+                schema["properties"]["actions"]["items"] = sub_schema
+
         properties = schema.get("properties", {})
         tool_name_schema = properties.pop("tool_name", {})
         required = [field for field in schema.get("required", []) if field != "tool_name"]
         schema["required"] = required
         schema["additionalProperties"] = False
-        # Pydantic's titles and duplicated class descriptions add hundreds of
-        # tokens without improving tool choice. Keep constraints and the few
-        # field descriptions that disambiguate coordinate semantics.
         schema.pop("title", None)
         schema.pop("description", None)
         for field_name, field_schema in properties.items():
@@ -143,7 +181,7 @@ def native_tool_definitions() -> list[dict]:
             field_schema.pop("title", None)
             if field_name not in {
                 "element", "source_element", "target_element", "x", "y",
-                "from_x", "from_y", "to_x", "to_y",
+                "from_x", "from_y", "to_x", "to_y", "text", "actions",
             }:
                 field_schema.pop("description", None)
         name = str(tool_name_schema.get("const") or model.model_fields["tool_name"].default)
@@ -179,11 +217,12 @@ SYSTEM_PROMPT = """You are an expert Windows computer-use agent. Inspect the new
 Core Rules:
 1. Visual Grounding: The screenshot is ground truth. Click coordinates (x, y) must be integers in [0, 1000] targeting the center of the visible element.
 2. Window State: Do not confuse pinned taskbar icons with open windows; switch to or launch apps directly.
-3. No Repetition: Never repeat ineffective actions. If an action fails or leaves state unchanged, adapt immediately.
-4. Working Memory: Record extracted information (senders, subjects, rows, data) into "note" to retain findings across steps.
-5. Verification: Call terminate(status="success", reason="...") only when the newest screen visually verifies completion.
-6. Safety: Use hitl_intervention for credentials, MFA, payments, destructive file changes, or sending external data.
-7. Execution: Reason privately without narrating to the user; finish with exactly one tool call.
+3. Compound Actions: Use "click_and_type" to focus, enter text, and submit in one step rather than multiple turns.
+4. No Repetition: Never repeat ineffective actions. If an action fails or leaves state unchanged, adapt immediately.
+5. Working Memory: Record extracted information (senders, subjects, rows, data) into "note" to retain findings across steps.
+6. Verification: Call terminate(status="success", reason="...") only when the newest screen visually verifies completion.
+7. Safety: Use hitl_intervention for credentials, MFA, payments, destructive file changes, or sending external data.
+8. Execution: Reason privately without narrating to the user; finish with exactly one tool call.
 """
 
 
@@ -193,6 +232,8 @@ JSON contract:
 {"tool_call": object, "note": string|null}
 tool_call variants:
 - click: {"tool_name":"click","element":string,"x":0..1000,"y":0..1000}
+- click_and_type: {"tool_name":"click_and_type","element":string,"x":0..1000,"y":0..1000,"text":string,"submit":boolean,"clear_existing":boolean}
+- compound_action: {"tool_name":"compound_action","actions":[{"tool_name":"click",...},{"tool_name":"type",...}]}
 - double_click or right_click: {"tool_name":...,"element":string,"x":0..1000,"y":0..1000}
 - move: {"tool_name":"move","element":string,"x":0..1000,"y":0..1000}
 - drag: {"tool_name":"drag","source_element":string,"target_element":string,"from_x":0..1000,"from_y":0..1000,"to_x":0..1000,"to_y":0..1000,"duration":0.2..2.0}
@@ -239,6 +280,12 @@ def extract_working_memory(messages: list[dict], limit: int = 8) -> list[str]:
                 if name in {"click", "double_click", "right_click"}:
                     target = args.get("element", "element")
                     memory_items.append(f"- Action: {name} on '{target}'")
+                elif name == "click_and_type":
+                    target = args.get("element", "input")
+                    memory_items.append(f"- Action: click and type in '{target}' ({len(args.get('text', ''))} chars)")
+                elif name == "compound_action":
+                    act_count = len(args.get("actions", []))
+                    memory_items.append(f"- Action: compound action ({act_count} sub-actions)")
                 elif name == "open_app":
                     memory_items.append(f"- Action: open app '{args.get('app_name', '')}'")
                 elif name == "type":
@@ -330,10 +377,52 @@ def configured_output_tokens(value) -> int:
 
 
 def parse_native_tool_call(message) -> dict | None:
-    """Normalize one provider-native function call through the same schema."""
+    """Normalize provider-native function call(s) through the same schema."""
     tool_calls = getattr(message, "tool_calls", None)
     if not tool_calls:
         return None
+
+    reasoning = getattr(message, "reasoning_content", None)
+    if reasoning is None and hasattr(message, "model_extra") and isinstance(message.model_extra, dict):
+        reasoning = message.model_extra.get("reasoning_content")
+    thought = str(reasoning or "").strip()[:4000]
+
+    # If the provider emits multiple tool calls in a single turn, pack into compound_action
+    if len(tool_calls) > 1:
+        sub_actions = []
+        for call in tool_calls:
+            fn = getattr(call, "function", None)
+            name = getattr(fn, "name", None)
+            arguments = getattr(fn, "arguments", "{}")
+            if not isinstance(name, str) or not name.strip():
+                continue
+            try:
+                parsed_args = json.loads(arguments) if isinstance(arguments, str) else arguments
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if isinstance(parsed_args, dict):
+                sub_actions.append({"tool_name": name.strip(), **parsed_args})
+
+        if sub_actions:
+            payload = {
+                "tool_call": {
+                    "tool_name": "compound_action",
+                    "actions": sub_actions[:5],
+                },
+                "note": None,
+                "thought": thought,
+            }
+            try:
+                step = Step.model_validate(payload)
+                return {
+                    "note": step.note,
+                    "thought": step.thought,
+                    "tool_call": step.tool_call.model_dump(),
+                    "tool_call_id": str(getattr(tool_calls[0], "id", "") or ""),
+                }
+            except Exception as exc:
+                logger.warning("Rejected multi-call compound conversion: %s", exc)
+
     function = getattr(tool_calls[0], "function", None)
     name = getattr(function, "name", None)
     arguments = getattr(function, "arguments", "{}")
@@ -346,14 +435,11 @@ def parse_native_tool_call(message) -> dict | None:
     if not isinstance(parsed_arguments, dict):
         return None
 
-    reasoning = getattr(message, "reasoning_content", None)
-    if reasoning is None and hasattr(message, "model_extra") and isinstance(message.model_extra, dict):
-        reasoning = message.model_extra.get("reasoning_content")
     payload = {
         "tool_call": {"tool_name": name.strip(), **parsed_arguments},
         "note": None,
         # Retain internal rationale without mid-word character chopping.
-        "thought": str(reasoning or "").strip()[:4000],
+        "thought": thought,
     }
     try:
         step = Step.model_validate(payload)
@@ -398,14 +484,40 @@ def parse_vlm_output(raw_output: str) -> dict | None:
         if not isinstance(payload, dict):
             return None
 
+        # Check if output is a direct list of actions or compound actions
+        raw_tool = payload.get("tool_call")
+        if isinstance(raw_tool, list):
+            payload = {
+                "tool_call": {
+                    "tool_name": "compound_action",
+                    "actions": raw_tool[:5],
+                },
+                "note": payload.get("note"),
+                "thought": payload.get("thought", ""),
+            }
+            raw_tool = payload["tool_call"]
+        elif "actions" in payload and not raw_tool:
+            actions = payload.get("actions")
+            if isinstance(actions, list):
+                payload = {
+                    "tool_call": {
+                        "tool_name": "compound_action",
+                        "actions": actions[:5],
+                    },
+                    "note": payload.get("note"),
+                    "thought": payload.get("thought", ""),
+                }
+                raw_tool = payload["tool_call"]
+
         # Compact local checkpoints sometimes emit their explicit tool name at
         # `tool_call` and place arguments beside it (or under args). Normalize
         # that provider shape, then apply the same strict Pydantic boundary.
-        raw_tool = payload.get("tool_call")
         if isinstance(raw_tool, str):
             tool_name = raw_tool.strip()
             allowed_fields = {
                 "click": {"element", "x", "y"},
+                "click_and_type": {"element", "x", "y", "text", "submit", "clear_existing"},
+                "compound_action": {"actions"},
                 "double_click": {"element", "x", "y"},
                 "right_click": {"element", "x", "y"},
                 "move": {"element", "x", "y"},
