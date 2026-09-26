@@ -4,6 +4,8 @@ title: Summarize Unread Emails in Gmail
 description: Opens Gmail, identifies unread messages, and provides a summary of the
   top three unread emails.
 domain: productivity
+application: Gmail
+preference_path: email.service
 triggers:
 - summarize unread emails
 - check my inbox

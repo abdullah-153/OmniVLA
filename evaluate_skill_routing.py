@@ -1,6 +1,5 @@
 """Offline skill-selection evaluation; does not execute desktop actions."""
 import argparse
-import hashlib
 import json
 from pathlib import Path
 import time
@@ -19,7 +18,10 @@ def evaluate(registry, cases):
         if expected is not None and not registry.get_skill(expected):
             raise ValueError(f"Expected skill is not registered: {expected}")
         started = time.perf_counter()
-        selected, parameters = registry.match_skill(case["prompt"])
+        context_pack = case.get("context_pack")
+        if context_pack is not None and not isinstance(context_pack, dict):
+            raise ValueError("context_pack must be an object when provided.")
+        selected, parameters = registry.match_skill(case["prompt"], context_pack=context_pack)
         elapsed = (time.perf_counter() - started) * 1000
         actual = selected.name if selected else None
         expected_parameters = case.get("expected_parameters", {})
@@ -29,7 +31,7 @@ def evaluate(registry, cases):
         results.append({"id": str(case.get("id", len(results) + 1)), "expected_skill": expected,
                         "actual_skill": actual, "passed": passed, "elapsed_ms": round(elapsed, 3)})
     return {"scope": "Deterministic skill routing only; no task execution or model quality measured.",
-            "versions": {skill.name: hashlib.sha256(skill.to_markdown().encode("utf-8")).hexdigest()
+            "versions": {skill.name: registry.current_revision(skill.name)
                          for skill in registry.list_skills()},
             "total": len(results), "passed": sum(row["passed"] for row in results),
             "false_selections": sum(row["expected_skill"] is None and row["actual_skill"] is not None for row in results),

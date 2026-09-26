@@ -122,6 +122,8 @@ class SkillDefinition:
     author: str = "user"
     version: str = "1.0.0"
     tags: List[str] = field(default_factory=list)
+    application: str = ""
+    preference_path: str = ""
     strategy: str = ""
     visual_landmarks: str = ""
     failure_recovery: str = ""
@@ -135,6 +137,8 @@ class SkillDefinition:
         self.domain = _slug(self.domain, "general", 32).lower()
         self.triggers = _list(self.triggers, limit=32, item_limit=300)
         self.tags = _list(self.tags, limit=32, item_limit=80)
+        self.application = _text(self.application, limit=80)
+        self.preference_path = _text(self.preference_path, limit=80)
         self.parameters = [
             value if isinstance(value, SkillParameter) else SkillParameter.from_dict(value)
             for value in (self.parameters or [])[:32]
@@ -171,6 +175,8 @@ class SkillDefinition:
             "author": self.author,
             "version": self.version,
             "tags": self.tags,
+            "application": self.application,
+            "preference_path": self.preference_path,
         }
         fm_str = (
             yaml.safe_dump(frontmatter, sort_keys=False, allow_unicode=True).strip()
@@ -288,6 +294,8 @@ class SkillDefinition:
             author=frontmatter.get("author", "user"),
             version=frontmatter.get("version", "1.0.0"),
             tags=frontmatter.get("tags", []),
+            application=frontmatter.get("application", ""),
+            preference_path=frontmatter.get("preference_path", ""),
             strategy=strategy,
             visual_landmarks=visual_landmarks,
             failure_recovery=failure_recovery,
@@ -351,6 +359,8 @@ class SkillDefinition:
             "author": self.author,
             "version": self.version,
             "tags": self.tags,
+            "application": self.application,
+            "preference_path": self.preference_path,
             "strategy": self.strategy,
             "visual_landmarks": self.visual_landmarks,
             "failure_recovery": self.failure_recovery,
@@ -372,6 +382,8 @@ class SkillDefinition:
             author=data.get("author", "user"),
             version=data.get("version", "1.0.0"),
             tags=data.get("tags", []),
+            application=data.get("application", ""),
+            preference_path=data.get("preference_path", ""),
             strategy=data.get("strategy", ""),
             visual_landmarks=data.get("visual_landmarks", ""),
             failure_recovery=data.get("failure_recovery", ""),

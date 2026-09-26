@@ -32,7 +32,7 @@ def test_damaged_skill_revision_cannot_be_restored(tmp_path):
     assert registry.get_skill("report").title == "Updated"
 
 
-@pytest.mark.parametrize("suffix", [".json", ".md"])
+@pytest.mark.parametrize("suffix", [".json", ".md", ".markdown", ".mds"])
 def test_imported_skill_updates_survive_restart_and_restore(tmp_path, suffix):
     directory = tmp_path / "skills"
     directory.mkdir()

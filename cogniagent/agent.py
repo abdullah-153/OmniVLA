@@ -305,9 +305,17 @@ class CogniAgent:
         # servers so a missing or unrelated skill never delays the first frame.
         active_task_prompt = task
         skill_version = None
+        user_profile = None
+        context_pack = None
+        try:
+            from cogniagent.memory.user_profile import get_user_profile
+            user_profile = get_user_profile()
+            context_pack = user_profile.build_context_pack(task)
+        except Exception as profile_error:
+            logger.debug("User profile lookup skipped: %s", profile_error)
         if getattr(self, "skills_registry", None):
             try:
-                matched_skill, params = self.skills_registry.match_skill(task)
+                matched_skill, params = self.skills_registry.match_skill(task, context_pack=context_pack)
                 if matched_skill:
                     skill_version = (matched_skill.name, self.skills_registry.current_revision(matched_skill.name))
                     guidance = self.skills_registry.format_skill_prompt_for_holo(matched_skill, params)
@@ -318,9 +326,9 @@ class CogniAgent:
 
         # Inject lifetime user preferences & personal memory into VLA guidance
         try:
-            from cogniagent.memory.user_profile import get_user_profile
-            user_profile = get_user_profile()
-            vla_guidance = user_profile.get_vla_context(task)
+            if user_profile is None:
+                raise ValueError("User profile unavailable")
+            vla_guidance = user_profile.get_vla_context(task, context_pack=context_pack)
             if vla_guidance:
                 active_task_prompt += f"\n\n{vla_guidance}"
         except Exception as profile_error:

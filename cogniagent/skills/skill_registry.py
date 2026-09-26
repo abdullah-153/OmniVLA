@@ -203,7 +203,8 @@ class SkillRegistry:
                          if (history / (revision + suffix)).is_file()), None)
         if snapshot is None:
             raise ValueError("Skill revision was not found.")
-        if snapshot.suffix != Path(source_path).suffix.lower():
+        source_format = ".json" if Path(source_path).suffix.lower() == ".json" else ".md"
+        if snapshot.suffix != source_format:
             raise ValueError("Skill revision format does not match its source.")
         restored = snapshot.read_bytes()
         current = Path(source_path).read_bytes()
@@ -287,17 +288,55 @@ class SkillRegistry:
             if len(token) > 1 and token not in cls._STOP_WORDS
         }
 
+    _APPLICATION_CHOICES = {
+        "email.service": ("gmail", "outlook"),
+        "browser.default": ("chrome", "firefox", "microsoft edge", "brave"),
+    }
+
     @staticmethod
-    def _wildcard_match(trigger: str, task_prompt: str) -> Optional[str]:
+    def _negated_at(text: str, start: int) -> bool:
+        clause = re.split(r"[.!?;,]|\bbut\b|\binstead\b", text[max(0, start - 70):start], flags=re.IGNORECASE)[-1]
+        return bool(re.search(r"(?i)\b(?:do not|don't|never|avoid|skip|without|no need to|not)\b(?:\s+\w+){0,4}\s*$", clause))
+
+    @classmethod
+    def _application_matches(cls, skill: SkillDefinition, query: str, context_pack: Optional[dict]) -> bool:
+        if not skill.application:
+            return True
+        app = skill.application.casefold()
+        def selected_value(section: str):
+            categories = context_pack.get(section) if isinstance(context_pack, dict) else None
+            values = categories.get(category) if isinstance(categories, dict) else None
+            return values.get(key) if isinstance(values, dict) else None
+        category, key = skill.preference_path.split(".", 1) if "." in skill.preference_path else ("", "")
+        choices = set(cls._APPLICATION_CHOICES.get(skill.preference_path, ())) | {app}
+        mentioned = set()
+        negated = set()
+        for choice in choices:
+            for match in re.finditer(rf"(?<!\w){re.escape(choice)}(?!\w)", query, flags=re.IGNORECASE):
+                (negated if cls._negated_at(query, match.start()) else mentioned).add(choice)
+        if mentioned:
+            if len(mentioned) > 1:
+                override = selected_value("task_overrides")
+                return app in mentioned and isinstance(override, str) and override.casefold() == app
+            return mentioned == {app}
+        if negated:
+            return False
+        if not context_pack or not skill.preference_path or "." not in skill.preference_path:
+            return False
+        chosen = selected_value("task_overrides") or selected_value("preferences")
+        return isinstance(chosen, str) and chosen.casefold() == app
+
+    @staticmethod
+    def _wildcard_matches(trigger: str, task_prompt: str) -> list[tuple[str, int]]:
         pieces = [re.escape(piece.strip()) for piece in trigger.split("*")]
         pattern = r"(?<!\w)" + r"\s*(.+?)\s*".join(pieces) + r"(?:$|[.!?])"
-        match = re.search(pattern, task_prompt, flags=re.IGNORECASE)
-        if not match:
-            return None
-        captures = [value.strip(" \t\"'") for value in match.groups() if value.strip()]
-        return captures[0][:1_000] if captures else ""
+        matches = []
+        for match in re.finditer(pattern, task_prompt, flags=re.IGNORECASE):
+            captures = [value.strip(" \t\"'") for value in match.groups() if value.strip()]
+            matches.append((captures[0][:1_000] if captures else "", match.start()))
+        return matches
 
-    def match_skill(self, task_prompt: str) -> tuple[Optional[SkillDefinition], Dict[str, Any]]:
+    def match_skill(self, task_prompt: str, context_pack: Optional[dict] = None) -> tuple[Optional[SkillDefinition], Dict[str, Any]]:
         """Select only a high-confidence skill without calling either model.
 
         Skill routing sits on the first-action hot path, so it must be
@@ -323,19 +362,34 @@ class SkillRegistry:
         ranked = []
 
         for skill in self._skills_cache.values():
+            if not self._application_matches(skill, raw_query, context_pack):
+                continue
             score = 0
             capture = None
+            negated_trigger = False
+            positive_trigger = False
             for trigger in skill.triggers:
                 normalized_trigger = " ".join(trigger.lower().split())
                 if not normalized_trigger:
                     continue
                 if "*" in normalized_trigger:
-                    wildcard_value = self._wildcard_match(normalized_trigger, raw_query)
-                    if wildcard_value is not None:
-                        score = max(score, 100 + len(self._tokens(normalized_trigger)))
-                        capture = wildcard_value
-                elif re.search(rf"(?<!\w){re.escape(normalized_trigger)}(?!\w)", query):
-                    score = max(score, 90 + min(8, len(self._tokens(normalized_trigger))))
+                    for wildcard_value, start in self._wildcard_matches(normalized_trigger, raw_query):
+                        if self._negated_at(raw_query, start):
+                            negated_trigger = True
+                        else:
+                            score = max(score, 100 + len(self._tokens(normalized_trigger)))
+                            capture = wildcard_value
+                            positive_trigger = True
+                else:
+                    for match in re.finditer(rf"(?<!\w){re.escape(normalized_trigger)}(?!\w)", query):
+                        if self._negated_at(raw_query, match.start()):
+                            negated_trigger = True
+                        else:
+                            score = max(score, 90 + min(8, len(self._tokens(normalized_trigger))))
+                            positive_trigger = True
+
+            if negated_trigger and not positive_trigger:
+                continue
 
             title_tokens = self._tokens(f"{skill.name} {skill.title}")
             metadata_tokens = title_tokens | self._tokens(" ".join(skill.tags))

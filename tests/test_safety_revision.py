@@ -287,6 +287,22 @@ def test_agent_records_selected_skill_version_on_failed_run():
     assert result["skill_version"]["revision"] == recorded[1]
 
 
+def test_agent_passes_personal_context_to_skill_routing():
+    agent = make_agent()
+    agent.skills_registry = MagicMock()
+    agent.skills_registry.match_skill.return_value = (None, {})
+    agent.vlm.reason.return_value = action(element="Search", x=20, y=20)
+    agent.executor.execute_vlm_action = MagicMock(return_value={"success": True, "is_done": False, "detail": "clicked"})
+    profile = MagicMock()
+    context_pack = {"preferences": {"email": {"service": "Outlook"}}}
+    profile.build_context_pack.return_value = context_pack
+    profile.get_vla_context.return_value = ""
+    with patch("cogniagent.memory.user_profile.get_user_profile", return_value=profile), patch("cogniagent.agent.time.sleep"):
+        agent.run_task("Summarize unread emails", max_steps=1)
+    agent.skills_registry.match_skill.assert_called_once_with("Summarize unread emails", context_pack=context_pack)
+    profile.get_vla_context.assert_called_once_with("Summarize unread emails", context_pack=context_pack)
+
+
 def test_completion_requires_independent_outcome_not_pixel_changes():
     agent=make_agent()
     agent.vlm.verify_completion.return_value={"verified":False,"evidence":"Only a loading spinner is visible."}
