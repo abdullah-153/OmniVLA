@@ -119,6 +119,14 @@ tags: [desktop]
     try { await api("/api/profile", { method: "POST", body: { clear_learned: true } }); await fetchStatus(); }
     catch (error) { toast(error.message, true); }
   });
+  for (const [listId, field] of [["memory-entities", "delete_entity_id"], ["memory-relations", "delete_relation_id"]]) {
+    $(listId).addEventListener("click", async (event) => {
+      const button = event.target.closest("button[data-memory-id]");
+      if (!button) return;
+      try { await api("/api/profile", { method: "POST", body: { [field]: button.dataset.memoryId } }); await fetchStatus(); }
+      catch (error) { toast(error.message, true); }
+    });
+  }
 
   const icon = (name) => `<svg aria-hidden="true"><use href="#i-${name}" /></svg>`;
   const escapeHtml = (value) => String(value ?? "")
@@ -703,7 +711,26 @@ tags: [desktop]
     $("personal-learning").checked = profile.learning_enabled !== false;
     $("remote-control").checked = Boolean(data.safety?.remote_control_enabled);
     $("pairing-settings").hidden = data.access?.is_local === false;
-    $("memory-summary").textContent = `${(profile.memories || []).length} personal records · ${(profile.workflows || []).length} successful workflows available for relevant tasks`;
+    const entities = Array.isArray(profile.entities) ? profile.entities : [];
+    const relations = Array.isArray(profile.relations) ? profile.relations : [];
+    $("memory-summary").textContent = `${(profile.memories || []).length} personal records · ${entities.length} linked people, projects, or documents · ${(profile.workflows || []).length} successful workflows`;
+    const names = new Map(entities.map(entity => [entity.id, entity.name]));
+    const memoryItem = (label, source, id) => {
+      const item = document.createElement("li");
+      item.className = "memory-map-item";
+      const copy = document.createElement("span");
+      copy.textContent = `${label} — Source: ${source || "user-confirmed"}`;
+      const remove = document.createElement("button");
+      remove.type = "button"; remove.className = "secondary-button";
+      remove.dataset.memoryId = id; remove.textContent = "Forget";
+      remove.setAttribute("aria-label", `Forget ${label}`);
+      item.append(copy, remove);
+      return item;
+    };
+    $("memory-entities").replaceChildren(...entities.slice(-30).map(entity =>
+      memoryItem(`${entity.kind}: ${entity.name}`, entity.source, entity.id)));
+    $("memory-relations").replaceChildren(...relations.slice(-30).map(relation =>
+      memoryItem(`${names.get(relation.subject_id) || "Unknown"} → ${relation.predicate} → ${names.get(relation.object_id) || "Unknown"}`, relation.source, relation.id)));
     $("memory-provenance").replaceChildren(...(profile.memories || []).slice(-20).reverse().map(record => {
       const item = document.createElement("li");
       item.textContent = `${record.key}: ${record.value} — Source: ${record.source}`;

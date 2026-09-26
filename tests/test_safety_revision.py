@@ -344,6 +344,65 @@ def test_conflicting_project_scopes_require_clarification(tmp_path):
     assert "Ask before acting" in context
 
 
+def test_personal_graph_links_are_retrieved_and_editable(tmp_path):
+    profile=UserProfileMemory(str(tmp_path))
+    profile.learn_from_message("Project Atlas contact is Sarah Khan.")
+    profile.learn_from_message("Project Atlas uses document roadmap.pdf.")
+    profile.learn_from_message(r"Project Atlas folder is D:\Projects\Atlas")
+    pack=profile.build_context_pack("Prepare the Project Atlas update")
+    assert len(pack["linked_context"]) == 1
+    targets={link["entity"] for link in pack["linked_context"][0]["links"]}
+    assert {"Sarah Khan", "roadmap.pdf", r"D:\Projects\Atlas"} <= targets
+    person=profile.build_context_pack("Ask Sarah Khan about the update")
+    assert person["linked_context"][0]["links"][0]["direction"] == "incoming"
+    assert "Project Atlas" in profile.get_planner_context("Ask Sarah Khan about the update")
+    assert profile.build_context_pack("Discuss Project Apollo")["linked_context"] == []
+    reloaded=UserProfileMemory(str(tmp_path))
+    assert len(reloaded.to_dict()["relations"]) == 3
+    relation_id=reloaded.to_dict()["relations"][0]["id"]
+    assert reloaded.remove_relation(relation_id)
+    entity_id=next(e["id"] for e in reloaded.to_dict()["entities"] if e["name"] == "Project Atlas")
+    assert reloaded.remove_entity(entity_id)
+    assert reloaded.to_dict()["relations"] == []
+
+
+def test_model_graph_relation_needs_direct_named_evidence(tmp_path):
+    profile=UserProfileMemory(str(tmp_path))
+    message="Remember that Project Atlas contact is Sarah Khan."
+    update={"kind":"relation", "subject":{"type":"project","name":"Project Atlas"},
+            "predicate":"has_contact","object":{"type":"person","name":"Sarah Khan"},
+            "evidence":message}
+    profile.apply_model_updates([update], message)
+    assert len(profile.to_dict()["relations"]) == 1
+    bad={**update, "object":{"type":"person","name":"John Smith"}}
+    profile.apply_model_updates([bad], message)
+    assert len(profile.to_dict()["relations"]) == 1
+    profile.clear_learned()
+    assert profile.to_dict()["entities"] == []
+
+
+def test_explicitly_saved_graph_link_survives_clear_learned(tmp_path):
+    profile=UserProfileMemory(str(tmp_path))
+    profile.learn_from_message("Project Atlas contact is Sarah Khan.")
+    profile.link_entities("project", "Project Atlas", "has_contact", "person", "Sarah Khan", source="settings")
+    profile.clear_learned()
+    assert len(profile.to_dict()["entities"]) == 2
+    assert len(profile.to_dict()["relations"]) == 1
+
+
+def test_profile_v2_migration_preserves_original_and_adds_graph(tmp_path):
+    original={"version":2,"user_name":"Alex","learning_enabled":True,
+              "preferences":{"email":{"service":"Outlook"}},"facts":["Reports are in D:/Research"],
+              "memories":[],"workflows":[],"scoped_preferences":[]}
+    path=tmp_path/"user_profile.json"
+    path.write_text(json.dumps(original),encoding="utf-8")
+    profile=UserProfileMemory(str(tmp_path))
+    assert profile.to_dict()["version"] == 3
+    assert profile.to_dict()["facts"] == original["facts"]
+    assert profile.to_dict()["entities"] == []
+    assert json.loads((tmp_path/"user_profile.v2.backup.json").read_text(encoding="utf-8")) == original
+
+
 @pytest.fixture
 def http_app(tmp_path, monkeypatch):
     monkeypatch.setattr(server,"CHATS_DB_PATH",str(tmp_path/"chats.json"))
@@ -372,6 +431,20 @@ def test_remote_pairing_and_control_policy(http_app):
         assert requests.get(http_app+"/api/status",headers=headers,timeout=3).status_code == 200
         assert requests.post(http_app+"/api/chats/new",headers=headers,json={},timeout=3).status_code == 403
         assert requests.get(http_app+"/api/session",headers=headers,timeout=3).status_code == 403
+
+
+def test_profile_api_can_link_and_forget_entities(http_app):
+    session=requests.get(http_app+"/api/session",timeout=3).json()["token"]
+    headers={"X-OmniVLA-Session":session}
+    relation={"subject_kind":"project","subject_name":"Project Atlas","predicate":"has_contact",
+              "object_kind":"person","object_name":"Sarah Khan"}
+    created=requests.post(http_app+"/api/profile",json={"relation":relation},headers=headers,timeout=3)
+    assert created.status_code == 200
+    graph=created.json()["profile"]
+    assert len(graph["entities"]) == 2 and len(graph["relations"]) == 1
+    relation_id=graph["relations"][0]["id"]
+    removed=requests.post(http_app+"/api/profile",json={"delete_relation_id":relation_id},headers=headers,timeout=3)
+    assert removed.status_code == 200 and removed.json()["profile"]["relations"] == []
 
 
 def test_web_reader_blocks_private_destinations_before_network():

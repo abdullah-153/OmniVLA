@@ -1801,6 +1801,18 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                     profile.add_fact(payload["fact"])
                 if "delete_fact_index" in payload and isinstance(payload["delete_fact_index"], int):
                     profile.remove_fact(payload["delete_fact_index"])
+                if "entity" in payload and isinstance(payload["entity"], dict):
+                    entity = payload["entity"]
+                    profile.upsert_entity(str(entity.get("kind", "")), str(entity.get("name", "")), source="settings")
+                if "relation" in payload and isinstance(payload["relation"], dict):
+                    relation = payload["relation"]
+                    profile.link_entities(str(relation.get("subject_kind", "")), str(relation.get("subject_name", "")),
+                                          str(relation.get("predicate", "")), str(relation.get("object_kind", "")),
+                                          str(relation.get("object_name", "")), source="settings")
+                if isinstance(payload.get("delete_entity_id"), str):
+                    profile.remove_entity(payload["delete_entity_id"])
+                if isinstance(payload.get("delete_relation_id"), str):
+                    profile.remove_relation(payload["delete_relation_id"])
                 self._json_response({"success": True, "profile": profile.to_dict()})
             elif path == "/api/observe/start":
                 self._start_observation_session(payload)

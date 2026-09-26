@@ -43,6 +43,11 @@ class FixtureHandler(server.WebUIRequestHandler):
                 server.save_chats_db(database)
             self._json_response({'success':True})
             return
+        if self.path == '/__fixture/memory':
+            user_profile._profile_memory_instance.link_entities('project','Project Atlas','has_contact',
+                                                                  'person','Sarah Khan',source='Project Atlas contact is Sarah Khan.')
+            self._json_response({'success':True})
+            return
         if self.path == '/__fixture/approval':
             request=app.interventions.open('test-run','approval','Send the reviewed report to its recipient?',{'tool_name':'click','element':'Send report'})
             app.agent_status.update(status='hitl',phase='hitl',hitl_question=request['question'],execution_chat_id=server.load_chats_db()['active_chat_id'])
