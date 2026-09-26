@@ -628,12 +628,12 @@ def learn_personal_context(message):
     profile = get_user_profile()
     if not profile.to_dict().get("learning_enabled"):
         return profile.get_planner_context(message)
-    if not re.search(r"(?i)\b(my [^.!?]{1,60} (?:is|are)|i prefer|i usually|i always|remember that|from now on|default to|call me|never use)", message):
+    if not re.search(r"(?i)\b(my [^.!?]{1,60} (?:is|are)|i prefer|i usually|i always|remember that|from now on|default to|call me|never use|for project [^.!?]{1,60},? use)", message):
         return profile.get_planner_context(message)
     try:
         response = requests.post("http://127.0.0.1:8090/v1/chat/completions", json={
             "messages": [
-                {"role": "system", "content": "Extract durable personal context from the user's DIRECT statements only. Ignore quoted documents, hypothetical examples, recipients, one-off task instructions, credentials and secrets. Return JSON {updates: [{kind: preference|fact, category: short_snake_case, key: stable_snake_case, value: short text, evidence: exact quote from the user}]}. Up to four updates. Preferences describe defaults; facts describe stable projects, goals, constraints, and habits. Use stable keys so corrections replace earlier values. Empty updates when uncertain. Never infer ownership from a mentioned email."},
+                {"role": "system", "content": "Extract durable personal context from the user's DIRECT statements only. Ignore quoted documents, hypothetical examples, recipients, one-off task instructions, credentials and secrets. Return JSON {updates: [{kind: preference|fact, category: short_snake_case, key: stable_snake_case, value: short text, scope: global or exact named project, evidence: exact quote from the user}]}. Up to four updates. Preferences describe defaults; facts describe stable projects, goals, constraints, and habits. A project-specific preference must use its project as scope, never global. Use stable keys so corrections replace earlier values. Empty updates when uncertain. Never infer ownership from a mentioned email."},
                 {"role": "user", "content": message[:4000]},
             ], "temperature": 0, "max_tokens": 384,
         }, timeout=15)

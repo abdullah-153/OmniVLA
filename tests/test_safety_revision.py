@@ -298,6 +298,52 @@ def test_model_memory_correction_and_evidence(tmp_path):
     assert profile.to_dict()["preferences"]["email"]["account"] == ""
 
 
+def test_project_preference_overrides_only_matching_tasks(tmp_path):
+    profile=UserProfileMemory(str(tmp_path))
+    profile.update_preference("email","service","Outlook")
+    profile.learn_from_message("For Project Atlas, use Gmail for email.")
+    atlas_first=profile.build_context_pack("Check Project Atlas email")
+    assert atlas_first["preferences"]["email"]["service"] == "Gmail"
+    assert atlas_first["active_scopes"] == ["Project Atlas"]
+    assert "Project Atlas" in profile.get_planner_context("Check Project Atlas email")
+    assert profile.build_context_pack("Check Project Apollo email")["preferences"]["email"]["service"] == "Outlook"
+    assert profile.to_dict()["preferences"]["email"]["service"] == "Outlook"
+    profile.learn_from_message("For Project Atlas, use Outlook for email.")
+    atlas=profile.build_context_pack("Check Project Atlas email")
+    assert atlas["preferences"]["email"]["service"] == "Outlook"
+    assert len(profile.to_dict()["scoped_preferences"]) == 1
+    profile.clear_learned()
+    assert profile.to_dict()["scoped_preferences"] == []
+    assert profile.to_dict()["preferences"]["email"]["service"] == "Outlook"
+
+
+def test_model_scope_must_be_supported_by_direct_evidence(tmp_path):
+    profile=UserProfileMemory(str(tmp_path))
+    message="For Project Atlas, use Gmail for email."
+    profile.apply_model_updates([{"kind":"preference","category":"email","key":"service",
+                                  "value":"Gmail","scope":"Project Apollo","evidence":message}], message)
+    assert profile.to_dict()["scoped_preferences"] == []
+    profile.apply_model_updates([{"kind":"preference","category":"email","key":"service",
+                                  "value":"Gmail","scope":"Project Atlas","evidence":message}], message)
+    assert len(profile.to_dict()["scoped_preferences"]) == 1
+    profile.apply_model_updates([{"kind":"preference","category":"email","key":"service",
+                                  "value":"Outlook","scope":"global","evidence":message}], message)
+    assert profile.to_dict()["preferences"]["email"]["service"] == ""
+    assert len(profile.to_dict()["scoped_preferences"]) == 1
+
+
+def test_conflicting_project_scopes_require_clarification(tmp_path):
+    profile=UserProfileMemory(str(tmp_path))
+    profile.update_scoped_preference("Project Atlas", "email", "service", "Gmail")
+    profile.update_scoped_preference("Project Apollo", "email", "service", "Outlook")
+    pack=profile.build_context_pack("Email Project Atlas and Project Apollo updates")
+    assert "service" not in pack["preferences"].get("email", {})
+    assert len(pack["conflicts"]) == 1
+    context=profile.get_planner_context("Email Project Atlas and Project Apollo updates")
+    assert "Project Atlas" in context and "Project Apollo" in context
+    assert "Ask before acting" in context
+
+
 @pytest.fixture
 def http_app(tmp_path, monkeypatch):
     monkeypatch.setattr(server,"CHATS_DB_PATH",str(tmp_path/"chats.json"))

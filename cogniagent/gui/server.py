@@ -911,12 +911,19 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 from cogniagent.memory.user_profile import get_user_profile
                 pack = get_user_profile().build_context_pack(message)
                 context_refs = [
-                    {"kind": ref["kind"], "label": str(ref["value"])[:160],
+                    {"kind": ref["kind"], "label": (str(ref["value"]) +
+                     (" (" + ref["scope"] + ")" if ref.get("scope") else ""))[:160],
                      "source": "Settings" if ref["source"] == "settings" else "Your earlier statement"}
                     for ref in pack["references"][:8]
                 ]
                 context_refs.extend({"kind": "workflow", "label": w.get("intent", "")[:160], "source": "Completed task"}
                                     for w in pack["successful_workflows"][:2])
+                context_refs.extend({"kind": "conflict",
+                                     "label": (conflict["category"] + " " + conflict["key"] + ": " +
+                                               "; ".join(option["scope"] + " = " + str(option["value"])
+                                                         for option in conflict["options"]))[:160],
+                                     "source": "Needs clarification"}
+                                    for conflict in pack.get("conflicts", [])[:3])
             except Exception as profile_err:
                 logger.debug("Failed to identify supplied personal context: %s", profile_err)
 
