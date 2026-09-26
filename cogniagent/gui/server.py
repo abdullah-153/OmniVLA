@@ -972,11 +972,11 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 tool_result_callback=on_tool_result,
             )
             if not response or not str(response).strip():
-                response = "I completed your request, but was unable to formulate a detailed response. Please try rephrasing or asking again."
+                raise RuntimeError("The planner returned an empty response.")
             else:
                 response = re.sub(r"<think>[\s\S]*?(?:</think>|$)", "", str(response)).strip()
                 if not response:
-                    response = "I've processed your request. How else can I assist you?"
+                    raise RuntimeError("The planner returned no user-visible answer.")
 
             from cogniagent.gui.server_manager import parse_agentic_plan
             parsed_plan = parse_agentic_plan(response)

@@ -1,4 +1,5 @@
 from unittest.mock import MagicMock, patch
+import pytest
 
 from cogniagent.gui import server_manager
 
@@ -45,3 +46,25 @@ def test_tool_sequence_has_finite_budget():
         answer = server_manager.run_planner_chat("Investigate Atlas", [], learn_personal_context_enabled=False)
     assert "tool-call limit" in answer
     assert search.call_count == 3 and model.call_count == 4
+
+
+def test_empty_planner_response_is_failure():
+    with patch.object(server_manager, "start_planner_server", return_value=True), \
+         patch.object(server_manager, "stop_planner_server"), \
+         patch.object(server_manager.requests, "post", return_value=reply("")):
+        with pytest.raises(RuntimeError, match="empty response"):
+            server_manager.run_planner_chat("Investigate Atlas", [], learn_personal_context_enabled=False)
+
+
+def test_failed_synthesis_does_not_reuse_pretool_success_claim():
+    receipts = []
+    with patch.object(server_manager, "start_planner_server", return_value=True), \
+         patch.object(server_manager, "stop_planner_server"), \
+         patch.object(server_manager, "execute_browser_search", return_value="Results"), \
+         patch.object(server_manager.requests, "post", side_effect=[
+             reply("Everything is complete. [BROWSER_SEARCH: atlas]"), RuntimeError("Model disconnected")]):
+        answer = server_manager.run_planner_chat("Investigate Atlas", [], learn_personal_context_enabled=False,
+                                                 tool_result_callback=receipts.append)
+    assert "not confirmed complete" in answer
+    assert "Everything is complete" not in answer
+    assert len(receipts) == 1

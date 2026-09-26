@@ -874,6 +874,7 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
                     payload["messages"] = messages
                     if activity_callback:
                         activity_callback("Synthesizing response...")
+                    raw_reply = "A tool returned a result, but the planner could not produce a usable answer. The task is not confirmed complete."
                     try:
                         r2 = requests.post("http://127.0.0.1:8090/v1/chat/completions", json=payload, timeout=180)
                         if r2.status_code == 200:
@@ -912,7 +913,9 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
 
             # Safe fallback: clean any residual think blocks and return clean text
             clean_text = re.sub(r"<think>[\s\S]*?(?:</think>|$)", "", str(raw_reply or "")).strip()
-            return clean_text if clean_text else "I've completed your request. How else can I assist you?"
+            if not clean_text:
+                raise RuntimeError("The planner returned an empty response; completion is unverified.")
+            return clean_text
 
 
         else:
