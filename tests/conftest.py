@@ -77,3 +77,12 @@ def pytest_sessionfinish(session, exitstatus):
 def isolated_personal_memory(tmp_path, monkeypatch):
     from cogniagent.memory import user_profile
     monkeypatch.setattr(user_profile, "_profile_memory_instance", user_profile.UserProfileMemory(str(tmp_path / "personal")))
+
+
+@pytest.fixture(autouse=True)
+def offline_planner_tokenizer(monkeypatch):
+    # Unit tests mock inference; do not contact the user's live model for counting.
+    # The real HTTP adapter is tested separately, and opt-in scripts exercise it live.
+    from cogniagent.gui import server_manager
+    monkeypatch.setattr(server_manager, "count_planner_tokens",
+        lambda messages: sum(len(item["content"]) // 4 + 8 for item in messages))

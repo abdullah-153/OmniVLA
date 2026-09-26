@@ -1,0 +1,14 @@
+{
+  "model": "models/Spark-X2.5-4B-Q4_K_M.gguf",
+  "original_prompt_tokens": 26080,
+  "fitted_prompt_tokens": 1699,
+  "actual_prompt_tokens": 1699,
+  "reserved_output_tokens": 256,
+  "template_reserve_tokens": 64,
+  "context_tokens": 2048,
+  "request_preserved": true,
+  "truncation_disclosed": true,
+  "answer": "Atlas status: awaiting review.",
+  "passed": true,
+  "duration_seconds": 72.02
+}
