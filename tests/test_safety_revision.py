@@ -585,6 +585,31 @@ def test_empty_planning_response_persists_failure_and_existing_receipts(monkeypa
     assert message["tool_receipts"][0]["name"] == "FIND_FILES"
 
 
+@pytest.mark.parametrize("late_error", [False, True])
+def test_stopped_planner_discards_late_answer_and_preserves_receipts(monkeypatch, late_error):
+    from cogniagent.tools.gateway import ToolResult
+    database = server._default_database()
+    chat = database["chats"][0]
+    def late_reply(*args, **kwargs):
+        kwargs["tool_result_callback"](ToolResult("FIND_FILES", True, "Found report", 5))
+        kwargs["cancel_event"].set()
+        if late_error:
+            raise TimeoutError("In-flight request timed out after Stop")
+        return "Late answer that must not be published."
+    monkeypatch.setattr(server, "load_chats_db", lambda: database)
+    monkeypatch.setattr(server, "save_chats_db", MagicMock())
+    monkeypatch.setattr(server.gui_app, "run_planner_chat", late_reply)
+    lock = threading.Lock()
+    lock.acquire()
+    monkeypatch.setattr(server, "planner_lock", lock)
+    handler = object.__new__(server.WebUIRequestHandler)
+    handler._plan_in_background(chat["id"], "Find the report", learn_profile=False)
+    assert chat["status"] == "stopped" and chat["reviewed_plan"] is None
+    assert "Late answer" not in str(chat["chat_history"])
+    assert chat["chat_history"][-1]["tool_receipts"][0]["name"] == "FIND_FILES"
+    assert not lock.locked()
+
+
 def test_skill_revision_api_preview_restore_and_authorization(http_app, tmp_path, monkeypatch):
     from cogniagent.skills.skill_registry import SkillRegistry
     from cogniagent.skills.skill_schema import SkillDefinition

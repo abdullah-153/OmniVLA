@@ -19,6 +19,11 @@ app.whenReady().then(async()=>{
     await waitFor(win,`document.getElementById('local-state-label')?.textContent !== 'Checking' && document.getElementById('chat-list')?.children.length > 0`);
     const setup = await win.webContents.executeJavaScript(`(async()=>{ const session=await (await fetch('/api/session')).json(); return {token:!!session.token,manualBudget:!!document.getElementById('max-steps'),profileSection:!!document.getElementById('memory-provenance')}; })()`);
     if(!setup.token || setup.manualBudget || !setup.profileSection) throw new Error('Console setup failed: '+JSON.stringify(setup));
+    await win.webContents.executeJavaScript(`fetch('/__fixture/planning',{method:'POST'})`);
+    await waitFor(win,`!document.getElementById('stop-planning').hidden && !document.getElementById('stop-planning').disabled`);
+    await fs.promises.writeFile(path.join(root,'scratch','planning-stop.png'), (await win.webContents.capturePage()).toPNG());
+    await win.webContents.executeJavaScript(`document.getElementById('stop-planning').click()`);
+    await waitFor(win,`document.getElementById('stop-planning').hidden && document.getElementById('conversation')?.textContent.includes('Planning stopped by operator.')`);
     await win.webContents.executeJavaScript(`document.startViewTransition=undefined; document.getElementById('open-skills').click()`);
     await waitFor(win,`document.querySelector('[data-skill-name="fixture_report"] [data-skill-action="edit"]')`);
     await win.webContents.executeJavaScript(`document.querySelector('[data-skill-name="fixture_report"] [data-skill-action="edit"]').click()`);

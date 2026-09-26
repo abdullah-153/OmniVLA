@@ -15,6 +15,7 @@ from gui_telemetry import get_free_vram, calculate_gpu_layers
 from cogniagent.config import config
 from cogniagent.runtime.cuda_runtime import cuda_backend_available, cuda_server_environment, ensure_cuda_runtime
 from cogniagent.runtime.planner_context import PLANNER_CONTEXT_TOKENS, count_planner_tokens, fit_planner_context
+from cogniagent.runtime.cancellation import PlannerCancelled, check_planner_cancelled
 from cogniagent.tools import (
     execute_browser_search,
     detect_file_search_intent, find_local_files, format_file_results,
@@ -662,7 +663,8 @@ def strip_tool_syntaxes(text: str) -> str:
     return cleaned
 
 
-def learn_personal_context(message):
+def learn_personal_context(message, cancel_event=None):
+    check_planner_cancelled(cancel_event)
     from cogniagent.memory.user_profile import get_user_profile
     profile = get_user_profile()
     if not profile.to_dict().get("learning_enabled"):
@@ -677,28 +679,44 @@ def learn_personal_context(message):
             ], "temperature": 0, "max_tokens": 384,
         }, timeout=15)
         response.raise_for_status()
+        check_planner_cancelled(cancel_event)
         raw = response.json()["choices"][0]["message"].get("content", "").strip()
         raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        check_planner_cancelled(cancel_event)
         profile.apply_model_updates(json.loads(raw).get("updates", []), message)
+    except PlannerCancelled:
+        raise
     except Exception:
         logging.info("Personal context extraction unavailable; using existing explicit preferences.")
     return profile.get_planner_context(message)
 
 
 def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_context="", user_profile_context="", persist_in_ram=None,
-                     activity_callback=None, learn_personal_context_enabled=True, tool_result_callback=None):
+                     activity_callback=None, learn_personal_context_enabled=True, tool_result_callback=None,
+                     cancel_event=None):
     restart_vla_profile = None
     is_testing = "unittest" in sys.modules or "pytest" in sys.modules
     if persist_in_ram is None:
         persist_in_ram = not is_testing
+    def model_request(payload, timeout):
+        check_planner_cancelled(cancel_event)
+        try:
+            response = requests.post("http://127.0.0.1:8090/v1/chat/completions", json=payload, timeout=timeout)
+        except Exception:
+            check_planner_cancelled(cancel_event)
+            raise
+        check_planner_cancelled(cancel_event)
+        return response
     try:
+        check_planner_cancelled(cancel_event)
         if not start_planner_server(use_gpu=False):
             raise RuntimeError("The planning model is unavailable.")
+        check_planner_cancelled(cancel_event)
 
         file_search_roots = None
         if not user_profile_context:
             if learn_personal_context_enabled:
-                user_profile_context = learn_personal_context(message)
+                user_profile_context = learn_personal_context(message, cancel_event=cancel_event)
             else:
                 from cogniagent.memory.user_profile import get_user_profile
                 user_profile_context = get_user_profile().get_planner_context(message)
@@ -715,12 +733,14 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
         )
 
         def use_tool(name, arguments):
+            check_planner_cancelled(cancel_event)
             outcome = gateway.run(name, arguments)
             if tool_result_callback is not None:
                 try:
                     tool_result_callback(outcome)
                 except Exception:
                     logging.exception("Unable to record tool receipt")
+            check_planner_cancelled(cancel_event)
             return outcome
 
         # Proactively detect personal agent tool intents upfront
@@ -852,7 +872,7 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
 
         if activity_callback:
             activity_callback("Thinking...")
-        r = requests.post("http://127.0.0.1:8090/v1/chat/completions", json=payload, timeout=180)
+        r = model_request(payload, timeout=180)
         if r.status_code == 200:
             message_payload = r.json()["choices"][0]["message"]
             raw_reply = message_payload.get("content", "")
@@ -860,6 +880,7 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
             base_message_count = len(messages)
             dispatched = set()
             for tool_round in range(3):
+                check_planner_cancelled(cancel_event)
                 # Support model-directed autonomous tool calls
                 tool_executed = False
                 tool_feedback = ""
@@ -917,7 +938,7 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
                         activity_callback("Synthesizing response...")
                     raw_reply = "A tool returned a result, but the planner could not produce a usable answer. The task is not confirmed complete."
                     try:
-                        r2 = requests.post("http://127.0.0.1:8090/v1/chat/completions", json=payload, timeout=180)
+                        r2 = model_request(payload, timeout=180)
                         if r2.status_code == 200:
                             synth_reply = r2.json()["choices"][0]["message"].get("content", "")
                             if synth_reply and synth_reply.strip():
@@ -932,11 +953,13 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
                             append_planner_tool_result(retry_messages, 2, "I requested evidence.", tool_feedback)
                             retry_messages = fit_planner_context(retry_messages, 1, output_tokens,
                                 count_tokens=count_planner_tokens)
-                            r_retry = requests.post("http://127.0.0.1:8090/v1/chat/completions", json={"messages": retry_messages, "temperature": temp, "max_tokens": output_tokens}, timeout=120)
+                            r_retry = model_request({"messages": retry_messages, "temperature": temp, "max_tokens": output_tokens}, timeout=120)
                             if r_retry.status_code == 200:
                                 retry_reply = r_retry.json()["choices"][0]["message"].get("content", "")
                                 if retry_reply and retry_reply.strip():
                                     raw_reply = retry_reply
+                    except PlannerCancelled:
+                        raise
                     except Exception as synth_err:
                         logging.warning(f"Secondary synthesis request error: {synth_err}")
 
@@ -964,6 +987,8 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
 
         else:
             raise RuntimeError(f"Planning request failed with status {r.status_code}.")
+    except PlannerCancelled:
+        raise
     except Exception as e:
         logging.error(f"Error in run_planner_chat: {e}")
 

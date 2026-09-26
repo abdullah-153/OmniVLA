@@ -12,6 +12,7 @@ import copy
 import hashlib
 from pathlib import Path
 from cogniagent.gui.state_store import StateStore
+from cogniagent.runtime.cancellation import PlannerCancelled, check_planner_cancelled
 import logging
 import os
 import re
@@ -81,6 +82,7 @@ telemetry_data = {
 db_lock = threading.RLock()
 planner_lock = threading.Lock()
 planner_active_chat_id = None
+planner_cancel_event = threading.Event()
 _db_cache: dict[str, Any] | None = None
 telemetry_thread: threading.Thread | None = None
 pairing_session = PairingSession()
@@ -845,7 +847,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             agent_state = dict(safe_live_state)
         else:
             agent_state = _normalize_execution_snapshot(active.get("execution"))
-            if planner_active_chat_id == active["id"]:
+            if planner_active_chat_id == active["id"] and not planner_cancel_event.is_set():
                 agent_state.update({
                     "status": "planning",
                     "phase": "planning",
@@ -881,7 +883,10 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         agent_state["chats"] = _chat_summaries(database)
         agent_state["active_chat_id"] = database["active_chat_id"]
         agent_state["planning_chat_id"] = planner_active_chat_id
+        agent_state["planning_stopping"] = bool(planner_active_chat_id and planner_cancel_event.is_set())
         agent_state["planner_activity"] = live_state.get("planner_activity", "Thinking...") if planner_active_chat_id else ""
+        if agent_state["planning_stopping"]:
+            agent_state["planner_activity"] = "Stopping planning; waiting for the current operation to return."
         agent_state["safety"] = database["safety"]
 
         agent_state["audit_events"] = list(database["audit_events"])
@@ -917,9 +922,25 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             gui_app.agent_status["chat_history"] = list(chat.get("chat_history", []))
             gui_app.agent_status["current_task"] = chat.get("current_task", "")
 
+    def _persist_stopped_planning(self, chat_id, tool_receipts):
+        with db_lock:
+            database = load_chats_db()
+            chat = _find_chat(database, chat_id)
+            if chat:
+                chat["status"] = "stopped"
+                chat["reviewed_plan"] = None
+                chat["chat_history"].append({"role": "assistant", "content": "Planning stopped by operator.",
+                                             "tool_receipts": tool_receipts})
+                chat["updated_at"] = int(time.time())
+                _record_audit(database, "plan.stopped", "Planning stopped; any completed tool receipts were retained.")
+                save_chats_db(database)
+                if database["active_chat_id"] == chat_id:
+                    self._sync_active_chat(chat)
+
     def _plan_in_background(self, chat_id: str, message: str, learn_profile: bool = True) -> None:
         try:
             tool_receipts = []
+            check_planner_cancelled(planner_cancel_event)
             chat_history = []
             memory_enabled = False
             with db_lock:
@@ -950,6 +971,8 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
 
             def on_activity(act: str) -> None:
                 with gui_app.status_lock:
+                    if planner_cancel_event.is_set():
+                        return
                     gui_app.agent_status["planner_activity"] = act
                     gui_app.agent_status["current_action"] = act
 
@@ -970,7 +993,9 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 activity_callback=on_activity,
                 learn_personal_context=learn_profile,
                 tool_result_callback=on_tool_result,
+                cancel_event=planner_cancel_event,
             )
+            check_planner_cancelled(planner_cancel_event)
             if not response or not str(response).strip():
                 raise RuntimeError("The planner returned an empty response.")
             else:
@@ -1002,10 +1027,8 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             except Exception as profile_err:
                 logger.debug("Failed to identify supplied personal context: %s", profile_err)
 
-            if chats_rag is not None:
-                chats_rag.index_message(chat_id, "assistant", response)
-
             with db_lock:
+                check_planner_cancelled(planner_cancel_event)
                 database = load_chats_db()
                 chat = _find_chat(database, chat_id)
                 if chat:
@@ -1021,9 +1044,16 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                         chat["status"] = "idle"
                     chat["updated_at"] = int(time.time())
                     save_chats_db(database)
+                    if chats_rag is not None:
+                        chats_rag.index_message(chat_id, "assistant", response)
                     if database["active_chat_id"] == chat_id:
                         self._sync_active_chat(chat)
+        except PlannerCancelled:
+            self._persist_stopped_planning(chat_id, tool_receipts)
         except Exception as error:
+            if planner_cancel_event.is_set():
+                self._persist_stopped_planning(chat_id, tool_receipts)
+                return
             logger.exception("Planner request failed: %s", error)
             with db_lock:
                 database = load_chats_db()
@@ -1049,6 +1079,10 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             planner_active_chat_id = None
             with gui_app.status_lock:
                 gui_app.agent_status["planner_activity"] = ""
+                if planner_cancel_event.is_set() and gui_app.agent_status.get("status") == "stopping":
+                    gui_app.agent_status["status"] = "stopped"
+                    gui_app.agent_status["phase"] = "stopped"
+                    gui_app.agent_status["current_action"] = "Planning stopped by operator."
                 if gui_app.agent_status.get("status") in ("planning", "thinking"):
                     gui_app.agent_status["status"] = "idle"
                     gui_app.agent_status["phase"] = "idle"
@@ -1068,6 +1102,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             self._error(409, "Another plan is already being prepared.")
             return
 
+        planner_cancel_event.clear()
         try:
             with db_lock:
                 database = load_chats_db()
@@ -1320,6 +1355,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             self._error(409, "Another plan is already being prepared.")
             return
 
+        planner_cancel_event.clear()
         planner_handoff = False
         try:
             with db_lock:
@@ -1463,11 +1499,12 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         self._json_response({"success": True, "safety": database["safety"]})
 
     def _stop_run(self) -> None:
+        planner_cancel_event.set()
         gui_app.stop_agent()
         with gui_app.status_lock:
             gui_app.hitl_response.append("stop")
             gui_app.hitl_event.set()
-            stopping = bool(gui_app.running_thread and gui_app.running_thread.is_alive())
+            stopping = bool((gui_app.running_thread and gui_app.running_thread.is_alive()) or planner_active_chat_id)
             gui_app.agent_status["status"] = "stopping" if stopping else "stopped"
             gui_app.agent_status["current_action"] = "Stopping at the input boundary." if stopping else "Execution stopped by operator."
             gui_app.agent_status["phase"] = "stopping" if stopping else "stopped"
@@ -1478,6 +1515,11 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         persist_chat_execution(execution_chat_id, state)
         with db_lock:
             database = load_chats_db()
+            planning_chat = _find_chat(database, planner_active_chat_id) if planner_active_chat_id else None
+            if planning_chat:
+                planning_chat["status"] = "stopping"
+                planning_chat["reviewed_plan"] = None
+                planning_chat["updated_at"] = int(time.time())
             execution_chat = _find_chat(database, execution_chat_id) if execution_chat_id else None
             if execution_chat:
                 execution_chat["status"] = "stopping" if stopping else "stopped"

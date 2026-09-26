@@ -86,3 +86,7 @@ def offline_planner_tokenizer(monkeypatch):
     from cogniagent.gui import server_manager
     monkeypatch.setattr(server_manager, "count_planner_tokens",
         lambda messages: sum(len(item["content"]) // 4 + 8 for item in messages))
+    server = sys.modules.get("cogniagent.gui.server")
+    if server is not None:
+        import threading
+        monkeypatch.setattr(server, "planner_cancel_event", threading.Event())

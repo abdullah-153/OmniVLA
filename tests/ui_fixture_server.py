@@ -15,6 +15,26 @@ server.skills_registry.save_skill(SkillDefinition(name='fixture_report',title='O
 server.skills_registry.save_skill(SkillDefinition(name='fixture_report',title='Updated report',description='Updated fixture procedure'))
 class FixtureHandler(server.WebUIRequestHandler):
     def do_POST(self):
+        if self.path == '/__fixture/planning':
+            if not server.planner_lock.acquire(blocking=False):
+                self._error(409, 'Planner busy')
+                return
+            server.planner_cancel_event.clear()
+            with server.db_lock:
+                database=server.load_chats_db()
+                chat=server._active_chat(database)
+                chat['status']='planning'
+                chat['chat_history']=[{'role':'user','content':'Check the Atlas project status'}]
+                server.save_chats_db(database)
+            server.planner_active_chat_id=chat['id']
+            app.agent_status.update(status='planning',phase='planning')
+            def delayed_reply(*args, **kwargs):
+                kwargs['cancel_event'].wait(20)
+                return 'Late fixture answer must not appear.'
+            app.run_planner_chat=delayed_reply
+            threading.Thread(target=self._plan_in_background,args=(chat['id'],'Check Atlas',False),daemon=True).start()
+            self._json_response({'success':True})
+            return
         if self.path == '/__fixture/shutdown':
             self._json_response({'success':True})
             threading.Thread(target=self.server.shutdown,daemon=True).start()

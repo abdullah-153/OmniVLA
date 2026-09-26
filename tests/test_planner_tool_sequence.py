@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock, patch
 import pytest
+import threading
+from cogniagent.runtime.cancellation import PlannerCancelled
 
 from cogniagent.gui import server_manager
 
@@ -92,6 +94,38 @@ def test_empty_planner_response_is_failure():
          patch.object(server_manager.requests, "post", return_value=reply("")):
         with pytest.raises(RuntimeError, match="empty response"):
             server_manager.run_planner_chat("Investigate Atlas", [], learn_personal_context_enabled=False)
+
+
+def test_stop_during_model_reply_prevents_late_notification():
+    event = threading.Event()
+    def late_reply(*args, **kwargs):
+        event.set()
+        return reply("[NOTIFY: Reminder | Late message]")
+    with patch.object(server_manager, "start_planner_server", return_value=True), \
+         patch.object(server_manager, "stop_planner_server"), \
+         patch.object(server_manager.requests, "post", side_effect=late_reply), \
+         patch.object(server_manager, "send_notification") as notify:
+        with pytest.raises(PlannerCancelled):
+            server_manager.run_planner_chat("Check project status", [], user_profile_context="No defaults.",
+                                           cancel_event=event)
+    notify.assert_not_called()
+
+
+def test_stop_after_tool_retains_receipt_and_prevents_synthesis():
+    event = threading.Event()
+    receipts = []
+    def completed_tool(outcome):
+        receipts.append(outcome)
+        event.set()
+    with patch.object(server_manager, "start_planner_server", return_value=True), \
+         patch.object(server_manager, "stop_planner_server"), \
+         patch.object(server_manager.requests, "post", return_value=reply("[BROWSER_SEARCH: Atlas]")) as model, \
+         patch.object(server_manager, "execute_browser_search", return_value="Results"):
+        with pytest.raises(PlannerCancelled):
+            server_manager.run_planner_chat("Check project status", [], user_profile_context="No defaults.",
+                                           cancel_event=event, tool_result_callback=completed_tool)
+    assert model.call_count == 1
+    assert len(receipts) == 1 and receipts[0].ok
 
 
 def test_tool_transcript_is_bounded_and_preserves_original_request():

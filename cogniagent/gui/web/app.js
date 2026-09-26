@@ -645,7 +645,12 @@ tags: [desktop]
       return;
     }
 
-    const blocked = isLiveWorking(data) || data.planning_chat_id === data.active_chat_id;
+    const planning = Boolean(data.planning_chat_id);
+    $("stop-planning").hidden = !planning;
+    $("stop-planning").disabled = Boolean(data.planning_stopping);
+    $("stop-planning").textContent = data.planning_stopping ? "Stopping…" : "Stop planning";
+    $("send-message").hidden = planning;
+    const blocked = isLiveWorking(data) || planning;
     $("send-message").disabled = blocked || !hasText;
     $("composer-input").disabled = blocked;
     $("composer-input").placeholder = blocked ? "Finish the current task before sending another message" : "Ask OmniVLA to do something on your computer";
@@ -1043,7 +1048,7 @@ tags: [desktop]
   }
 
   async function stopRun() {
-    try { await api("/api/stop", { method: "POST", body: {} }); await fetchStatus(); toast("Task stopped."); }
+    try { await api("/api/stop", { method: "POST", body: {} }); await fetchStatus(); toast("Stop requested."); }
     catch (error) { toast(error.message, true); }
   }
 
@@ -1541,6 +1546,7 @@ tags: [desktop]
     });
     $("pause-run")?.addEventListener("click", togglePause);
     $("stop-run")?.addEventListener("click", stopRun);
+    $("stop-planning")?.addEventListener("click", stopRun);
     $("operator-form")?.addEventListener("submit", async (event) => {
       event.preventDefault(); const response = $("operator-input")?.value.trim(); if (!response) return;
       try { await api("/api/hitl_submit", { method: "POST", body: { response } }); if ($("operator-input")) $("operator-input").value = ""; await fetchStatus(); }
