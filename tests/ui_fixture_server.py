@@ -15,6 +15,34 @@ class FixtureHandler(server.WebUIRequestHandler):
             self._json_response({'success':True})
             threading.Thread(target=self.server.shutdown,daemon=True).start()
             return
+        if self.path == '/__fixture/plan':
+            with server.db_lock:
+                database=server.load_chats_db()
+                chat=server._active_chat(database)
+                plan=('```desktop-plan\n1. Open the report\n2. Save the report\n'
+                      '**Expected Output:** Saved report\n**Success Criteria:**\n'
+                      '- Requested filename is visible\n- Save confirmation is visible\n'
+                      'Prescribed Steps: 8\n```')
+                chat['intent']='Save the report'
+                chat['reviewed_plan']=plan
+                chat['status']='plan_created'
+                chat['chat_history']=[{'role':'user','content':'Save the report'},
+                                      {'role':'assistant','content':plan,'context_refs':[
+                                          {'kind':'fact','label':'Reports belong in D:/Research','source':'Your earlier statement'}]}]
+                server.save_chats_db(database)
+            self._json_response({'success':True})
+            return
+        if self.path == '/__fixture/completed':
+            with server.db_lock:
+                database=server.load_chats_db()
+                chat=server._active_chat(database)
+                chat['status']='success'
+                chat['chat_history'].append({'role':'assistant','kind':'run_result','content':'Report saved.',
+                    'completion_evidence':{'source':'visual','evidence':'Filename and save confirmation visible.',
+                                           'criteria':[{'met':True,'evidence':'Filename visible'}]}})
+                server.save_chats_db(database)
+            self._json_response({'success':True})
+            return
         if self.path == '/__fixture/approval':
             request=app.interventions.open('test-run','approval','Send the reviewed report to its recipient?',{'tool_name':'click','element':'Send report'})
             app.agent_status.update(status='hitl',phase='hitl',hitl_question=request['question'],execution_chat_id=server.load_chats_db()['active_chat_id'])

@@ -325,6 +325,7 @@ def parse_agentic_plan(content: str) -> dict:
     preface_lines: list[str] = []
     step_lines: list[str] = []
     output_lines: list[str] = []
+    criteria_lines: list[str] = []
     prescribed_steps: int | None = None
 
     budget_match = re.search(r"(?i)prescribed\s*(?:step\s*budget|steps?)\s*[:=]?\s*(\d+)", outside)
@@ -343,11 +344,24 @@ def parse_agentic_plan(content: str) -> dict:
         if re.match(r"^(?:thinking|reasoning|internal monologue)\b", line_clean, re.IGNORECASE):
             continue
 
-        if re.match(r"^\*{0,2}expected\s+(?:output|deliverable|result)\*{0,2}\s*[:=]?", line_clean, re.IGNORECASE):
+        if re.match(r"^\*{0,2}expected\s+(?:output|deliverable|result)\s*:?(?:\*{0,2})\s*[:=]?", line_clean, re.IGNORECASE):
             current_section = "output"
-            remainder = re.sub(r"^\*{0,2}expected\s+(?:output|deliverable|result)\*{0,2}\s*[:=]?\s*", "", line_clean, flags=re.IGNORECASE).strip()
+            remainder = re.sub(r"^\*{0,2}expected\s+(?:output|deliverable|result)\s*:?(?:\*{0,2})\s*[:=]?\s*", "", line_clean, flags=re.IGNORECASE).strip()
             if remainder:
                 output_lines.append(remainder)
+            continue
+
+        if re.match(r"^\*{0,2}success\s+criteria\s*:?(?:\*{0,2})\s*[:=]?", line_clean, re.IGNORECASE):
+            current_section = "criteria"
+            remainder = re.sub(r"^\*{0,2}success\s+criteria\s*:?(?:\*{0,2})\s*[:=]?\s*", "", line_clean, flags=re.IGNORECASE).strip()
+            if remainder:
+                criteria_lines.append(remainder)
+            continue
+
+        if current_section == "criteria" and re.match(r"^(?:[-*]\s*(?:\[[ xX]\]\s*)?|\d+[.):]\s*)", line_clean):
+            criterion = re.sub(r"^(?:[-*]\s*(?:\[[ xX]\]\s*)?|\d+[.):]\s*)", "", line_clean).strip()
+            if criterion and len(criteria_lines) < 5:
+                criteria_lines.append(criterion[:240])
             continue
 
         step_match = re.match(r"^\s*(?:[-*]\s*)?(?:step\s*)?(\d+)[.):]\s*(.+?)\s*$", line, re.IGNORECASE)
@@ -368,6 +382,8 @@ def parse_agentic_plan(content: str) -> dict:
         elif current_section == "output":
             if not line_clean.startswith("```"):
                 output_lines.append(line_clean)
+        elif current_section == "criteria" and criteria_lines:
+            criteria_lines[-1] += " " + line_clean[:240]
 
     # Conversational text outside the block if a codeblock was found
     if plan_block_match:
@@ -389,6 +405,7 @@ def parse_agentic_plan(content: str) -> dict:
             "steps": [],
             "steps_text": "",
             "expected_output": "",
+            "success_criteria": [],
             "prescribed_steps": None,
             "formatted": outside,
         }
@@ -412,6 +429,7 @@ def parse_agentic_plan(content: str) -> dict:
                 "steps": [],
                 "steps_text": "",
                 "expected_output": "",
+                "success_criteria": [],
                 "prescribed_steps": None,
                 "formatted": outside,
             }
@@ -423,11 +441,14 @@ def parse_agentic_plan(content: str) -> dict:
 
     prescribed_steps = max(1, min(config.safety.max_steps_per_task, prescribed_steps))
     expected_output_text = " ".join(output_lines).strip()
+    success_criteria = [re.sub(r"\s+", " ", criterion).strip()[:240] for criterion in criteria_lines[:5] if criterion.strip()]
 
     if plan_block_match:
         plan_block_content = steps_text
         if expected_output_text:
             plan_block_content += f"\n\n**Expected Output:** {expected_output_text}"
+        if success_criteria:
+            plan_block_content += "\n**Success Criteria:**\n" + "\n".join(f"- {criterion}" for criterion in success_criteria)
         plan_block_content += f"\nPrescribed Steps: {prescribed_steps}"
         formatted_block = f"```desktop-plan\n{plan_block_content}\n```"
         formatted = f"{conversational_text}\n\n{formatted_block}" if conversational_text else formatted_block
@@ -438,6 +459,8 @@ def parse_agentic_plan(content: str) -> dict:
         parts.append(steps_text)
         if expected_output_text:
             parts.append(f"**Expected Output:** {expected_output_text}")
+        if success_criteria:
+            parts.append("**Success Criteria:**\n" + "\n".join(f"- {criterion}" for criterion in success_criteria))
         formatted = "\n\n".join(parts)
 
     return {
@@ -447,6 +470,7 @@ def parse_agentic_plan(content: str) -> dict:
         "steps": steps,
         "steps_text": steps_text,
         "expected_output": expected_output_text,
+        "success_criteria": success_criteria,
         "prescribed_steps": prescribed_steps,
         "formatted": formatted,
     }
@@ -680,6 +704,9 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
             "   1. [Step 1, e.g. Open Edge]\n"
             "   2. [Step 2, e.g. Navigate and search]\n"
             "   **Expected Output:** [Deliverable]\n"
+            "   **Success Criteria:**\n"
+            "   - [Specific observable condition showing the deliverable is present]\n"
+            "   - [Any second essential user constraint that can be checked; omit if none]\n"
             "   Prescribed Steps: 25\n"
             "   ```\n"
             "   Do NOT emit `[BROWSER_SEARCH]` when asked to search manually from the user's system or in Edge/Chrome!\n"

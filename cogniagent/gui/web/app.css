@@ -1416,3 +1416,11 @@ body.execution-closed .execution-panel { opacity: 0; pointer-events: none; trans
 .plan-context ul { margin: 9px 0 0; padding-left: 20px; }
 .plan-context li { margin: 5px 0; font-size: .82rem; }
 .plan-context small { display: block; opacity: .7; }
+.plan-card-criteria { margin-top: 12px; }
+.plan-card-criteria strong { font-size: .83rem; }
+.plan-card-criteria ul { margin: 7px 0 0; padding-left: 20px; }
+.plan-card-criteria li { margin: 4px 0; font-size: .84rem; }
+.completion-evidence { margin-top: 12px; border-top: 1px solid var(--border, rgba(255,255,255,.12)); padding-top: 10px; font-size: .83rem; }
+.completion-evidence summary { cursor: pointer; font-weight: 600; text-transform: capitalize; }
+.completion-evidence p { margin: 7px 0; }
+.completion-evidence ul { margin: 7px 0; padding-left: 20px; }

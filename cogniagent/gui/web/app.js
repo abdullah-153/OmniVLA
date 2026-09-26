@@ -341,6 +341,7 @@ tags: [desktop]
 
     const stepLines = [];
     const outputLines = [];
+    const criteriaLines = [];
     let prescribedSteps = 35;
 
     const budgetMatch = planSource.match(/(?:prescribed|estimated)\s*(?:step\s*budget|steps?)?\s*[:=]?\s*(\d+)/i);
@@ -348,30 +349,43 @@ tags: [desktop]
       prescribedSteps = parseInt(budgetMatch[1], 10) || 35;
     }
 
-    let inOutput = false;
+    let section = "steps";
     for (const line of planSource.split("\n")) {
       const clean = line.trim();
       if (!clean) continue;
-      if (/^\*{0,2}expected\s+(?:output|deliverable|result)\*{0,2}\s*[:=]?/i.test(clean)) {
-        inOutput = true;
-        const remainder = clean.replace(/^\*{0,2}expected\s+(?:output|deliverable|result)\*{0,2}\s*[:=]?\s*/i, "").trim();
+      if (/^\*{0,2}expected\s+(?:output|deliverable|result)\s*:?\*{0,2}\s*[:=]?/i.test(clean)) {
+        section = "output";
+        const remainder = clean.replace(/^\*{0,2}expected\s+(?:output|deliverable|result)\s*:?\*{0,2}\s*[:=]?\s*/i, "").trim();
         if (remainder) outputLines.push(remainder);
         continue;
       }
+      if (/^\*{0,2}success\s+criteria\s*:?\*{0,2}\s*[:=]?/i.test(clean)) {
+        section = "criteria";
+        const remainder = clean.replace(/^\*{0,2}success\s+criteria\s*:?\*{0,2}\s*[:=]?\s*/i, "").trim();
+        if (remainder) criteriaLines.push(remainder);
+        continue;
+      }
       if (/^(?:prescribed|estimated)\s*steps?\b/i.test(clean)) continue;
+
+      if (section === "criteria" && /^(?:[-*]\s*(?:\[[ xX]\]\s*)?|\d+[.):]\s*)/.test(clean)) {
+        criteriaLines.push(clean.replace(/^(?:[-*]\s*(?:\[[ xX]\]\s*)?|\d+[.):]\s*)/, "").trim());
+        continue;
+      }
 
       const stepMatch = clean.match(/^\s*(?:[-*]\s*)?(?:step\s*)?(\d+)[.):]\s*(.+?)$/i);
       if (stepMatch) {
         if (!codeBlockMatch && /^\[.+?\]\(https?:\/\//i.test(stepMatch[2].trim())) {
           return null;
         }
-        inOutput = false;
+        section = "steps";
         stepLines.push(stepMatch[2].trim());
         continue;
       }
 
-      if (inOutput) {
+      if (section === "output") {
         outputLines.push(clean);
+      } else if (section === "criteria" && criteriaLines.length) {
+        criteriaLines[criteriaLines.length - 1] += " " + clean;
       } else if (stepLines.length > 0) {
         stepLines[stepLines.length - 1] += " " + clean;
       }
@@ -384,14 +398,22 @@ tags: [desktop]
       outro,
       steps: stepLines,
       expectedOutput: outputLines.join(" ").trim(),
+      successCriteria: criteriaLines.slice(0, 5),
       prescribedSteps,
     };
   }
 
-  function renderAssistantMessageBody(content, messageIndex, isLatest, contextRefs = []) {
+  function renderAssistantMessageBody(content, messageIndex, isLatest, contextRefs = [], completionEvidence = null) {
     const plan = extractPlanCardData(content);
     if (!plan) {
-      return renderMarkdown(content);
+      const evidenceHtml = completionEvidence && ["visual", "operator", "inconclusive"].includes(completionEvidence.source) ? `
+        <details class="completion-evidence">
+          <summary>Completion check: ${escapeHtml(completionEvidence.source)}</summary>
+          <p>${escapeHtml(completionEvidence.evidence || "No detailed evidence recorded.")}</p>
+          ${Array.isArray(completionEvidence.criteria) && completionEvidence.criteria.length ? `<ul>${completionEvidence.criteria.map((check) =>
+            `<li>${check.met ? "✓" : "○"} ${escapeHtml(check.evidence || "No visible evidence")}</li>`).join("")}</ul>` : ""}
+        </details>` : "";
+      return renderMarkdown(content) + evidenceHtml;
     }
 
     const prefaceHtml = plan.preface ? renderMarkdown(plan.preface) : "";
@@ -418,6 +440,11 @@ tags: [desktop]
         `).join("")}</ul>
       </details>
     ` : "";
+    const criteriaHtml = plan.successCriteria.length ? `
+      <div class="plan-card-criteria"><strong>Success criteria</strong><ul>
+        ${plan.successCriteria.map((criterion) => `<li>${escapeHtml(criterion)}</li>`).join("")}
+      </ul></div>
+    ` : "";
 
     const cardHtml = `
       <div class="message-plan-card">
@@ -433,6 +460,7 @@ tags: [desktop]
             ${stepsHtml}
           </ol>
           ${outputHtml}
+          ${criteriaHtml}
           ${contextHtml}
         </div>
         <div class="plan-card-footer">
@@ -471,7 +499,7 @@ tags: [desktop]
       const role = message.role === "user" ? "user" : "assistant";
       const isLatest = messageIndex === latestPlanIndex;
       const bodyHtml = role === "assistant"
-        ? renderAssistantMessageBody(message.content, messageIndex, isLatest, message.context_refs)
+        ? renderAssistantMessageBody(message.content, messageIndex, isLatest, message.context_refs, message.completion_evidence)
         : renderMarkdown(message.content);
       return `<article class="message is-${role}"><div class="message-avatar" aria-hidden="true">${role === "user" ? "You" : "O"}</div><div class="message-body">${bodyHtml}</div></article>`;
     });

@@ -192,8 +192,55 @@ def test_completion_requires_independent_outcome_not_pixel_changes():
     agent.request_intervention=MagicMock(return_value="deny")
     assert agent._verify_completion("Save the report", action("terminate",status="success")) is False
     agent.request_intervention.assert_called_once()
+    assert agent.completion_evidence["source"] == "inconclusive"
     agent.vlm.verify_completion.return_value={"verified":True,"evidence":"Report saved confirmation and expected filename are visible."}
     assert agent._verify_completion("Save the report", action("terminate",status="success")) is True
+    assert agent.completion_evidence["source"] == "visual"
+
+
+def test_plan_success_criteria_survive_review_and_execution_contract():
+    from cogniagent.gui.server_manager import parse_agentic_plan
+    raw=("```desktop-plan\n1. Open report\n2. Save report\n"
+         "**Expected Output:** Saved report\n**Success Criteria:**\n"
+         "- [ ] Report has the requested filename\n- [ ] Saved confirmation is visible\n"
+         "Prescribed Steps: 8\n```")
+    parsed=parse_agentic_plan(raw)
+    assert parsed["success_criteria"] == ["Report has the requested filename", "Saved confirmation is visible"]
+    database=server._default_database()
+    database["chats"][0].update(status="plan_created",intent="Save report",reviewed_plan=server._plan_copy(parsed["formatted"]))
+    stored=server._active_plan(database)
+    assert stored["success_criteria"] == parsed["success_criteria"]
+    assert stored["prescribed_steps"] == 8
+
+
+def test_visual_verifier_requires_every_success_criterion():
+    from PIL import Image
+    from cogniagent.perception.vlm_engine import VLMEngine
+    engine=object.__new__(VLMEngine)
+    engine.capture_screen=MagicMock(return_value=(Image.new("RGB",(2,2)),(2,2)))
+    engine.encode_screenshot=MagicMock(return_value="aGVsbG8=")
+    engine.model_type="openai"
+    engine.model_name="test"
+    engine.client=MagicMock()
+    reply=engine.client.chat.completions.create.return_value.choices.__getitem__.return_value.message
+    # MagicMock's list indexing must return the same reply for each call.
+    reply.content=json.dumps({"verified":True,"evidence":"Filename visible", "criteria":[
+        {"met":True,"evidence":"Filename visible"}, {"met":False,"evidence":"No save confirmation"}]})
+    result=engine.verify_completion("Save report","Saved report",["Filename visible","Save confirmation visible"])
+    assert result["verified"] is False
+    reply.content=json.dumps({"verified":True,"evidence":"Both visible", "criteria":[
+        {"met":True,"evidence":"Filename visible"}, {"met":True,"evidence":"Save confirmation visible"}]})
+    assert engine.verify_completion("Save report","Saved report",["Filename visible","Save confirmation visible"])["verified"] is True
+
+
+def test_completion_evidence_survives_chat_normalization():
+    database=server._default_database()
+    database["chats"][0]["chat_history"]=[{"role":"assistant","kind":"run_result","content":"Report saved.",
+        "completion_evidence":{"source":"visual","evidence":"Filename and save confirmation visible.",
+                               "criteria":[{"met":True,"evidence":"Filename visible"}]}}]
+    message=server._normalize_database(database)["chats"][0]["chat_history"][0]
+    assert message["completion_evidence"]["source"] == "visual"
+    assert message["completion_evidence"]["criteria"][0]["met"] is True
 
 
 def test_personal_memory_uses_preferences_and_relevant_facts(tmp_path):

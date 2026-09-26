@@ -566,6 +566,7 @@ def execute_agent_task(task, run_policy=None):
         agent.check_pause_callback = lambda: bool(agent_status.get("paused", False))
         agent.action_policy = {"mode": run_policy.get("mode", "supervised")}
         agent.expected_output = run_policy.get("expected_output", "")
+        agent.success_criteria = list(run_policy.get("success_criteria", []))[:5]
         active_agent = agent
         
         def on_status_update(status, detail):
@@ -753,7 +754,8 @@ def execute_agent_task(task, run_policy=None):
                                 )
                             )
                         ]
-                        c["chat_history"].append({"role": "assistant", "kind": "run_result", "content": summary})
+                        c["chat_history"].append({"role": "assistant", "kind": "run_result", "content": summary,
+                                                  "completion_evidence": result.get("completion_evidence")})
                         save_chats_db(db)
                         try:
                             from cogniagent.memory.user_profile import get_user_profile

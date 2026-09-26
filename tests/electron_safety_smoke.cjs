@@ -19,6 +19,10 @@ app.whenReady().then(async()=>{
     await waitFor(win,`document.getElementById('local-state-label')?.textContent !== 'Checking' && document.getElementById('chat-list')?.children.length > 0`);
     const setup = await win.webContents.executeJavaScript(`(async()=>{ const session=await (await fetch('/api/session')).json(); return {token:!!session.token,manualBudget:!!document.getElementById('max-steps'),profileSection:!!document.getElementById('memory-provenance')}; })()`);
     if(!setup.token || setup.manualBudget || !setup.profileSection) throw new Error('Console setup failed: '+JSON.stringify(setup));
+    await win.webContents.executeJavaScript(`fetch('/__fixture/plan',{method:'POST'})`);
+    await waitFor(win,`document.querySelector('.plan-card-criteria li')?.textContent.includes('Requested filename') && document.querySelector('.plan-context summary')?.textContent.includes('Personal context supplied')`);
+    await win.webContents.executeJavaScript(`fetch('/__fixture/completed',{method:'POST'})`);
+    await waitFor(win,`document.querySelector('.completion-evidence summary')?.textContent.includes('visual') && document.querySelector('.completion-evidence p')?.textContent.includes('Filename')`);
     await win.webContents.executeJavaScript(`fetch('/__fixture/approval',{method:'POST'}).then(r=>r.json()).then(r=>{window.__fixture=r;})`);
     await waitFor(win,`!document.getElementById('intervention-card').hidden && document.getElementById('intervention-card').dataset.requestId === window.__fixture?.id`);
     await delay(250);

@@ -248,6 +248,8 @@ def _plan_copy(content: Any, limit: int = 24_000) -> str:
                 value = parsed["steps_text"]
                 if parsed.get("expected_output"):
                     value += "\nExpected Output: " + parsed["expected_output"]
+                if parsed.get("success_criteria"):
+                    value += "\nSuccess Criteria:\n" + "\n".join("- " + criterion for criterion in parsed["success_criteria"])
                 value += "\nPrescribed Steps: " + str(parsed["prescribed_steps"])
             else:
                 value = extract_planner_output(value)
@@ -326,6 +328,17 @@ def _normalize_database(database: Any) -> dict[str, Any]:
                 if _is_internal_assistant_message(content):
                     continue
             normalized_message = {"role": message["role"], "content": content[:24_000]}
+            if message["role"] == "assistant" and isinstance(message.get("completion_evidence"), dict):
+                raw_evidence = message["completion_evidence"]
+                if raw_evidence.get("source") in {"visual", "operator", "inconclusive"}:
+                    normalized_message["completion_evidence"] = {
+                        "source": raw_evidence["source"],
+                        "evidence": str(raw_evidence.get("evidence", ""))[:1500],
+                        "criteria": [
+                            {"met": check.get("met") is True, "evidence": str(check.get("evidence", ""))[:300]}
+                            for check in raw_evidence.get("criteria", [])[:5] if isinstance(check, dict)
+                        ] if isinstance(raw_evidence.get("criteria"), list) else [],
+                    }
             if message["role"] == "assistant" and isinstance(message.get("context_refs"), list):
                 normalized_message["context_refs"] = [
                     {"kind": str(ref.get("kind", ""))[:24],
@@ -561,6 +574,7 @@ def _active_plan(database: dict[str, Any]) -> dict[str, Any] | None:
         "risk": assess_task_risk(source_task + "\n" + plan),
         "prescribed_steps": max(1, min(config.safety.max_steps_per_task, int(budget))),
         "expected_output": parsed.get("expected_output", ""),
+        "success_criteria": parsed.get("success_criteria", []),
     }
 
 
@@ -1113,6 +1127,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 started = _start_agent_task(execution_prompt, {
                     "mode": policy.get("mode", "supervised"), "chat_id": run_chat_id,
                     "max_steps": max_steps, "expected_output": stored_plan.get("expected_output", ""),
+                    "success_criteria": stored_plan.get("success_criteria", []),
                 })
                 if not started:
                     chat.clear()

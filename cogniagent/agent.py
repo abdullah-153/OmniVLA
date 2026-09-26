@@ -48,6 +48,8 @@ class CogniAgent:
         self.run_id = secrets.token_urlsafe(18)
         self.request_intervention = None
         self.expected_output = ""
+        self.success_criteria = []
+        self.completion_evidence = None
         self.executor.check_cancelled = self._should_stop
         self.executor.check_paused = lambda: bool(callable(self.check_pause_callback) and self.check_pause_callback())
 
@@ -109,14 +111,20 @@ class CogniAgent:
         if self._should_stop():
             return False
         try:
-            outcome = self.vlm.verify_completion(task, self.expected_output)
+            outcome = self.vlm.verify_completion(task, self.expected_output, self.success_criteria)
         except Exception:
             outcome = {"verified": False, "evidence": "Independent verification was unavailable."}
         if isinstance(outcome, dict) and outcome.get("verified") is True and outcome.get("evidence"):
+            self.completion_evidence = {"source": "visual", "evidence": str(outcome["evidence"])[:1500],
+                                        "criteria": outcome.get("criteria", [])[:5]}
             return True
         reason = outcome.get("evidence", "The outcome could not be independently established.") if isinstance(outcome, dict) else "Verification unavailable."
-        answer = self._ask("completion", f"Confirm the requested outcome was achieved: {self.expected_output or task[:400]}\n{reason}", result.get("parsed_action"))
-        return answer == "approve" and not self._should_stop()
+        requirements = "; ".join(self.success_criteria) or self.expected_output or task[:400]
+        answer = self._ask("completion", f"Confirm the requested outcome was achieved: {requirements}\n{reason}", result.get("parsed_action"))
+        accepted = answer == "approve" and not self._should_stop()
+        self.completion_evidence = {"source": "operator" if accepted else "inconclusive",
+                                    "evidence": str(reason)[:1500], "criteria": outcome.get("criteria", [])[:5] if isinstance(outcome, dict) else []}
+        return accepted
 
     @staticmethod
     def _memory_action(parsed_action: dict) -> str:
@@ -289,6 +297,7 @@ class CogniAgent:
 
     def run_task(self, task: str, max_steps: int | None = None) -> dict:
         """Run a desktop task end-to-end using pure VLM perception and Win32 execution."""
+        self.completion_evidence = None
         logger.info("Starting desktop task, run %s", self.run_id)
         start_time = time.time()
         
@@ -801,7 +810,8 @@ class CogniAgent:
             "total_time_ms": total_time,
             "steps": step_records,
             "terminal_reason": final_terminal_reason,
-            "final_thought": final_thought
+            "final_thought": final_thought,
+            "completion_evidence": self.completion_evidence,
         }
 
 

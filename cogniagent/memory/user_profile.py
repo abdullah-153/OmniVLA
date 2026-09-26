@@ -199,6 +199,8 @@ class UserProfileMemory:
 
     def get_planner_context(self, query=""):
         data = self.build_context_pack(query)
+        if str(query).strip() and not (data["name"] or data["preferences"] or data["relevant_facts"] or data["successful_workflows"]):
+            return ""
         references = data.pop("references")
         while len(json.dumps(data, ensure_ascii=False)) > 1400:
             if data["successful_workflows"]:
