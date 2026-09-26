@@ -425,6 +425,19 @@ def test_model_scope_must_be_supported_by_direct_evidence(tmp_path):
     assert len(profile.to_dict()["scoped_preferences"]) == 1
 
 
+def test_project_browser_learning_does_not_change_global_default(tmp_path):
+    profile = UserProfileMemory(str(tmp_path))
+    profile.update_preference("browser", "default", "Chrome")
+    profile.learn_from_message("For Project Atlas, always use Firefox for browser.")
+    assert profile.build_context_pack("Search the web")["preferences"]["browser"]["default"] == "Chrome"
+    assert profile.build_context_pack("Search the web for Project Atlas")["preferences"]["browser"]["default"] == "Firefox"
+    profile.learn_from_message("My default browser is Edge. For Project Atlas, always use Firefox for browser.")
+    assert profile.to_dict()["preferences"]["browser"]["default"] == "Microsoft Edge"
+    profile.learn_from_message("For Project Atlas, always use Firefox for browser. For Project Apollo, always use Chrome for web.")
+    assert profile.to_dict()["preferences"]["browser"]["default"] == "Microsoft Edge"
+    assert profile.build_context_pack("Project Apollo web search")["preferences"]["browser"]["default"] == "Chrome"
+
+
 def test_conflicting_project_scopes_require_clarification(tmp_path):
     profile=UserProfileMemory(str(tmp_path))
     profile.update_scoped_preference("Project Atlas", "email", "service", "Gmail")

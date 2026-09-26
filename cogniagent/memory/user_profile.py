@@ -538,19 +538,23 @@ class UserProfileMemory:
         if not self._data.get("learning_enabled") or not text or SENSITIVE.search(text):
             return []
         learned = []
+        scope_pattern = re.compile(r"(?i)\bfor\s+(Project\s+[\w-]{3,40}),?\s+(?:always\s+)?use\s+(Outlook|Gmail|Firefox|Chrome|Microsoft Edge)\s+for\s+(email|mail|browser|web)\b")
+        scoped_clauses = list(scope_pattern.finditer(text))
+        # A project clause is not evidence for a global default. Preserve any
+        # independent global statement outside that clause.
+        global_text = scope_pattern.sub(" ", text)
         # Explicit ownership is required: a recipient's email is not the user's default.
-        email = re.search(r"(?i)\bmy (?:primary |default )?email(?: address| account)?\s*(?:is|:|=)\s*([\w.+-]+@[\w.-]+\.[a-z]{2,})", text)
+        email = re.search(r"(?i)\bmy (?:primary |default )?email(?: address| account)?\s*(?:is|:|=)\s*([\w.+-]+@[\w.-]+\.[a-z]{2,})", global_text)
         if email:
             account = email.group(1).rstrip(".")
             self.update_preference("email", "account", account, source=email.group(0))
             learned.append("Email preference updated.")
-        browser = re.search(r"(?i)\b(?:i prefer|my default browser is|always use|default to)\s+(google chrome|chrome|microsoft edge|edge|firefox|brave)\b", text)
+        browser = re.search(r"(?i)\b(?:i prefer|my default browser is|always use|default to)\s+(google chrome|chrome|microsoft edge|edge|firefox|brave)\b", global_text)
         if browser:
             value = {"chrome": "Google Chrome", "edge": "Microsoft Edge"}.get(browser.group(1).lower(), browser.group(1).title())
             self.update_preference("browser", "default", value, source=browser.group(0))
             learned.append("Browser preference updated.")
-        scoped = re.search(r"(?i)\bfor\s+(Project\s+[\w-]{3,40}),?\s+(?:always\s+)?use\s+(Outlook|Gmail|Firefox|Chrome|Microsoft Edge)\s+for\s+(email|mail|browser|web)\b", text)
-        if scoped:
+        for scoped in scoped_clauses:
             category = "email" if scoped.group(3).lower() in {"email", "mail"} else "browser"
             key = "service" if category == "email" else "default"
             self.update_scoped_preference(scoped.group(1), category, key, scoped.group(2), source=scoped.group(0))
