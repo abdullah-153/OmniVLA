@@ -32,6 +32,7 @@ _CATEGORY_HINTS = {
     "email": {"email", "mail", "inbox", "gmail", "outlook", "recipient", "compose"},
     "browser": {"browser", "web", "website", "search", "chrome", "firefox", "edge", "brave", "url"},
 }
+WORKFLOW_MAX_AGE_SECONDS = 90 * 24 * 60 * 60
 
 
 class UserProfileMemory:
@@ -242,6 +243,28 @@ class UserProfileMemory:
                 return True
             return False
 
+    def remove_record(self, record_id):
+        """Forget a sourced memory and the value it currently supplies."""
+        with self._lock:
+            record = next((m for m in self._data["memories"] if m.get("id") == record_id), None)
+            if record is None:
+                return False
+            key = str(record.get("key", ""))
+            kind = record.get("kind")
+            if kind == "preference" and key.startswith("preference:"):
+                parts = key.split(":", 2)
+                if len(parts) == 3:
+                    category, preference_key = parts[1:]
+                    self._data["preferences"].get(category, {}).pop(preference_key, None)
+            elif kind == "scoped_preference" and key.startswith("scoped:"):
+                self._data["scoped_preferences"] = [item for item in self._data["scoped_preferences"]
+                    if f"scoped:{str(item.get('scope', '')).casefold()}:{item.get('category')}:{item.get('key')}" != key]
+            elif kind == "fact":
+                self._data["facts"] = [fact for fact in self._data["facts"] if fact != record.get("value")]
+            self._data["memories"] = [m for m in self._data["memories"] if m.get("id") != record_id]
+            self._save_unlocked()
+            return True
+
     def configure_learning(self, enabled):
         if type(enabled) is not bool:
             raise ValueError("Personal learning must be true or false.")
@@ -342,7 +365,10 @@ class UserProfileMemory:
                     selected_records.append({"id": record.get("id"), "kind": "fact", "key": record.get("key"), "value": fact, "source": record.get("source")})
                 if len(facts) >= 8:
                     break
-            workflows = sorted(self._data["workflows"], key=lambda w: (self._relevance(query, w.get("intent", "")), w.get("updated_at", 0)), reverse=True)
+            now = int(time.time())
+            workflows = sorted((w for w in self._data["workflows"]
+                                if 0 <= now - int(w.get("updated_at", 0) or 0) <= WORKFLOW_MAX_AGE_SECONDS),
+                               key=lambda w: (self._relevance(query, w.get("intent", "")), w.get("updated_at", 0)), reverse=True)
             relevant_workflows = [w for w in workflows if overview or self._relevance(query, w.get("intent", "")) > 0][:2]
             entities_by_id = {entity.get("id"): entity for entity in self._data["entities"]}
             matched_entities = []
@@ -450,6 +476,8 @@ class UserProfileMemory:
         with self._lock:
             # Task-specific successes are retrieval hints, never changes to global preferences.
             workflows = self._data["workflows"]
+            workflows[:] = [w for w in workflows
+                            if 0 <= int(time.time()) - int(w.get("updated_at", 0) or 0) <= WORKFLOW_MAX_AGE_SECONDS]
             workflows[:] = [w for w in workflows if w.get("intent") != intent[:500]]
             workflows.append({"intent": intent[:500], "summary": str(summary)[:500] if not SENSITIVE.search(str(summary)) else "Verified task completed.",
                               "actions": [str(s.get("action", ""))[:40] for s in steps[:20]], "updated_at": int(time.time())})

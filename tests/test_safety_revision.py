@@ -486,6 +486,34 @@ def test_profile_v2_migration_preserves_original_and_adds_graph(tmp_path):
     assert json.loads((tmp_path/"user_profile.v2.backup.json").read_text(encoding="utf-8")) == original
 
 
+def test_forgetting_a_sourced_record_removes_its_planning_value(tmp_path):
+    profile = UserProfileMemory(str(tmp_path))
+    profile.update_preference("email", "service", "Outlook")
+    profile.update_scoped_preference("Project Atlas", "email", "service", "Gmail")
+    profile.add_fact("Project Atlas reports are in D:/Atlas.", key="atlas-folder")
+    record_ids = {record["key"]: record["id"] for record in profile.to_dict()["memories"]}
+    assert profile.remove_record(record_ids["scoped:project atlas:email:service"])
+    assert profile.build_context_pack("Check Project Atlas email")["preferences"]["email"]["service"] == "Outlook"
+    assert profile.remove_record(record_ids["preference:email:service"])
+    assert "service" not in profile.build_context_pack("Check my email")["preferences"].get("email", {})
+    assert profile.remove_record(record_ids["atlas-folder"])
+    assert "Project Atlas reports are in D:/Atlas." not in profile.build_context_pack("Project Atlas reports")["relevant_facts"]
+    assert not profile.remove_record(record_ids["atlas-folder"])
+    reloaded = UserProfileMemory(str(tmp_path))
+    assert reloaded.to_dict()["scoped_preferences"] == []
+    assert reloaded.to_dict()["facts"] == []
+
+
+def test_stale_workflow_is_not_reused_as_current_advice(tmp_path):
+    profile = UserProfileMemory(str(tmp_path))
+    profile.learn_from_task("Prepare Project Atlas report", [{"action": "save"}], "success", "Saved.")
+    assert profile.build_context_pack("Prepare Project Atlas report")["successful_workflows"]
+    profile._data["workflows"][0]["updated_at"] -= 91 * 24 * 60 * 60
+    assert profile.build_context_pack("Prepare Project Atlas report")["successful_workflows"] == []
+    profile.learn_from_task("Prepare another report", [{"action": "save"}], "success", "Saved.")
+    assert len(profile.to_dict()["workflows"]) == 1
+
+
 @pytest.fixture
 def http_app(tmp_path, monkeypatch):
     monkeypatch.setattr(server,"CHATS_DB_PATH",str(tmp_path/"chats.json"))

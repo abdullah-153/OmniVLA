@@ -119,7 +119,7 @@ tags: [desktop]
     try { await api("/api/profile", { method: "POST", body: { clear_learned: true } }); await fetchStatus(); }
     catch (error) { toast(error.message, true); }
   });
-  for (const [listId, field] of [["memory-entities", "delete_entity_id"], ["memory-relations", "delete_relation_id"]]) {
+  for (const [listId, field] of [["memory-entities", "delete_entity_id"], ["memory-relations", "delete_relation_id"], ["memory-provenance", "delete_record_id"]]) {
     $(listId).addEventListener("click", async (event) => {
       const button = event.target.closest("button[data-memory-id]");
       if (!button) return;
@@ -738,9 +738,7 @@ tags: [desktop]
     $("memory-relations").replaceChildren(...relations.slice(-30).map(relation =>
       memoryItem(`${names.get(relation.subject_id) || "Unknown"} → ${relation.predicate} → ${names.get(relation.object_id) || "Unknown"}`, relation.source, relation.id)));
     $("memory-provenance").replaceChildren(...(profile.memories || []).slice(-20).reverse().map(record => {
-      const item = document.createElement("li");
-      item.textContent = `${record.key}: ${record.value} — Source: ${record.source}`;
-      return item;
+      return memoryItem(`${record.key}: ${record.value}`, record.source, record.id);
     }));
   }
 

@@ -1873,6 +1873,8 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                     profile.add_fact(payload["fact"])
                 if "delete_fact_index" in payload and isinstance(payload["delete_fact_index"], int):
                     profile.remove_fact(payload["delete_fact_index"])
+                if isinstance(payload.get("delete_record_id"), str):
+                    profile.remove_record(payload["delete_record_id"])
                 if "entity" in payload and isinstance(payload["entity"], dict):
                     entity = payload["entity"]
                     profile.upsert_entity(str(entity.get("kind", "")), str(entity.get("name", "")), source="settings")
