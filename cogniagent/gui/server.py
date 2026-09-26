@@ -326,6 +326,13 @@ def _normalize_database(database: Any) -> dict[str, Any]:
                 if _is_internal_assistant_message(content):
                     continue
             normalized_message = {"role": message["role"], "content": content[:24_000]}
+            if message["role"] == "assistant" and isinstance(message.get("context_refs"), list):
+                normalized_message["context_refs"] = [
+                    {"kind": str(ref.get("kind", ""))[:24],
+                     "label": str(ref.get("label", ""))[:160],
+                     "source": str(ref.get("source", ""))[:160]}
+                    for ref in message["context_refs"][:10] if isinstance(ref, dict)
+                ]
             if message["role"] == "assistant" and (message.get("kind") == "run_result" or _is_terminal_summary(content)):
                 normalized_message["kind"] = "run_result"
                 safe_history = [
@@ -857,14 +864,12 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 chats_rag.index_message(chat_id, "user", message)
                 rag_context = chats_rag.search_context(message, chat_id)
 
-            profile_context = ""
             try:
                 from cogniagent.memory.user_profile import get_user_profile
                 user_prof = get_user_profile()
                 user_prof.learn_from_message(message)
-                profile_context = user_prof.get_planner_context(message)
             except Exception as profile_err:
-                logger.debug("Failed to get user profile context: %s", profile_err)
+                logger.debug("Failed to learn explicit personal context: %s", profile_err)
 
             def on_activity(act: str) -> None:
                 with gui_app.status_lock:
@@ -875,7 +880,6 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 message,
                 chat_history=chat_history,
                 rag_context=rag_context,
-                user_profile_context=profile_context,
                 activity_callback=on_activity,
             )
             if not response or not str(response).strip():
@@ -888,6 +892,19 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             from cogniagent.gui.server_manager import parse_agentic_plan
             parsed_plan = parse_agentic_plan(response)
             has_plan = parsed_plan.get("has_plan", False)
+            context_refs = []
+            try:
+                from cogniagent.memory.user_profile import get_user_profile
+                pack = get_user_profile().build_context_pack(message)
+                context_refs = [
+                    {"kind": ref["kind"], "label": str(ref["value"])[:160],
+                     "source": "Settings" if ref["source"] == "settings" else "Your earlier statement"}
+                    for ref in pack["references"][:8]
+                ]
+                context_refs.extend({"kind": "workflow", "label": w.get("intent", "")[:160], "source": "Completed task"}
+                                    for w in pack["successful_workflows"][:2])
+            except Exception as profile_err:
+                logger.debug("Failed to identify supplied personal context: %s", profile_err)
 
             if chats_rag is not None:
                 chats_rag.index_message(chat_id, "assistant", response)
@@ -896,7 +913,8 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 database = load_chats_db()
                 chat = _find_chat(database, chat_id)
                 if chat:
-                    chat["chat_history"].append({"role": "assistant", "content": response})
+                    chat["chat_history"].append({"role": "assistant", "content": response,
+                                                 "context_refs": context_refs})
                     if has_plan:
                         chat["reviewed_plan"] = parsed_plan.get("formatted") or response
                         chat["status"] = "plan_created"

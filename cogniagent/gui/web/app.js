@@ -388,7 +388,7 @@ tags: [desktop]
     };
   }
 
-  function renderAssistantMessageBody(content, messageIndex, isLatest) {
+  function renderAssistantMessageBody(content, messageIndex, isLatest, contextRefs = []) {
     const plan = extractPlanCardData(content);
     if (!plan) {
       return renderMarkdown(content);
@@ -410,6 +410,14 @@ tags: [desktop]
         <span>${escapeHtml(plan.expectedOutput)}</span>
       </div>
     ` : "";
+    const contextHtml = Array.isArray(contextRefs) && contextRefs.length ? `
+      <details class="plan-context">
+        <summary>Personal context supplied to the planner (${contextRefs.length})</summary>
+        <ul>${contextRefs.map((ref) => `
+          <li><span>${escapeHtml(ref.label || "")}</span><small>${escapeHtml(ref.source || "")}</small></li>
+        `).join("")}</ul>
+      </details>
+    ` : "";
 
     const cardHtml = `
       <div class="message-plan-card">
@@ -425,6 +433,7 @@ tags: [desktop]
             ${stepsHtml}
           </ol>
           ${outputHtml}
+          ${contextHtml}
         </div>
         <div class="plan-card-footer">
           <button class="plan-card-execute" data-plan-index="${messageIndex}" data-execute="true" type="button">
@@ -462,7 +471,7 @@ tags: [desktop]
       const role = message.role === "user" ? "user" : "assistant";
       const isLatest = messageIndex === latestPlanIndex;
       const bodyHtml = role === "assistant"
-        ? renderAssistantMessageBody(message.content, messageIndex, isLatest)
+        ? renderAssistantMessageBody(message.content, messageIndex, isLatest, message.context_refs)
         : renderMarkdown(message.content);
       return `<article class="message is-${role}"><div class="message-avatar" aria-hidden="true">${role === "user" ? "You" : "O"}</div><div class="message-body">${bodyHtml}</div></article>`;
     });

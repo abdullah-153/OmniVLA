@@ -204,11 +204,38 @@ def test_personal_memory_uses_preferences_and_relevant_facts(tmp_path):
     profile.add_fact("Research reports belong in D:/Research.")
     for n in range(12): profile.add_fact(f"Unrelated preference number {n}.")
     context=profile.get_planner_context("Save my research report")
-    assert "D:/Research" in context and "Outlook" in context and "Firefox" in context
+    assert "D:/Research" in context and "Outlook" not in context and "Firefox" not in context
+    mail_context=profile.get_planner_context("Check my email")
+    assert "Outlook" in mail_context and "owner@example.invalid" in mail_context
     assert "ak1399er" not in context and "Gmail" not in context
     profile.learn_from_message("Send this to recipient@gmail.com using Chrome once.")
     assert profile.to_dict()["preferences"]["email"]["account"] == "owner@example.invalid"
     assert profile.to_dict()["preferences"]["browser"]["default"] == "Firefox"
+
+
+def test_context_pack_scopes_preferences_and_exposes_provenance(tmp_path):
+    profile=UserProfileMemory(str(tmp_path))
+    profile.update_preference("email", "service", "Outlook")
+    profile.update_preference("browser", "default", "Firefox")
+    profile.add_fact("Research reports belong in D:/Research.", source="Remember that research reports belong in D:/Research.")
+    profile.add_fact("Travel receipts belong in D:/Travel.")
+    pack=profile.build_context_pack("Find my research report")
+    assert pack["preferences"] == {}
+    assert pack["relevant_facts"] == ["Research reports belong in D:/Research."]
+    assert len(pack["references"]) == 1
+    assert pack["references"][0]["source"].startswith("Remember that")
+    mail=profile.build_context_pack("Check my email")
+    assert mail["preferences"]["email"]["service"] == "Outlook"
+    assert "browser" not in mail["preferences"]
+
+
+def test_plan_context_references_survive_database_normalization():
+    database=server._default_database()
+    database["chats"][0]["chat_history"]=[{"role":"assistant", "content":"1. Open a report\n2. Save it",
+                                               "context_refs":[{"kind":"fact","label":"Reports in D:/Research","source":"Your earlier statement"}]}]
+    normalized=server._normalize_database(database)
+    refs=normalized["chats"][0]["chat_history"][0]["context_refs"]
+    assert refs == [{"kind":"fact","label":"Reports in D:/Research","source":"Your earlier statement"}]
 
 
 def test_model_memory_correction_and_evidence(tmp_path):

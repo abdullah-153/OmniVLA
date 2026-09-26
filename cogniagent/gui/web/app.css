@@ -1411,3 +1411,8 @@ body.execution-closed .execution-panel { opacity: 0; pointer-events: none; trans
 #pairing-details, #memory-provenance { overflow-wrap: anywhere; }
 #memory-provenance li { margin-block: 10px; }
 @media (max-width: 700px) { .intervention-card, .pairing-card { inset-inline-end: 16px; bottom: 16px; } }
+.plan-context { margin-top: 12px; border-top: 1px solid var(--border, rgba(255,255,255,.12)); padding-top: 10px; }
+.plan-context summary { cursor: pointer; font-size: .83rem; font-weight: 600; }
+.plan-context ul { margin: 9px 0 0; padding-left: 20px; }
+.plan-context li { margin: 5px 0; font-size: .82rem; }
+.plan-context small { display: block; opacity: .7; }

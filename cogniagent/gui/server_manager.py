@@ -630,7 +630,8 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
         if not start_planner_server(use_gpu=False):
             raise RuntimeError("The planning model is unavailable.")
 
-        user_profile_context = learn_personal_context(message)
+        if not user_profile_context:
+            user_profile_context = learn_personal_context(message)
 
         # Proactively detect personal agent tool intents upfront
         tool_contexts = []
