@@ -95,16 +95,19 @@ class SkillRegistry:
         return list(self._skills_cache.values())
 
     def save_skill(self, skill: SkillDefinition) -> str:
-        """Save a SkillDefinition to skills/<skill_name>/SKILL.md."""
+        """Update an existing source in place or create a canonical Markdown skill."""
         skill.name = self.validate_skill_name(skill.name)
         target_dir = os.path.join(self.skills_dir, skill.name)
         os.makedirs(target_dir, exist_ok=True)
-        fpath = os.path.join(target_dir, "SKILL.md")
+        fpath = self._skill_paths.get(skill.name, os.path.join(target_dir, "SKILL.md"))
+        content = (json.dumps(skill.to_dict(), ensure_ascii=False, indent=2)
+                   if fpath.lower().endswith(".json") else skill.to_markdown())
+        encoded = content.encode("utf-8")
 
         previous_path = self._skill_paths.get(skill.name, fpath)
         if os.path.isfile(previous_path):
             previous = Path(previous_path).read_bytes()
-            if previous != skill.to_markdown().encode("utf-8"):
+            if previous != encoded:
                 history = Path(target_dir) / ".history"
                 history.mkdir(exist_ok=True)
                 digest = hashlib.sha256(previous).hexdigest()
@@ -115,8 +118,8 @@ class SkillRegistry:
                     snapshot.write_bytes(previous)
 
         temp_path = f"{fpath}.tmp"
-        with open(temp_path, "w", encoding="utf-8") as f:
-            f.write(skill.to_markdown())
+        with open(temp_path, "wb") as f:
+            f.write(encoded)
         os.replace(temp_path, fpath)
 
         self._skills_cache[skill.name] = skill
