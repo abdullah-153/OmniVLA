@@ -312,6 +312,10 @@ class SkillRegistry:
 
         if not ranked:
             return None, {}
+        best_score = max(item[0] for item in ranked)
+        if sum(item[0] == best_score for item in ranked) > 1:
+            logger.info("Skill routing abstained: multiple skills share the strongest match.")
+            return None, {}
         _, _, skill, capture = max(ranked, key=lambda item: (item[0], item[1]))
         params: Dict[str, Any] = {}
         if capture:
