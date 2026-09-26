@@ -647,7 +647,7 @@ def learn_personal_context(message):
 
 
 def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_context="", user_profile_context="", persist_in_ram=None,
-                     activity_callback=None, learn_personal_context_enabled=True):
+                     activity_callback=None, learn_personal_context_enabled=True, tool_result_callback=None):
     restart_vla_profile = None
     is_testing = "unittest" in sys.modules or "pytest" in sys.modules
     if persist_in_ram is None:
@@ -669,6 +669,15 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
             format_page=format_webpage_summary, notify=send_notification,
         )
 
+        def use_tool(name, arguments):
+            outcome = gateway.run(name, arguments)
+            if tool_result_callback is not None:
+                try:
+                    tool_result_callback(outcome)
+                except Exception:
+                    logging.exception("Unable to record tool receipt")
+            return outcome
+
         # Proactively detect personal agent tool intents upfront
         tool_contexts = []
 
@@ -676,7 +685,7 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
         if is_file_search and file_pattern:
             if activity_callback:
                 activity_callback(f'Searching local files for "{file_pattern}"...')
-            outcome = gateway.run("FIND_FILES", {"pattern": file_pattern})
+            outcome = use_tool("FIND_FILES", {"pattern": file_pattern})
             if outcome.ok:
                 tool_contexts.append(outcome.content)
             else:
@@ -686,7 +695,7 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
         if is_web_read and web_url:
             if activity_callback:
                 activity_callback(f'Reading webpage {web_url[:40]}...')
-            outcome = gateway.run("READ_WEBPAGE", {"url": web_url})
+            outcome = use_tool("READ_WEBPAGE", {"url": web_url})
             if outcome.ok:
                 tool_contexts.append(outcome.content)
             else:
@@ -696,7 +705,7 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
         if is_notify and (notif_title or notif_msg):
             if activity_callback:
                 activity_callback('Sending desktop notification...')
-            outcome = gateway.run("NOTIFY", {"title": notif_title, "message": notif_msg})
+            outcome = use_tool("NOTIFY", {"title": notif_title, "message": notif_msg})
             if outcome.ok:
                 tool_contexts.append(outcome.content)
             else:
@@ -776,28 +785,28 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
                 if dyn_q:
                     if activity_callback:
                         activity_callback(f'Searching web for "{dyn_q}"...')
-                    tool_feedback = gateway.run("BROWSER_SEARCH", {"query": dyn_q}).content
+                    tool_feedback = use_tool("BROWSER_SEARCH", {"query": dyn_q}).content
                     tool_executed = True
             elif tool_name == "FIND_FILES":
                 dyn_pat = tool_args.get("pattern", "").strip()
                 if dyn_pat:
                     if activity_callback:
                         activity_callback(f'Finding local files matching "{dyn_pat}"...')
-                    tool_feedback = gateway.run("FIND_FILES", {"pattern": dyn_pat}).content
+                    tool_feedback = use_tool("FIND_FILES", {"pattern": dyn_pat}).content
                     tool_executed = True
             elif tool_name == "READ_WEBPAGE":
                 dyn_url = tool_args.get("url", "").strip()
                 if dyn_url:
                     if activity_callback:
                         activity_callback(f'Reading webpage {dyn_url[:40]}...')
-                    tool_feedback = gateway.run("READ_WEBPAGE", {"url": dyn_url}).content
+                    tool_feedback = use_tool("READ_WEBPAGE", {"url": dyn_url}).content
                     tool_executed = True
             elif tool_name == "NOTIFY":
                 dyn_title = tool_args.get("title", "Notification").strip()
                 dyn_body = tool_args.get("message", "Reminder from OmniVLA").strip()
                 if activity_callback:
                     activity_callback('Sending desktop notification...')
-                tool_feedback = gateway.run("NOTIFY", {"title": dyn_title, "message": dyn_body}).content
+                tool_feedback = use_tool("NOTIFY", {"title": dyn_title, "message": dyn_body}).content
                 tool_executed = True
 
             if tool_executed and tool_feedback:

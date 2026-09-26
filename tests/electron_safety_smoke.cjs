@@ -21,6 +21,7 @@ app.whenReady().then(async()=>{
     if(!setup.token || setup.manualBudget || !setup.profileSection) throw new Error('Console setup failed: '+JSON.stringify(setup));
     await win.webContents.executeJavaScript(`fetch('/__fixture/plan',{method:'POST'})`);
     await waitFor(win,`document.querySelector('.plan-card-criteria li')?.textContent.includes('Requested filename') && document.querySelector('.plan-context summary')?.textContent.includes('Personal context supplied')`);
+    await waitFor(win,`[...document.querySelectorAll('.plan-context summary')].some(s=>s.textContent.includes('Tool receipts (1)'))`);
     await win.webContents.executeJavaScript(`fetch('/__fixture/completed',{method:'POST'})`);
     await waitFor(win,`document.querySelector('.completion-evidence summary')?.textContent.includes('visual') && document.querySelector('.completion-evidence p')?.textContent.includes('Filename')`);
     await win.webContents.executeJavaScript(`fetch('/__fixture/memory',{method:'POST'})`);

@@ -509,7 +509,12 @@ tags: [desktop]
       const bodyHtml = role === "assistant"
         ? renderAssistantMessageBody(message.content, messageIndex, isLatest, message.context_refs, message.completion_evidence)
         : renderMarkdown(message.content);
-      return `<article class="message is-${role}"><div class="message-avatar" aria-hidden="true">${role === "user" ? "You" : "O"}</div><div class="message-body">${bodyHtml}</div></article>`;
+      const receipts = role === "assistant" && Array.isArray(message.tool_receipts) && message.tool_receipts.length
+        ? `<details class="plan-context"><summary>Tool receipts (${message.tool_receipts.length})</summary><ul>${message.tool_receipts.map((receipt) =>
+          `<li><span>${escapeHtml(receipt.name)}: ${receipt.ok ? "returned successfully" : "failed"}</span><small>Result fingerprint ${escapeHtml(receipt.result_sha256?.slice(0, 12) || "")} · ${escapeHtml(receipt.elapsed_ms)} ms</small></li>`
+        ).join("")}</ul><p>Receipts show tool dispatch and returned status. They do not prove an external outcome.</p></details>`
+        : "";
+      return `<article class="message is-${role}"><div class="message-avatar" aria-hidden="true">${role === "user" ? "You" : "O"}</div><div class="message-body">${bodyHtml}${receipts}</div></article>`;
     });
     if (data.recovery && Array.isArray(data.recovery.actions)) {
       const actions = data.recovery.actions.map(item =>

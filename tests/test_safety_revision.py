@@ -368,6 +368,16 @@ def test_plan_context_references_survive_database_normalization():
     assert refs == [{"kind":"fact","label":"Reports in D:/Research","source":"Your earlier statement"}]
 
 
+def test_tool_receipts_survive_database_normalization_without_payloads():
+    database = server._default_database()
+    database["chats"][0]["chat_history"] = [{"role": "assistant", "content": "The notification was sent.",
+        "tool_receipts": [{"name": "NOTIFY", "ok": True, "result_sha256": "a" * 64,
+                           "elapsed_ms": 42, "observed_at": 123, "message": "private body"}]}]
+    message = server._normalize_database(database)["chats"][0]["chat_history"][0]
+    assert message["tool_receipts"] == [{"name": "NOTIFY", "ok": True, "result_sha256": "a" * 64,
+                                          "elapsed_ms": 42, "observed_at": 123}]
+
+
 def test_model_memory_correction_and_evidence(tmp_path):
     profile=UserProfileMemory(str(tmp_path))
     for location in ["D:/Old", "D:/New"]:

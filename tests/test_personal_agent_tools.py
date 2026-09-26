@@ -281,6 +281,9 @@ class TestPlannerPersonalAgentIntegration(unittest.TestCase):
         }
         mock_post.return_value = mock_resp
 
-        result = run_planner_chat("send me a notification with title 'Alert' and message 'Done'", [])
+        receipts = []
+        result = run_planner_chat("send me a notification with title 'Alert' and message 'Done'", [],
+                                  tool_result_callback=receipts.append)
         mock_notify.assert_called_once_with("Alert", "Done")
         self.assertIn("sent the toast notification", result)
+        self.assertEqual([(item.name, item.ok) for item in receipts], [("NOTIFY", True)])

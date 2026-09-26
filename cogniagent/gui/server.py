@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import copy
+import hashlib
 from pathlib import Path
 from cogniagent.gui.state_store import StateStore
 import logging
@@ -346,6 +347,17 @@ def _normalize_database(database: Any) -> dict[str, Any]:
                      "label": str(ref.get("label", ""))[:160],
                      "source": str(ref.get("source", ""))[:160]}
                     for ref in message["context_refs"][:10] if isinstance(ref, dict)
+                ]
+            if message["role"] == "assistant" and isinstance(message.get("tool_receipts"), list):
+                normalized_message["tool_receipts"] = [
+                    {"name": str(receipt.get("name", ""))[:40],
+                     "ok": receipt.get("ok") is True,
+                     "result_sha256": str(receipt.get("result_sha256", ""))[:64],
+                     "elapsed_ms": max(0, min(int(receipt["elapsed_ms"]), 300000))
+                     if isinstance(receipt.get("elapsed_ms"), (int, float)) else 0,
+                     "observed_at": max(0, int(receipt["observed_at"]))
+                     if isinstance(receipt.get("observed_at"), (int, float)) else 0}
+                    for receipt in message["tool_receipts"][:12] if isinstance(receipt, dict)
                 ]
             if message["role"] == "assistant" and (message.get("kind") == "run_result" or _is_terminal_summary(content)):
                 normalized_message["kind"] = "run_result"
@@ -906,6 +918,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
 
     def _plan_in_background(self, chat_id: str, message: str, learn_profile: bool = True) -> None:
         try:
+            tool_receipts = []
             chat_history = []
             memory_enabled = False
             with db_lock:
@@ -939,12 +952,22 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                     gui_app.agent_status["planner_activity"] = act
                     gui_app.agent_status["current_action"] = act
 
+            def on_tool_result(outcome) -> None:
+                if len(tool_receipts) >= 12:
+                    return
+                tool_receipts.append({
+                    "name": str(outcome.name)[:40], "ok": outcome.ok is True,
+                    "result_sha256": hashlib.sha256(outcome.content.encode("utf-8")).hexdigest(),
+                    "elapsed_ms": max(0, int(outcome.elapsed_ms)), "observed_at": int(time.time()),
+                })
+
             response = gui_app.run_planner_chat(
                 message,
                 chat_history=chat_history,
                 rag_context=rag_context,
                 activity_callback=on_activity,
                 learn_personal_context=learn_profile,
+                tool_result_callback=on_tool_result,
             )
             if not response or not str(response).strip():
                 response = "I completed your request, but was unable to formulate a detailed response. Please try rephrasing or asking again."
@@ -985,7 +1008,8 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 chat = _find_chat(database, chat_id)
                 if chat:
                     chat["chat_history"].append({"role": "assistant", "content": response,
-                                                 "context_refs": context_refs})
+                                                 "context_refs": context_refs,
+                                                 "tool_receipts": tool_receipts})
                     if has_plan:
                         chat["reviewed_plan"] = parsed_plan.get("formatted") or response
                         chat["status"] = "plan_created"
@@ -1005,7 +1029,8 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 if chat:
                     chat["status"] = "failed"
                     chat["chat_history"].append(
-                        {"role": "assistant", "content": "I couldn't prepare the plan. Please try again."}
+                        {"role": "assistant", "content": "I couldn't prepare the plan. Please try again.",
+                         "tool_receipts": tool_receipts}
                     )
                     chat["execution"] = _normalize_execution_snapshot(
                         {
