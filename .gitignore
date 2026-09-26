@@ -21,3 +21,5 @@ scratch/
 
 chats_db.sqlite3*
 chats_db.json.corrupt-*
+
+skills/.outcomes.sqlite3*

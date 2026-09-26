@@ -54,3 +54,18 @@ def test_identical_save_does_not_create_revision(tmp_path):
     registry.save_skill(skill)
     registry.save_skill(skill)
     assert registry.list_revisions("report") == []
+
+
+def test_outcome_metrics_persist_and_deduplicate_runs(tmp_path):
+    directory = tmp_path / "skills"
+    registry = SkillRegistry(str(directory))
+    assert registry.outcome_summary("report") == []
+    registry.record_outcome("report", "a" * 64, "run-1", True, 1000, 3, "visual")
+    registry.record_outcome("report", "a" * 64, "run-1", True, 1000, 3, "visual")
+    registry.record_outcome("report", "a" * 64, "run-2", False, 3000, 8, "inconclusive")
+    registry.record_outcome("report", "b" * 64, "run-3", True, 500, 2, "operator")
+    summaries = {row["revision"]: row for row in SkillRegistry(str(directory)).outcome_summary("report")}
+    assert summaries["a" * 64]["runs"] == 2
+    assert summaries["a" * 64]["successful_runs"] == 1
+    assert summaries["a" * 64]["average_duration_ms"] == 2000
+    assert summaries["b" * 64]["runs"] == 1

@@ -10,6 +10,8 @@ import re
 import json
 import logging
 import hashlib
+import sqlite3
+import time
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
@@ -136,6 +138,28 @@ class SkillRegistry:
         return [{"revision": item.stem, "format": item.suffix[1:], "size_bytes": item.stat().st_size}
                 for item in sorted(history.iterdir())
                 if re.fullmatch(r"[a-f0-9]{64}\.(md|json)", item.name)]
+
+    def record_outcome(self, name: str, revision: str, run_id: str, success: bool,
+                       duration_ms: int, steps: int, verification: str) -> None:
+        """Persist aggregate evidence without task text or typed content."""
+        name = self.validate_skill_name(name)
+        if not re.fullmatch(r"[a-f0-9]{64}", revision):
+            raise ValueError("Invalid skill revision.")
+        with sqlite3.connect(os.path.join(self.skills_dir, ".outcomes.sqlite3")) as db:
+            db.execute("CREATE TABLE IF NOT EXISTS outcomes (run_id TEXT PRIMARY KEY, name TEXT, revision TEXT, success INTEGER, duration_ms INTEGER, steps INTEGER, verification TEXT, recorded_at INTEGER)")
+            db.execute("INSERT OR IGNORE INTO outcomes VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                       (str(run_id)[:100], name, revision, int(success is True), max(0, int(duration_ms)),
+                        max(0, int(steps)), verification if verification in {"visual", "operator", "inconclusive"} else "inconclusive", int(time.time())))
+
+    def outcome_summary(self, name: str) -> List[Dict[str, Any]]:
+        name = self.validate_skill_name(name)
+        path = os.path.join(self.skills_dir, ".outcomes.sqlite3")
+        if not os.path.isfile(path):
+            return []
+        with sqlite3.connect(path) as db:
+            rows = db.execute("SELECT revision, COUNT(*), SUM(success), CAST(AVG(duration_ms) AS INTEGER), MAX(recorded_at) FROM outcomes WHERE name=? GROUP BY revision ORDER BY MAX(recorded_at) DESC LIMIT 30", (name,)).fetchall()
+        return [{"revision": row[0], "runs": row[1], "successful_runs": row[2],
+                 "average_duration_ms": row[3], "last_run_at": row[4]} for row in rows]
 
     def get_revision(self, name: str, revision: str) -> SkillDefinition:
         """Read a verified snapshot without changing the active skill."""

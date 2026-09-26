@@ -304,10 +304,13 @@ class CogniAgent:
         # Route reusable guidance locally. This must remain outside both model
         # servers so a missing or unrelated skill never delays the first frame.
         active_task_prompt = task
+        skill_version = None
         if getattr(self, "skills_registry", None):
             try:
                 matched_skill, params = self.skills_registry.match_skill(task)
                 if matched_skill:
+                    import hashlib
+                    skill_version = (matched_skill.name, hashlib.sha256(matched_skill.to_markdown().encode("utf-8")).hexdigest())
                     guidance = self.skills_registry.format_skill_prompt_for_holo(matched_skill, params)
                     active_task_prompt = f"{task}\n\n{guidance}"
                     logger.info("Skill '%s' matched. Injected procedural guidance into Holo VLM prompt.", matched_skill.name)
@@ -793,6 +796,12 @@ class CogniAgent:
             step_idx += 1
             
         total_time = int((time.time() - start_time) * 1000)
+        if skill_version:
+            try:
+                self.skills_registry.record_outcome(*skill_version, self.run_id, task_success, total_time,
+                                                    len(step_records), (self.completion_evidence or {}).get("source", "inconclusive"))
+            except Exception as error:
+                logger.warning("Skill outcome could not be recorded: %s", error)
         
         if task_success and len(episodes) > 0:
             traj = Trajectory(
@@ -812,6 +821,7 @@ class CogniAgent:
             "terminal_reason": final_terminal_reason,
             "final_thought": final_thought,
             "completion_evidence": self.completion_evidence,
+            "skill_version": {"name": skill_version[0], "revision": skill_version[1]} if skill_version else None,
         }
 
 

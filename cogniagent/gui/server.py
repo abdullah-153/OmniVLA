@@ -1567,7 +1567,8 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         if not skill:
             self._error(404, "Skill not found.")
             return
-        self._json_response({"skill": skill.to_dict(), "revisions": skills_registry.list_revisions(name)})
+        self._json_response({"skill": skill.to_dict(), "revisions": skills_registry.list_revisions(name),
+                             "outcomes": skills_registry.outcome_summary(name)})
 
     def _skill_revision(self, payload: dict[str, Any], restore: bool = False) -> None:
         name = validate_skill_name(payload.get("name"))

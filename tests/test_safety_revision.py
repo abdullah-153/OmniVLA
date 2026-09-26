@@ -269,6 +269,23 @@ def test_exhausted_budget_never_accepts_manual_extension():
     assert result["status"] == "failed"
 
 
+def test_agent_records_selected_skill_version_on_failed_run():
+    from cogniagent.skills.skill_schema import SkillDefinition
+    agent = make_agent()
+    agent.skills_registry = MagicMock()
+    agent.skills_registry.match_skill.return_value = (SkillDefinition(name="report", title="Report", description="Procedure"), {})
+    agent.skills_registry.format_skill_prompt_for_holo.return_value = "Inspect the report."
+    agent.vlm.reason.return_value = action(element="Search", x=20, y=20)
+    agent.executor.execute_vlm_action = MagicMock(return_value={"success": True, "is_done": False, "detail": "clicked"})
+    with patch("cogniagent.agent.time.sleep"):
+        result = agent.run_task("Inspect desktop", max_steps=1)
+    agent.skills_registry.record_outcome.assert_called_once()
+    recorded = agent.skills_registry.record_outcome.call_args.args
+    assert recorded[0] == "report" and len(recorded[1]) == 64
+    assert recorded[3] is False
+    assert result["skill_version"]["revision"] == recorded[1]
+
+
 def test_completion_requires_independent_outcome_not_pixel_changes():
     agent=make_agent()
     agent.vlm.verify_completion.return_value={"verified":False,"evidence":"Only a loading spinner is visible."}
