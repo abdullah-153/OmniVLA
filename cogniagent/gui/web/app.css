@@ -169,6 +169,10 @@ body.execution-closed .execution-panel { opacity: 0; pointer-events: none; trans
 .message-body li { margin: 5px 0; padding-left: 2px; }
 .message-body h3 { margin: 18px 0 7px; font-size: 14px; }
 .message-body code, code { padding: 1px 4px; border-radius: 4px; background: #ebebe7; font: 12px/1.5 "Cascadia Mono", Consolas, monospace; }
+.message-body a.external-source, .plan-copy a.external-source { color: var(--focus); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; overflow-wrap: anywhere; }
+.message-body a.external-source:hover, .plan-copy a.external-source:hover { text-decoration-thickness: 2px; }
+.message-body a.external-source:focus-visible, .plan-copy a.external-source:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 2px; }
+.external-host { color: var(--muted); font-size: .88em; text-decoration: none; }
 
 /* In-Message Embedded Plan Card */
 .message-plan-card { margin: 14px 0 6px; border: 1px solid #dcdcd5; border-radius: 12px; background: #fafaf8; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.03); transition: border-color 140ms ease; }

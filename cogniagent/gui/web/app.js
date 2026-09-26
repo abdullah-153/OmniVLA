@@ -136,13 +136,49 @@ tags: [desktop]
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 
-  function inlineMarkdown(value) {
+  function inlineText(value) {
     return escapeHtml(value)
-      .replace(/`([^`]+)`/g, "<code>$1</code>")
       .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
       .replace(/\*([^*]+)\*/g, "<em>$1</em>")
       .replace(/@([A-Za-z0-9_-]+)/g, '<span class="skill-mention">@$1</span>');
   }
+
+  function externalLink(rawUrl, label) {
+    try {
+      const url = new URL(rawUrl);
+      if (!["http:", "https:"].includes(url.protocol) || !url.hostname || url.username || url.password) return null;
+      return `<a class="external-source" href="${escapeHtml(url.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)} <span class="external-host">(${escapeHtml(url.hostname)})</span></a>`;
+    } catch (_) { return null; }
+  }
+
+  function inlineMarkdown(value) {
+    return String(value ?? "").split(/(`[^`\n]+`)/g).map((segment) => {
+      if (segment.startsWith("`") && segment.endsWith("`")) return `<code>${escapeHtml(segment.slice(1, -1))}</code>`;
+      const links = /\[([^\]\n]{1,200})\]\(([^\s)]+)\)|https?:\/\/[^\s<>"']+/gi;
+      let output = "";
+      let cursor = 0;
+      for (const match of segment.matchAll(links)) {
+        output += inlineText(segment.slice(cursor, match.index));
+        const raw = match[0];
+        const bare = !match[1];
+        const url = bare ? raw.replace(/[.,;!?)]*$/, "") : match[2];
+        const link = externalLink(url, bare ? url : match[1]);
+        output += link || inlineText(bare ? url : raw);
+        if (bare && raw.length > url.length) output += inlineText(raw.slice(url.length));
+        cursor = match.index + raw.length;
+      }
+      return output + inlineText(segment.slice(cursor));
+    }).join("");
+  }
+
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest?.("a.external-source");
+    if (!link || !window.desktopAPI?.openExternal) return;
+    event.preventDefault();
+    window.desktopAPI.openExternal(link.href)
+      .then((opened) => { if (!opened) toast("Could not open this source.", true); })
+      .catch(() => toast("Could not open this source.", true));
+  });
 
   function renderMarkdown(value) {
     const lines = String(value || "").replace(/\r/g, "").split("\n");

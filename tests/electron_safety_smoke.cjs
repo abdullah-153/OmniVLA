@@ -24,6 +24,15 @@ app.whenReady().then(async()=>{
     await win.webContents.executeJavaScript(`document.querySelectorAll('.plan-context').forEach(e=>e.open=true)`);
     await delay(300);
     await fs.promises.writeFile(path.join(root,'scratch','context-receipts.png'), (await win.webContents.capturePage()).toPNG());
+    await win.webContents.executeJavaScript(`fetch('/__fixture/citations',{method:'POST'})`);
+    await waitFor(win,`document.querySelectorAll('.message-body a.external-source').length === 2`);
+    const citationState = await win.webContents.executeJavaScript(`(() => { const body=[...document.querySelectorAll('.message-body')].find(e=>e.textContent.includes('Release notes')); const links=[...body.querySelectorAll('a.external-source')]; return {hrefs:links.map(e=>e.href),targets:links.map(e=>e.target),badAnchor:!!body.querySelector('a[href^="javascript:"]'),codeLink:!!body.querySelector('code a'),host:links[0].textContent}; })()`);
+    if(citationState.badAnchor || citationState.codeLink || citationState.targets.some(value=>value!=='_blank') || !citationState.hrefs[0].includes('example.com/release?tag=a&v=2') || !citationState.host.includes('example.com')) throw new Error('Citation rendering failed: '+JSON.stringify(citationState));
+    await fs.promises.writeFile(path.join(root,'scratch','citations.png'), (await win.webContents.capturePage()).toPNG());
+    win.setSize(390,844);
+    await delay(200);
+    await fs.promises.writeFile(path.join(root,'scratch','citations-narrow.png'), (await win.webContents.capturePage()).toPNG());
+    win.setSize(1280,900);
     await win.webContents.executeJavaScript(`fetch('/__fixture/planning',{method:'POST'})`);
     await waitFor(win,`!document.getElementById('stop-planning').hidden && !document.getElementById('stop-planning').disabled`);
     await fs.promises.writeFile(path.join(root,'scratch','planning-stop.png'), (await win.webContents.capturePage()).toPNG());

@@ -20,6 +20,17 @@ server.skills_registry.record_outcome('fixture_report',original_skill_revision,'
 server.skills_registry.record_outcome('fixture_report',current_skill_revision,'fixture-new-1',True,1200,2,'operator')
 class FixtureHandler(server.WebUIRequestHandler):
     def do_POST(self):
+        if self.path == '/__fixture/citations':
+            with server.db_lock:
+                database=server.load_chats_db()
+                chat=server._active_chat(database)
+                chat['chat_history']=[{'role':'user','content':'Show the sources'},
+                    {'role':'assistant','content':'Sources: [Release notes](https://example.com/release?tag=a&v=2). '
+                     'Unsafe [bad](javascript:alert(1)). Bare https://docs.python.org/3/library/http.server.html. '
+                     'Code `https://example.com/code`.'}]
+                server.save_chats_db(database)
+            self._json_response({'success':True})
+            return
         if self.path == '/__fixture/context-receipts':
             with server.db_lock:
                 database=server.load_chats_db()

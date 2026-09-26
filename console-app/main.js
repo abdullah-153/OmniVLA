@@ -1,5 +1,6 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
+const { safeExternalUrl } = require('./external_links');
 
 let win;
 let shutdownRequested = false;
@@ -117,6 +118,14 @@ ipcMain.handle('window:control', (event, action) => {
 
 ipcMain.handle('app:quit', () => {
   shutdownBackendAndQuit();
+});
+
+ipcMain.handle('external:open', async (event, value) => {
+  if (!win || event.sender !== win.webContents) return false;
+  const url = safeExternalUrl(value);
+  if (!url) return false;
+  await shell.openExternal(url);
+  return true;
 });
 
 app.whenReady().then(() => {
