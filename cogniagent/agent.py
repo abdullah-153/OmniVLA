@@ -309,8 +309,7 @@ class CogniAgent:
             try:
                 matched_skill, params = self.skills_registry.match_skill(task)
                 if matched_skill:
-                    import hashlib
-                    skill_version = (matched_skill.name, hashlib.sha256(matched_skill.to_markdown().encode("utf-8")).hexdigest())
+                    skill_version = (matched_skill.name, self.skills_registry.current_revision(matched_skill.name))
                     guidance = self.skills_registry.format_skill_prompt_for_holo(matched_skill, params)
                     active_task_prompt = f"{task}\n\n{guidance}"
                     logger.info("Skill '%s' matched. Injected procedural guidance into Holo VLM prompt.", matched_skill.name)

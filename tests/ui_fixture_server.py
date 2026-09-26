@@ -12,7 +12,12 @@ user_profile._profile_memory_instance = user_profile.UserProfileMemory(str(Path(
 from cogniagent.skills.skill_schema import SkillDefinition
 server.skills_registry = server.SkillRegistry(str(Path(root.name) / 'skills'))
 server.skills_registry.save_skill(SkillDefinition(name='fixture_report',title='Original report',description='Original fixture procedure'))
+original_skill_revision=server.skills_registry.current_revision('fixture_report')
 server.skills_registry.save_skill(SkillDefinition(name='fixture_report',title='Updated report',description='Updated fixture procedure'))
+current_skill_revision=server.skills_registry.current_revision('fixture_report')
+server.skills_registry.record_outcome('fixture_report',original_skill_revision,'fixture-old-1',True,1400,3,'visual')
+server.skills_registry.record_outcome('fixture_report',original_skill_revision,'fixture-old-2',False,2500,6,'inconclusive')
+server.skills_registry.record_outcome('fixture_report',current_skill_revision,'fixture-new-1',True,1200,2,'operator')
 class FixtureHandler(server.WebUIRequestHandler):
     def do_POST(self):
         if self.path == '/__fixture/context-receipts':

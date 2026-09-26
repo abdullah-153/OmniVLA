@@ -8,9 +8,11 @@ from cogniagent.skills.skill_schema import SkillDefinition
 def test_skill_update_can_be_restored_without_loading_history(tmp_path):
     registry = SkillRegistry(str(tmp_path / "skills"))
     registry.save_skill(SkillDefinition(name="report", title="Original", description="First procedure"))
+    original_revision = registry.current_revision("report")
     registry.save_skill(SkillDefinition(name="report", title="Updated", description="Second procedure"))
     revisions = registry.list_revisions("report")
     assert len(revisions) == 1
+    assert revisions[0]["revision"] == original_revision
     reloaded = SkillRegistry(str(tmp_path / "skills"))
     assert len(reloaded.list_skills()) == 1
     assert reloaded.get_skill("report").title == "Updated"
@@ -38,14 +40,17 @@ def test_imported_skill_updates_survive_restart_and_restore(tmp_path, suffix):
     path = directory / ("imported" + suffix)
     path.write_text(json.dumps(original.to_dict()) if suffix == ".json" else original.to_markdown(), encoding="utf-8")
     registry = SkillRegistry(str(directory))
+    original_revision = registry.current_revision("report")
     updated = SkillDefinition(name="report", title="Updated", description="Improved procedure")
     assert registry.save_skill(updated) == str(path)
     reloaded = SkillRegistry(str(directory))
     assert len(reloaded.list_skills()) == 1
     assert reloaded.get_skill("report").title == "Updated"
     revision = reloaded.list_revisions("report")[0]["revision"]
+    assert revision == original_revision
     reloaded.restore_revision("report", revision)
     assert SkillRegistry(str(directory)).get_skill("report").title == "Original"
+    assert SkillRegistry(str(directory)).current_revision("report") == original_revision
 
 
 def test_identical_save_does_not_create_revision(tmp_path):
@@ -68,4 +73,8 @@ def test_outcome_metrics_persist_and_deduplicate_runs(tmp_path):
     assert summaries["a" * 64]["runs"] == 2
     assert summaries["a" * 64]["successful_runs"] == 1
     assert summaries["a" * 64]["average_duration_ms"] == 2000
+    assert summaries["a" * 64]["visual_runs"] == 1
+    assert summaries["a" * 64]["operator_runs"] == 0
+    assert summaries["a" * 64]["inconclusive_runs"] == 1
     assert summaries["b" * 64]["runs"] == 1
+    assert summaries["b" * 64]["operator_runs"] == 1

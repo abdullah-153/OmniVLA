@@ -1181,6 +1181,16 @@ tags: [desktop]
   }
 
   let skillHistoryRequest = 0;
+  let skillOutcomes = new Map();
+  function describeSkillOutcome(outcome) {
+    if (!outcome) return "No recorded runs for this version.";
+    const runs = Number(outcome.runs) || 0;
+    const completed = Number(outcome.successful_runs) || 0;
+    const visual = Number(outcome.visual_runs) || 0;
+    const operator = Number(outcome.operator_runs) || 0;
+    const inconclusive = Number(outcome.inconclusive_runs) || 0;
+    return `${completed} completed / ${runs} ${runs === 1 ? "run" : "runs"} · ${visual} visual · ${operator} operator · ${inconclusive} inconclusive`;
+  }
   async function loadSkillHistory(name) {
     const request = ++skillHistoryRequest;
     $("skill-history").hidden = !name;
@@ -1188,11 +1198,16 @@ tags: [desktop]
     $("skill-revision").innerHTML = '<option value="">Choose a version</option>';
     $("skill-revision-preview").hidden = true;
     $("restore-skill").disabled = true;
+    $("skill-selected-outcome-wrap").hidden = true;
+    $("skill-current-outcome").textContent = "Loading results…";
+    skillOutcomes = new Map();
     if (!name) return;
     $("skill-history-status").textContent = "Loading previous versions…";
     try {
       const result = await api(`/api/skills/${encodeURIComponent(name)}`);
       if (request !== skillHistoryRequest) return;
+      skillOutcomes = new Map((result.outcomes || []).map(outcome => [outcome.revision, outcome]));
+      $("skill-current-outcome").textContent = describeSkillOutcome(skillOutcomes.get(result.current_revision));
       for (const revision of result.revisions || []) {
         const option = document.createElement("option");
         option.value = revision.revision;
@@ -1200,7 +1215,10 @@ tags: [desktop]
         $("skill-revision").append(option);
       }
       $("skill-history-status").textContent = result.revisions?.length ? "Preview before restoring. Your current saved version is retained." : "No previous versions yet.";
-    } catch (error) { if (request === skillHistoryRequest) $("skill-history-status").textContent = error.message; }
+    } catch (error) { if (request === skillHistoryRequest) {
+      $("skill-history-status").textContent = error.message;
+      $("skill-current-outcome").textContent = "Results unavailable.";
+    } }
   }
 
   $("skill-revision").addEventListener("change", async () => {
@@ -1209,6 +1227,8 @@ tags: [desktop]
     const revision = $("skill-revision").value;
     $("restore-skill").disabled = true;
     $("skill-revision-preview").hidden = true;
+    $("skill-selected-outcome-wrap").hidden = !revision;
+    $("skill-selected-outcome").textContent = describeSkillOutcome(skillOutcomes.get(revision));
     if (!revision) return;
     $("skill-history-status").textContent = "Loading version…";
     try {

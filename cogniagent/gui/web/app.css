@@ -919,6 +919,11 @@ body.execution-closed .execution-panel { opacity: 0; pointer-events: none; trans
 .skill-history { padding: 12px 16px; border-top: 1px solid var(--line); flex: 0 0 auto; }
 .skill-history summary { cursor: pointer; font-weight: 600; }
 .skill-history p { color: var(--muted); margin: 8px 0; }
+.skill-outcome-comparison { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.skill-outcome { flex: 1 1 210px; min-width: 0; padding: 9px 11px; background: var(--surface); border-radius: 8px; font-size: 12px; line-height: 1.5; }
+.skill-outcome strong, .skill-outcome span { display: block; overflow-wrap: anywhere; }
+.skill-outcome strong { margin-bottom: 3px; font-size: 11px; }
+.skill-history .skill-outcome-note { font-size: 11px; line-height: 1.45; }
 .skill-history label { display: block; margin-bottom: 4px; }
 .skill-history select { max-width: 100%; margin: 0 8px 10px 0; padding: 8px; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 8px; }
 .skill-history pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 120px; overflow: auto; }

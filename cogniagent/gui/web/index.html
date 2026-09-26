@@ -254,8 +254,13 @@
                   <textarea id="skill-markdown" spellcheck="false" maxlength="48000" placeholder="---&#10;name: my_skill&#10;title: My Skill&#10;description: Perform a desktop workflow&#10;domain: productivity&#10;triggers:&#10;  - do task&#10;---&#10;&#10;## Procedural Steps&#10;1. Locate the application window..."></textarea>
                 </div>
                 <details id="skill-history" class="skill-history" hidden>
-                  <summary>Previous versions</summary>
+                  <summary>Version results and history</summary>
                   <p id="skill-history-status" role="status"></p>
+                  <div class="skill-outcome-comparison" aria-label="Observed skill results">
+                    <div class="skill-outcome"><strong>Current saved version</strong><span id="skill-current-outcome">Loading results…</span></div>
+                    <div class="skill-outcome" id="skill-selected-outcome-wrap" hidden><strong>Selected previous version</strong><span id="skill-selected-outcome"></span></div>
+                  </div>
+                  <p class="skill-outcome-note">Results are observations from past runs, not a quality rating. A few runs cannot establish which version is better.</p>
                   <label for="skill-revision">Saved version</label>
                   <select id="skill-revision"><option value="">Choose a version</option></select>
                   <button id="restore-skill" class="secondary-button" type="button" disabled>Restore this version</button>

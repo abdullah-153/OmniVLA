@@ -139,6 +139,14 @@ class SkillRegistry:
                 for item in sorted(history.iterdir())
                 if re.fullmatch(r"[a-f0-9]{64}\.(md|json)", item.name)]
 
+    def current_revision(self, name: str) -> str:
+        """Identify the exact saved source used by a selected skill."""
+        name = self.validate_skill_name(name)
+        source = self._skill_paths.get(name)
+        if not source or not os.path.isfile(source):
+            raise ValueError("Skill source was not found.")
+        return hashlib.sha256(Path(source).read_bytes()).hexdigest()
+
     def record_outcome(self, name: str, revision: str, run_id: str, success: bool,
                        duration_ms: int, steps: int, verification: str) -> None:
         """Persist aggregate evidence without task text or typed content."""
@@ -157,9 +165,14 @@ class SkillRegistry:
         if not os.path.isfile(path):
             return []
         with sqlite3.connect(path) as db:
-            rows = db.execute("SELECT revision, COUNT(*), SUM(success), CAST(AVG(duration_ms) AS INTEGER), MAX(recorded_at) FROM outcomes WHERE name=? GROUP BY revision ORDER BY MAX(recorded_at) DESC LIMIT 30", (name,)).fetchall()
+            rows = db.execute("SELECT revision, COUNT(*), SUM(success), CAST(AVG(duration_ms) AS INTEGER), "
+                              "SUM(verification='visual'), SUM(verification='operator'), "
+                              "SUM(verification='inconclusive'), MAX(recorded_at) "
+                              "FROM outcomes WHERE name=? GROUP BY revision ORDER BY MAX(recorded_at) DESC LIMIT 30", (name,)).fetchall()
         return [{"revision": row[0], "runs": row[1], "successful_runs": row[2],
-                 "average_duration_ms": row[3], "last_run_at": row[4]} for row in rows]
+                 "average_duration_ms": row[3], "visual_runs": row[4],
+                 "operator_runs": row[5], "inconclusive_runs": row[6],
+                 "last_run_at": row[7]} for row in rows]
 
     def get_revision(self, name: str, revision: str) -> SkillDefinition:
         """Read a verified snapshot without changing the active skill."""
@@ -181,7 +194,29 @@ class SkillRegistry:
 
     def restore_revision(self, name: str, revision: str) -> str:
         """Restore a verified snapshot, retaining the replaced version."""
-        return self.save_skill(self.get_revision(name, revision))
+        skill = self.get_revision(name, revision)
+        source_path = self._skill_paths.get(name)
+        if not source_path:
+            raise ValueError("Skill source was not found.")
+        history = Path(self.skills_dir) / name / ".history"
+        snapshot = next((history / (revision + suffix) for suffix in (".md", ".json")
+                         if (history / (revision + suffix)).is_file()), None)
+        if snapshot is None:
+            raise ValueError("Skill revision was not found.")
+        if snapshot.suffix != Path(source_path).suffix.lower():
+            raise ValueError("Skill revision format does not match its source.")
+        restored = snapshot.read_bytes()
+        current = Path(source_path).read_bytes()
+        if current != restored:
+            previous = history / (hashlib.sha256(current).hexdigest() + snapshot.suffix)
+            if not previous.exists():
+                previous.write_bytes(current)
+            temp_path = source_path + ".tmp"
+            with open(temp_path, "wb") as target:
+                target.write(restored)
+            os.replace(temp_path, source_path)
+        self._skills_cache[name] = skill
+        return source_path
 
     def delete_skill(self, name: str) -> bool:
         """Delete a skill from disk and memory."""

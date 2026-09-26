@@ -274,6 +274,7 @@ def test_agent_records_selected_skill_version_on_failed_run():
     agent = make_agent()
     agent.skills_registry = MagicMock()
     agent.skills_registry.match_skill.return_value = (SkillDefinition(name="report", title="Report", description="Procedure"), {})
+    agent.skills_registry.current_revision.return_value = "a" * 64
     agent.skills_registry.format_skill_prompt_for_holo.return_value = "Inspect the report."
     agent.vlm.reason.return_value = action(element="Search", x=20, y=20)
     agent.executor.execute_vlm_action = MagicMock(return_value={"success": True, "is_done": False, "detail": "clicked"})
