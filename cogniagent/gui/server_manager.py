@@ -687,18 +687,23 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
         if not start_planner_server(use_gpu=False):
             raise RuntimeError("The planning model is unavailable.")
 
+        file_search_roots = None
         if not user_profile_context:
             if learn_personal_context_enabled:
                 user_profile_context = learn_personal_context(message)
             else:
                 from cogniagent.memory.user_profile import get_user_profile
                 user_profile_context = get_user_profile().get_planner_context(message)
+            from cogniagent.memory.user_profile import get_user_profile
+            from cogniagent.tools.file_search import project_search_roots
+            file_search_roots = project_search_roots(get_user_profile().build_context_pack(message))
 
         gateway = PersonalToolGateway(
             browser_search=execute_browser_search, find_files=find_local_files,
             format_files=format_file_results, read_page=read_webpage,
             format_page=format_webpage_summary, notify=send_notification,
             read_local_file=read_local_text_file, format_local_file=format_local_file,
+            file_search_roots=file_search_roots,
         )
 
         def use_tool(name, arguments):

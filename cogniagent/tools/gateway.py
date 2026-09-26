@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import json
+import os
 import time
 from typing import Callable, Any
 
@@ -34,7 +36,8 @@ class PersonalToolGateway:
     def __init__(self, *, browser_search: Callable, find_files: Callable,
                  format_files: Callable, read_page: Callable, format_page: Callable,
                  notify: Callable, read_local_file: Callable | None = None,
-                 format_local_file: Callable | None = None):
+                 format_local_file: Callable | None = None,
+                 file_search_roots: list[str] | None = None):
         self.browser_search = browser_search
         self.find_files = find_files
         self.format_files = format_files
@@ -43,6 +46,7 @@ class PersonalToolGateway:
         self.notify = notify
         self.read_local_file = read_local_file
         self.format_local_file = format_local_file
+        self.file_search_roots = file_search_roots
         self._discovered_paths: set[str] = set()
         self.file_matches: list[dict[str, Any]] = []
         self._cache: dict[tuple[str, tuple[tuple[str, str], ...]], ToolResult] = {}
@@ -77,7 +81,12 @@ class PersonalToolGateway:
                 content = self.browser_search(values["query"], max_results=5)
                 ok = True
             elif name == "FIND_FILES":
-                matches = self.find_files(values["pattern"])
+                pattern = values["pattern"]
+                # Remembered folders are defaults; explicit locations stay exact.
+                explicit = os.path.isabs(pattern) or "/" in pattern or "\\" in pattern
+                roots = None if explicit else self.file_search_roots
+                matches = (self.find_files(pattern) if roots is None else
+                           self.find_files(pattern, search_roots=roots))
                 self.file_matches = matches[:15]
                 for item in matches[:15]:
                     try:
@@ -85,6 +94,9 @@ class PersonalToolGateway:
                     except (KeyError, OSError, TypeError, ValueError):
                         continue
                 content = self.format_files(matches, pattern=values["pattern"])
+                if roots is not None:
+                    content = ("Search limited to remembered project folders: " + json.dumps(roots)
+                               + ". Missing folders do not trigger a broader search.\n" + content)
                 ok = True
             elif name == "READ_WEBPAGE":
                 page = self.read_page(values["url"])

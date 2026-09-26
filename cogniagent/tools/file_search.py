@@ -17,6 +17,34 @@ from typing import Any
 
 logger = logging.getLogger("omnivla.tools.file_search")
 
+
+def _within_roots(path: str, roots: list[str]) -> bool:
+    resolved = os.path.normcase(os.path.realpath(path))
+    for root in roots:
+        root = os.path.normcase(os.path.realpath(root))
+        try:
+            if os.path.commonpath([resolved, root]) == root:
+                return True
+        except ValueError:
+            continue  # Different Windows drives.
+    return False
+
+
+def project_search_roots(context_pack: dict) -> list[str] | None:
+    """Use explicit folder relationships for one task-relevant project only."""
+    projects = [item for item in context_pack.get("linked_context", [])
+                if item.get("kind") == "project"]
+    if len(projects) != 1:
+        return None
+    roots = []
+    for link in projects[0].get("links", []):
+        path = link.get("entity", "")
+        if (link.get("relation") == "stored_in" and link.get("kind") == "folder"
+                and link.get("direction") == "outgoing" and os.path.isabs(path)
+                and path not in roots):
+            roots.append(path)
+    return roots or None
+
 _EVERYTHING_PATHS = [
     "es.exe",
     r"C:\Program Files\Everything\es.exe",
@@ -46,14 +74,18 @@ def find_local_files(
     falling back to fast, bounded local filesystem walking.
     """
     clean_pattern = pattern.strip().strip("'\"")
-    if not clean_pattern:
+    if not clean_pattern or max_results <= 0 or timeout_sec <= 0:
+        return []
+    scoped = search_roots is not None
+    roots = [os.path.realpath(root) for root in (search_roots or [])]
+    if scoped and not roots:
         return []
 
     # An explicit location is an exact lookup, never a drive-wide name search.
     if os.path.isabs(clean_pattern) or any(separator in clean_pattern for separator in ("/", "\\")):
         try:
             file_path = os.path.abspath(clean_pattern)
-            if not os.path.isfile(file_path):
+            if (scoped and not _within_roots(file_path, roots)) or not os.path.isfile(file_path):
                 return []
             stat = os.stat(file_path)
             return [{"name": os.path.basename(file_path), "path": file_path,
@@ -63,7 +95,9 @@ def find_local_files(
             return []
 
     # 1. Attempt Voidtools Everything CLI (instant sub-15ms search)
-    es_path = _find_everything_cli()
+    # Global index queries cannot enforce a folder boundary. Scoped searches walk
+    # only their supplied roots, including when those roots no longer exist.
+    es_path = None if scoped else _find_everything_cli()
     if es_path:
         try:
             cmd = [es_path, "-n", str(max_results), clean_pattern]
@@ -95,7 +129,7 @@ def find_local_files(
             logger.debug("Everything CLI search failed: %s, falling back to local walking.", es_err)
 
     # 2. Fast local filesystem walking fallback
-    if not search_roots:
+    if search_roots is None:
         user_home = os.path.expanduser("~")
         search_roots = [
             os.path.abspath("."),
@@ -103,6 +137,7 @@ def find_local_files(
             os.path.join(user_home, "Downloads"),
             os.path.join(user_home, "Documents"),
         ]
+        roots = [os.path.realpath(root) for root in search_roots]
 
     # Ensure glob pattern matching: if no wildcard provided, wrap with * for substring search
     glob_pattern = clean_pattern
@@ -111,20 +146,23 @@ def find_local_files(
 
     results: list[dict[str, Any]] = []
     seen_paths: set[str] = set()
-    start_time = time.time()
+    start_time = time.monotonic()
 
     excluded_dirs = {
         ".git", "node_modules", "__pycache__", "venv", ".venv",
         "AppData", "$Recycle.Bin", "System Volume Information"
     }
 
-    for root in search_roots:
+    for root in roots:
         if not os.path.exists(root):
             continue
         base_depth = root.rstrip(os.path.sep).count(os.path.sep)
         for dirpath, dirnames, filenames in os.walk(root):
-            if time.time() - start_time > timeout_sec:
-                break
+            if time.monotonic() - start_time > timeout_sec:
+                return results
+            if not _within_roots(dirpath, [root]):
+                dirnames.clear()
+                continue
             # Depth bounding
             current_depth = dirpath.count(os.path.sep) - base_depth
             if current_depth > max_depth:
@@ -134,13 +172,17 @@ def find_local_files(
             dirnames[:] = [
                 d for d in dirnames
                 if not d.startswith(".") and d not in excluded_dirs
+                and _within_roots(os.path.join(dirpath, d), [root])
             ]
             for f in filenames:
+                if time.monotonic() - start_time > timeout_sec:
+                    return results
                 if fnmatch.fnmatch(f.lower(), glob_pattern.lower()):
                     full_path = os.path.abspath(os.path.join(dirpath, f))
-                    if full_path in seen_paths:
+                    identity = os.path.normcase(os.path.realpath(full_path))
+                    if identity in seen_paths or not _within_roots(full_path, [root]):
                         continue
-                    seen_paths.add(full_path)
+                    seen_paths.add(identity)
                     try:
                         stat = os.stat(full_path)
                         results.append({
