@@ -1426,3 +1426,7 @@ body.execution-closed .execution-panel { opacity: 0; pointer-events: none; trans
 .completion-evidence ul { margin: 7px 0; padding-left: 20px; }
 .memory-map-item { display: flex; gap: 12px; align-items: center; justify-content: space-between; margin: 8px 0; overflow-wrap: anywhere; }
 .memory-map-item .secondary-button { flex: none; padding: 5px 9px; font-size: .75rem; }
+.recovery-card { margin: 12px auto; max-width: 800px; padding: 14px 16px; border: 1px solid var(--border, rgba(255,255,255,.15)); border-radius: 12px; }
+.recovery-card p, .recovery-card li { font-size: .85rem; }
+.recovery-card summary { cursor: pointer; font-weight: 600; }
+.recovery-card small { display: block; opacity: .7; }

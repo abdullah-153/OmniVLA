@@ -48,6 +48,15 @@ class FixtureHandler(server.WebUIRequestHandler):
                                                                   'person','Sarah Khan',source='Project Atlas contact is Sarah Khan.')
             self._json_response({'success':True})
             return
+        if self.path == '/__fixture/recovery':
+            with server.db_lock:
+                database=server.load_chats_db()
+                chat=server._active_chat(database)
+                chat['recovery']={'source_chat_id':'prior','prior_status':'stopped',
+                                  'actions':[{'step':1,'action':'click','label':'Use · Save','dispatched':True}]}
+                server.save_chats_db(database)
+            self._json_response({'success':True})
+            return
         if self.path == '/__fixture/approval':
             request=app.interventions.open('test-run','approval','Send the reviewed report to its recipient?',{'tool_name':'click','element':'Send report'})
             app.agent_status.update(status='hitl',phase='hitl',hitl_question=request['question'],execution_chat_id=server.load_chats_db()['active_chat_id'])

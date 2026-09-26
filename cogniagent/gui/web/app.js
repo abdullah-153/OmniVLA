@@ -487,7 +487,7 @@ tags: [desktop]
     const history = Array.isArray(data.chat_history) ? data.chat_history : [];
     const planning = data.planning_chat_id === data.active_chat_id;
     const activity = data.planner_activity || "Thinking...";
-    const signature = JSON.stringify([data.active_chat_id, history, planning, activity]);
+    const signature = JSON.stringify([data.active_chat_id, history, planning, activity, data.recovery]);
     if (state.renderSignatures.conversation === signature) return;
     const scroller = $("chat-scroll");
     const nearBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 120;
@@ -511,6 +511,12 @@ tags: [desktop]
         : renderMarkdown(message.content);
       return `<article class="message is-${role}"><div class="message-avatar" aria-hidden="true">${role === "user" ? "You" : "O"}</div><div class="message-body">${bodyHtml}</div></article>`;
     });
+    if (data.recovery && Array.isArray(data.recovery.actions)) {
+      const actions = data.recovery.actions.map(item =>
+        `<li>${escapeHtml(item.label || item.action || "Action")} <small>${item.dispatched ? "Input dispatched; effect uncertain" : "Not confirmed"}</small></li>`
+      ).join("");
+      messages.unshift(`<section class="recovery-card"><strong>Recovery checkpoint</strong><p>The previous run ${escapeHtml(data.recovery.prior_status || "stopped")}. These recorded inputs are not proof of the result; the new plan must inspect the current state.</p>${actions ? `<details><summary>Recorded inputs</summary><ul>${actions}</ul></details>` : "<p>No input checkpoint was recorded.</p>"}</section>`);
+    }
     if (planning) {
       const isSearch = /search|browse|web/i.test(activity);
       const isRead = /read|page|article/i.test(activity);
@@ -988,10 +994,10 @@ tags: [desktop]
 
   async function retryChat() {
     try {
-      await api("/api/chats/retry", { method: "POST", body: {} });
+      const result = await api("/api/chats/retry", { method: "POST", body: {} });
       state.renderSignatures = {};
       await fetchStatus();
-      toast("Retry ready for review.");
+      toast(result?.message ? "Preparing a recovery plan..." : "Retry ready for review.");
     } catch (error) { toast(error.message, true); }
   }
 

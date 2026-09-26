@@ -646,7 +646,8 @@ def learn_personal_context(message):
     return profile.get_planner_context(message)
 
 
-def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_context="", user_profile_context="", persist_in_ram=None, activity_callback=None):
+def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_context="", user_profile_context="", persist_in_ram=None,
+                     activity_callback=None, learn_personal_context_enabled=True):
     restart_vla_profile = None
     is_testing = "unittest" in sys.modules or "pytest" in sys.modules
     if persist_in_ram is None:
@@ -656,7 +657,11 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
             raise RuntimeError("The planning model is unavailable.")
 
         if not user_profile_context:
-            user_profile_context = learn_personal_context(message)
+            if learn_personal_context_enabled:
+                user_profile_context = learn_personal_context(message)
+            else:
+                from cogniagent.memory.user_profile import get_user_profile
+                user_profile_context = get_user_profile().get_planner_context(message)
 
         gateway = PersonalToolGateway(
             browser_search=execute_browser_search, find_files=find_local_files,

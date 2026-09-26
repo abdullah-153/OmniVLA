@@ -102,6 +102,7 @@ def _new_chat() -> dict[str, Any]:
         "chat_history": [],
         "current_task": "",
         "run_metrics": None,
+        "recovery": None,
         "execution": _empty_execution_snapshot(),
         "created_at": now,
         "updated_at": now,
@@ -367,6 +368,7 @@ def _normalize_database(database: Any) -> dict[str, Any]:
                 "current_task": _plan_copy(chat.get("current_task"), 12_000),
                 "reviewed_plan": _plan_copy(chat.get("reviewed_plan"), 12_000),
                 "run_metrics": _normalize_run_metrics(chat.get("run_metrics")),
+                "recovery": _normalize_recovery(chat.get("recovery")),
                 "execution": _normalize_execution_snapshot(chat.get("execution")),
                 "created_at": int(chat.get("created_at")) if isinstance(chat.get("created_at"), (int, float)) else now,
                 "updated_at": int(chat.get("updated_at")) if isinstance(chat.get("updated_at"), (int, float)) else now,
@@ -408,6 +410,51 @@ def _normalize_database(database: Any) -> dict[str, Any]:
         "safety": normalize_safety_policy(database.get("safety")),
         "audit_events": safe_events,
     }
+
+
+def _normalize_recovery(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    actions = value.get("actions") if isinstance(value.get("actions"), list) else []
+    return {
+        "source_chat_id": str(value.get("source_chat_id") or "")[:64],
+        "prior_status": str(value.get("prior_status") or "")[:32],
+        "actions": [
+            {"step": max(0, min(int(item.get("step", 0)), 10_000)),
+             "action": str(item.get("action") or "")[:80],
+             "label": str(item.get("label") or "")[:300],
+             "dispatched": item.get("dispatched") is True}
+            for item in actions[-12:] if isinstance(item, dict) and
+            isinstance(item.get("step", 0), (int, float))
+        ],
+    }
+
+
+def _build_recovery_context(chat: dict[str, Any]) -> dict[str, Any]:
+    execution = _normalize_execution_snapshot(chat.get("execution"))
+    actions = [{"step": step["step"], "action": step["action"],
+                "label": ("Text entry dispatched (content hidden)" if step["action"] in {"type", "click_and_type"}
+                          else "Compound input dispatched (details hidden)" if step["action"] == "compound_action"
+                          else step["action_text"]), "dispatched": step["success"]}
+               for step in execution["steps"] if step["action"] != "terminate"]
+    return _normalize_recovery({"source_chat_id": chat.get("id"), "prior_status": chat.get("status"),
+                                "actions": actions})
+
+
+def _recovery_planner_message(objective: str, old_plan: str, recovery: dict[str, Any]) -> str:
+    history = "\n".join(
+        f"- Step {item['step']}: {item['label']} ({'input dispatched; effect uncertain' if item['dispatched'] else 'not confirmed'})"
+        for item in recovery["actions"]
+    ) or "No input checkpoint was recorded."
+    return (f"Prepare a fresh desktop-plan to safely continue this interrupted task.\n"
+            f"Original objective: {objective[:3000]}\n"
+            f"Previous reviewed plan (historical only): {old_plan[:2500]}\n"
+            f"Previous run status: {recovery['prior_status']}\n"
+            f"Recorded actions, which are NOT proof of their external effects:\n{history}\n"
+            "First inspect the current application and verify which requested changes already exist. "
+            "Do not repeat a send, upload, save, deletion, or other external effect solely because it appears in the old plan. "
+            "If the state cannot be reconciled, ask the operator. Produce a new plan with expected output, observable success criteria, and a planner budget. "
+            "The new plan needs a fresh operator review before any input.")
 
 
 def _normalize_run_metrics(value: Any) -> dict[str, Any] | None:
@@ -811,6 +858,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         agent_state["active_intent"] = active.get("intent", "")
         agent_state["active_title"] = active.get("title", "Untitled run")
         agent_state["active_plan"] = _active_plan(database)
+        agent_state["recovery"] = active.get("recovery")
         agent_state["settings"] = _public_settings()
         try:
             from cogniagent.memory.user_profile import get_user_profile
@@ -856,7 +904,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             gui_app.agent_status["chat_history"] = list(chat.get("chat_history", []))
             gui_app.agent_status["current_task"] = chat.get("current_task", "")
 
-    def _plan_in_background(self, chat_id: str, message: str) -> None:
+    def _plan_in_background(self, chat_id: str, message: str, learn_profile: bool = True) -> None:
         try:
             chat_history = []
             memory_enabled = False
@@ -881,7 +929,8 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             try:
                 from cogniagent.memory.user_profile import get_user_profile
                 user_prof = get_user_profile()
-                user_prof.learn_from_message(message)
+                if learn_profile:
+                    user_prof.learn_from_message(message)
             except Exception as profile_err:
                 logger.debug("Failed to learn explicit personal context: %s", profile_err)
 
@@ -895,6 +944,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 chat_history=chat_history,
                 rag_context=rag_context,
                 activity_callback=on_activity,
+                learn_personal_context=learn_profile,
             )
             if not response or not str(response).strip():
                 response = "I completed your request, but was unable to formulate a detailed response. Please try rephrasing or asking again."
@@ -1234,70 +1284,92 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         self._json_response({"success": True})
 
     def _retry_run(self) -> None:
-        """Clone a completed run into a fresh, reviewable plan.
-
-        Retrying must not reuse the confirmation granted to the prior run. A
-        new chat preserves the original intent and plan, then returns the
-        operator to the same approval gate.
-        """
+        """Prepare a fresh recovery plan after failure; repeat successes by review."""
+        global planner_active_chat_id
         if gui_app.running_thread and gui_app.running_thread.is_alive():
             self._error(409, "Wait for the active run to finish before preparing a retry.")
             return
+        if not planner_lock.acquire(blocking=False):
+            self._error(409, "Another plan is already being prepared.")
+            return
 
-        with db_lock:
-            database = load_chats_db()
-            previous = _active_chat(database)
-            source_task = str(previous.get("intent") or "").strip()
-            reviewed_plan = str(previous.get("reviewed_plan") or previous.get("current_task") or "").strip()
+        planner_handoff = False
+        try:
+            with db_lock:
+                database = load_chats_db()
+                previous = _active_chat(database)
+                source_task = str(previous.get("intent") or "").strip()
+                reviewed_plan = str(previous.get("reviewed_plan") or previous.get("current_task") or "").strip()
+                if not source_task:
+                    source_task = next((message.get("content", "") for message in reversed(previous.get("chat_history", []))
+                                        if message.get("role") == "user" and isinstance(message.get("content"), str)), "").strip()
+                if not reviewed_plan:
+                    reviewed_plan = next((message.get("content", "") for message in reversed(previous.get("chat_history", []))
+                                          if message.get("role") == "assistant" and isinstance(message.get("content"), str)), "").strip()
+                if not source_task or not reviewed_plan:
+                    self._error(409, "This run has no reviewed plan to retry.")
+                    return
 
-            if not source_task:
-                source_task = next(
-                    (
-                        message.get("content", "")
-                        for message in reversed(previous.get("chat_history", []))
-                        if message.get("role") == "user" and isinstance(message.get("content"), str)
-                    ),
-                    "",
-                ).strip()
-            if not reviewed_plan:
-                reviewed_plan = next(
-                    (
-                        message.get("content", "")
-                        for message in reversed(previous.get("chat_history", []))
-                        if message.get("role") == "assistant" and isinstance(message.get("content"), str)
-                    ),
-                    "",
-                ).strip()
+                recovering = previous.get("status") in {"failed", "stopped"}
+                recovery = _build_recovery_context(previous) if recovering else None
+                retry = _new_chat()
+                retry["title"] = (("Recover: " if recovering else "Retry: ") + previous.get("title", "run"))[:52]
+                retry["intent"] = source_task
+                retry["recovery"] = recovery
+                retry["updated_at"] = int(time.time())
+                retry["chat_history"].append({"role": "user", "content": source_task})
+                if recovering:
+                    retry["status"] = "planning"
+                    retry["chat_history"].append({"role": "assistant", "content":
+                        "Preparing a recovery plan. Earlier inputs may have taken effect; I will check the current state before repeating them."})
+                    recovery_message = _recovery_planner_message(source_task, reviewed_plan, recovery)
+                else:
+                    retry["reviewed_plan"] = reviewed_plan
+                    retry["status"] = "plan_created"
+                    retry["chat_history"].append({"role": "assistant", "content": reviewed_plan})
+                    recovery_message = ""
+                database["chats"].append(retry)
+                database["active_chat_id"] = retry["id"]
+                _record_audit(database, "run.recovery_requested" if recovering else "run.retry_prepared",
+                              "Recovery planning requested from persisted inputs." if recovering else "Prepared a fresh reviewed retry run.")
+                save_chats_db(database)
+                self._sync_active_chat(retry)
 
-            if not source_task or not reviewed_plan:
-                self._error(409, "This run has no reviewed plan to retry.")
-                return
-
-            retry = _new_chat()
-            retry["title"] = ("Retry: " + previous.get("title", "run"))[:120]
-            retry["intent"] = source_task
-            retry["reviewed_plan"] = reviewed_plan
-            retry["status"] = "plan_created"
-            retry["updated_at"] = int(time.time())
-            retry["chat_history"].extend(
-                [
-                    {"role": "user", "content": source_task},
-                    {"role": "assistant", "content": reviewed_plan},
-                ]
-            )
-            database["chats"].append(retry)
-            database["active_chat_id"] = retry["id"]
-            _record_audit(database, "run.retry_prepared", "Prepared a fresh reviewed retry run.")
-            save_chats_db(database)
-            self._sync_active_chat(retry)
-
-        with gui_app.status_lock:
-            gui_app.agent_status["steps"] = []
-            gui_app.agent_status["status"] = "idle"
-            gui_app.agent_status["phase"] = "idle"
-            gui_app.agent_status["phase_started_at"] = time.time()
-            gui_app.agent_status["current_action"] = "Reviewed retry run is ready for approval."
-        self._json_response({"success": True}, 201)
+            with gui_app.status_lock:
+                gui_app.agent_status["steps"] = []
+                gui_app.agent_status["status"] = "planning" if recovering else "idle"
+                gui_app.agent_status["phase"] = gui_app.agent_status["status"]
+                gui_app.agent_status["phase_started_at"] = time.time()
+                gui_app.agent_status["current_action"] = "Reconciling the previous run" if recovering else "Reviewed retry run is ready for approval."
+            if recovering:
+                planner_active_chat_id = retry["id"]
+                try:
+                    worker = threading.Thread(target=self._plan_in_background,
+                                              args=(retry["id"], recovery_message, False),
+                                              name="omnivla-recovery-planner", daemon=True)
+                    worker.start()
+                except Exception:
+                    with db_lock:
+                        database = load_chats_db()
+                        failed_retry = _find_chat(database, retry["id"])
+                        if failed_retry:
+                            failed_retry["status"] = "failed"
+                            failed_retry["chat_history"].append({"role": "assistant", "content":
+                                "Recovery planning could not start. No desktop input was sent."})
+                            save_chats_db(database)
+                    with gui_app.status_lock:
+                        gui_app.agent_status["status"] = "failed"
+                        gui_app.agent_status["phase"] = "failed"
+                        gui_app.agent_status["current_action"] = "Recovery planning could not start."
+                    raise
+                planner_handoff = True
+                self._json_response({"success": True, "message": "Recovery plan requested."}, 202)
+            else:
+                self._json_response({"success": True}, 201)
+        finally:
+            if not planner_handoff:
+                planner_active_chat_id = None
+                planner_lock.release()
 
     def _switch_chat(self, payload: dict[str, Any]) -> None:
         chat_id = validate_chat_id(payload.get("id"))

@@ -1,0 +1,7 @@
+# Recovery checkpoints and revised plans
+
+The command center already persists a bounded execution snapshot after each reported step. Failed and stopped runs now use those records to prepare a **new recovery plan** rather than exposing the old plan as immediately executable. The recovery request describes prior inputs as uncertain effects, asks the planner to inspect current state first, and specifically warns against repeating sends, uploads, saves, and deletions based only on the old plan. The revised plan still goes through the normal review and approval gate.
+
+The new chat retains a bounded recovery checkpoint (source run, prior status, and up to 12 recorded inputs). It is visible in the conversation. Typed and compound input content is hidden from the recovery prompt. A synthetic recovery prompt does not update personal memory. A successful run can still be deliberately repeated through a fresh reviewed retry.
+
+This is safe recovery planning, not automatic replay or proof that an external effect happened. Step success describes observed input dispatch and local checks; durable external receipts remain a future tool integration. If the prior application state cannot be reconciled, the planner must ask the operator. The behavior is covered by persistence, retry, redaction, planner-learning, and Electron UI tests; it has not yet been benchmarked with a live visual model on interrupted workflows.

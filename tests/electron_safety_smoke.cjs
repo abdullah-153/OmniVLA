@@ -25,6 +25,8 @@ app.whenReady().then(async()=>{
     await waitFor(win,`document.querySelector('.completion-evidence summary')?.textContent.includes('visual') && document.querySelector('.completion-evidence p')?.textContent.includes('Filename')`);
     await win.webContents.executeJavaScript(`fetch('/__fixture/memory',{method:'POST'})`);
     await waitFor(win,`document.querySelector('#memory-entities li')?.textContent.includes('Project Atlas') && document.querySelector('#memory-relations li')?.textContent.includes('Sarah Khan')`);
+    await win.webContents.executeJavaScript(`fetch('/__fixture/recovery',{method:'POST'})`);
+    await waitFor(win,`document.querySelector('.recovery-card')?.textContent.includes('effect uncertain')`);
     await win.webContents.executeJavaScript(`fetch('/__fixture/approval',{method:'POST'}).then(r=>r.json()).then(r=>{window.__fixture=r;})`);
     await waitFor(win,`!document.getElementById('intervention-card').hidden && document.getElementById('intervention-card').dataset.requestId === window.__fixture?.id`);
     await delay(250);

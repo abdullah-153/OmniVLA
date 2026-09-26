@@ -264,7 +264,8 @@ def start_planner_server(use_gpu=False):
     active_planner_gpu = sm.active_planner_gpu
     return res
 
-def run_planner_chat(message, chat_history=None, rag_context="", user_profile_context="", activity_callback=None):
+def run_planner_chat(message, chat_history=None, rag_context="", user_profile_context="", activity_callback=None,
+                     learn_personal_context=True):
     import cogniagent.gui.server_manager as sm
     if chat_history is None:
         history = list(agent_status.get("chat_history", []))
@@ -273,7 +274,9 @@ def run_planner_chat(message, chat_history=None, rag_context="", user_profile_co
     temp = agent_status["settings"].get("temperature", 0.2)
     max_tokens = min(640, max(160, int(agent_status["settings"].get("max_tokens", 640))))
     config.llm.planner_model = agent_status["settings"].get("planner_model_path", config.llm.planner_model)
-    return sm.run_planner_chat(message, history, temp, max_tokens, rag_context, user_profile_context=user_profile_context, activity_callback=activity_callback)
+    return sm.run_planner_chat(message, history, temp, max_tokens, rag_context,
+                               user_profile_context=user_profile_context, activity_callback=activity_callback,
+                               learn_personal_context_enabled=learn_personal_context)
 
 def start_llama_server(max_gpu=True):
     import cogniagent.gui.server_manager as sm

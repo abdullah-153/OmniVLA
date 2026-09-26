@@ -174,6 +174,89 @@ def test_failed_approval_commit_never_starts_execution():
     start.assert_not_called()
 
 
+def test_failed_run_creates_reconciled_plan_from_persisted_checkpoint():
+    database=server._default_database()
+    previous=database["chats"][0]
+    previous.update(status="failed",intent="Send the report to Sarah",
+                    reviewed_plan="1. Open mail\n2. Send report\nExpected Output: Report sent\nPrescribed Steps: 8",
+                    execution={"status":"failed","steps":[
+                        {"step":1,"action":"click","action_text":"Use · Send report","success":True},
+                        {"step":2,"action":"terminate","action_text":"Finish task","success":False}]})
+    handler=object.__new__(server.WebUIRequestHandler)
+    handler._json_response=MagicMock()
+    handler._error=MagicMock()
+    handler._sync_active_chat=MagicMock()
+    with patch.object(server,"load_chats_db",return_value=database), \
+         patch.object(server,"save_chats_db"), \
+         patch.object(server.threading,"Thread") as worker, \
+         patch.object(server.gui_app,"running_thread",None):
+        try:
+            handler._retry_run()
+            retry=database["chats"][-1]
+            assert retry["status"] == "planning"
+            assert not retry.get("reviewed_plan")
+            assert retry["recovery"]["actions"] == [{"step":1,"action":"click",
+                "label":"Use · Send report","dispatched":True}]
+            assert server._active_plan(database) is None
+            args=worker.call_args.kwargs["args"]
+            assert args[0] == retry["id"] and args[2] is False
+            assert "Do not repeat a send" in args[1]
+            worker.return_value.start.assert_called_once()
+            handler._json_response.assert_called_once_with({"success":True,"message":"Recovery plan requested."},202)
+        finally:
+            server.planner_active_chat_id=None
+            if server.planner_lock.locked(): server.planner_lock.release()
+
+
+def test_recovery_checkpoint_survives_database_normalization():
+    database=server._default_database()
+    database["chats"][0]["recovery"]={"source_chat_id":"prior","prior_status":"stopped",
+        "actions":[{"step":3,"action":"click","label":"Use · Save","dispatched":True}]}
+    normalized=server._normalize_database(database)
+    assert normalized["chats"][0]["recovery"]["actions"][0]["dispatched"] is True
+
+
+def test_recovery_context_never_repeats_typed_content():
+    previous={"id":"prior","status":"failed","execution":{"steps":[
+        {"step":1,"action":"type","action_text":"Type secret phrase 1234","success":True}]}}
+    recovery=server._build_recovery_context(previous)
+    assert "secret phrase" not in str(recovery)
+    prompt=server._recovery_planner_message("Fill the form","1. Open app",recovery)
+    assert "secret phrase" not in prompt
+    assert "effect uncertain" in prompt
+
+
+def test_recovery_worker_start_failure_releases_planner_lock():
+    database=server._default_database()
+    database["chats"][0].update(status="failed",intent="Inspect report",
+                                 reviewed_plan="1. Open report\n2. Inspect report\nPrescribed Steps: 8")
+    handler=object.__new__(server.WebUIRequestHandler)
+    handler._json_response=MagicMock()
+    handler._error=MagicMock()
+    handler._sync_active_chat=MagicMock()
+    with patch.object(server,"load_chats_db",return_value=database), \
+         patch.object(server,"save_chats_db"), \
+         patch.object(server.threading,"Thread",side_effect=RuntimeError("cannot start")), \
+         patch.object(server.gui_app,"running_thread",None):
+        with pytest.raises(RuntimeError,match="cannot start"):
+            handler._retry_run()
+    assert database["chats"][-1]["status"] == "failed"
+    assert server.planner_active_chat_id is None
+    assert not server.planner_lock.locked()
+
+
+def test_recovery_planning_does_not_learn_from_synthetic_prompt():
+    from cogniagent.gui import server_manager
+    reply=MagicMock(status_code=200)
+    reply.json.return_value={"choices":[{"message":{"content":"Review the current application state."}}]}
+    with patch.object(server_manager,"start_planner_server",return_value=True), \
+         patch.object(server_manager,"stop_planner_server"), \
+         patch.object(server_manager,"learn_personal_context") as learn, \
+         patch.object(server_manager.requests,"post",return_value=reply):
+        server_manager.run_planner_chat("Prepare a recovery plan",[],learn_personal_context_enabled=False)
+    learn.assert_not_called()
+
+
 def test_exhausted_budget_never_accepts_manual_extension():
     agent=make_agent()
     agent.vlm.reason.return_value=action(element="Search", x=20,y=20)
