@@ -206,8 +206,6 @@ def _get_exa_client() -> Any:
             api_key = os.environ.get("EXA_API_KEY")
         except Exception:
             pass
-    if not api_key:
-        api_key = "4aa19e7a-3e04-4ac0-b9e0-443ecbcde56f"
     if api_key:
         try:
             return Exa(api_key=api_key)
@@ -258,7 +256,7 @@ def _search_exa(query: str, max_results: int = 5) -> list[dict[str, Any]]:
 
 
 def _get_monid_api_key() -> str:
-    """Retrieve Monid API key from environment or default."""
+    """Retrieve the configured Monid API key; never use a bundled credential."""
     api_key = os.environ.get("MONID_API_KEY", "").strip()
     if not api_key:
         try:
@@ -267,8 +265,6 @@ def _get_monid_api_key() -> str:
             api_key = os.environ.get("MONID_API_KEY", "").strip()
         except Exception:
             pass
-    if not api_key:
-        api_key = "monid_live_RqWc1jL2EboTCQdFQVReo6zH"
     return api_key
 
 
