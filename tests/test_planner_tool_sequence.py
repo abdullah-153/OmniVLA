@@ -56,6 +56,18 @@ def test_empty_planner_response_is_failure():
             server_manager.run_planner_chat("Investigate Atlas", [], learn_personal_context_enabled=False)
 
 
+def test_tool_transcript_is_bounded_and_preserves_original_request():
+    base = [{"role": "system", "content": "System rules"}, {"role": "user", "content": "Find the Atlas report"}]
+    messages = [dict(item) for item in base]
+    for number in range(4):
+        server_manager.append_planner_tool_result(messages, len(base), "Reading", f"result-{number} " + "x" * 12000)
+    assert messages[:2] == base
+    assert sum(len(item["content"]) for item in messages[2:]) <= 6000
+    assert "result-3" in messages[-1]["content"]
+    assert "Excerpt truncated" in messages[-1]["content"]
+    assert "result-0" not in str(messages[2:])
+
+
 def test_failed_synthesis_does_not_reuse_pretool_success_claim():
     receipts = []
     with patch.object(server_manager, "start_planner_server", return_value=True), \
