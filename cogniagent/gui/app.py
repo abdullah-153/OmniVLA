@@ -26,6 +26,9 @@ except ImportError:
 import numpy as np
 import mss
 
+from cogniagent.gui.interventions import InterventionBroker
+interventions = InterventionBroker()
+
 from cogniagent.agent import CogniAgent
 from cogniagent.config import config
 from cogniagent.gui.html_assets import HTML_CONTENT
@@ -98,7 +101,6 @@ agent_status = {
         "model_path": "models/Holo-3.1-4B-abliterated-rdo.Q4_K_M.gguf",
         "planner_model_path": "models/Spark-X2.5-4B-Q4_K_M.gguf" if os.path.exists("models/Spark-X2.5-4B-Q4_K_M.gguf") else "models/Qwen3.5-4B.Q4_K_M.gguf",
         "temperature": 0.2,
-        "max_steps": 60,
         "enable_recording": False,
         "memory_enabled": False,
         "model_type": "local",
@@ -134,6 +136,7 @@ def stop_agent():
     """Immediately stop active agent run."""
     global stop_requested, active_agent
     stop_requested = True
+    interventions.cancel()
     if active_agent:
         try:
             active_agent.stop()
@@ -147,11 +150,13 @@ recording_writer = None
 
 def start_agent_task(task: str, run_policy: dict | None = None) -> bool:
     """Atomically start one desktop run and reject overlapping execution."""
-    global running_thread
+    global running_thread, stop_requested
     with execution_lock:
         if running_thread and running_thread.is_alive():
             return False
 
+        stop_requested = False
+        interventions.cancel()
         worker = threading.Thread(
             target=execute_agent_task,
             args=(task, run_policy),
@@ -472,7 +477,6 @@ def synthesize_task_summary(
 
 def execute_agent_task(task, run_policy=None):
     global running_thread, stop_requested, recording_active, overlay_process
-    stop_requested = False
     recording_active = False
     run_policy = dict(run_policy or {})
     run_chat_id = run_policy.get("chat_id")
@@ -561,6 +565,7 @@ def execute_agent_task(task, run_policy=None):
         agent.check_stop_callback = lambda: stop_requested
         agent.check_pause_callback = lambda: bool(agent_status.get("paused", False))
         agent.action_policy = {"mode": run_policy.get("mode", "supervised")}
+        agent.expected_output = run_policy.get("expected_output", "")
         active_agent = agent
         
         def on_status_update(status, detail):
@@ -660,28 +665,22 @@ def execute_agent_task(task, run_policy=None):
         agent.on_step_complete = on_step_complete
 
         
-        def wait_for_hitl():
-            hitl_event.clear()
-            hitl_response.clear()
-            while not hitl_event.is_set():
-                if stop_requested:
-                    raise Exception("Task stopped manually during intervention.")
-                time.sleep(0.2)
-            resp = hitl_response[0] if hitl_response else "No response"
-            with status_lock:
-                agent_status["hitl_question"] = ""
-            return resp
-            
-        agent.wait_for_hitl_response = wait_for_hitl
-        
+        def request_intervention(kind, question, action=None):
+            interventions.open(agent.run_id, kind, question, action)
+            on_status_update("hitl", question)
+            try:
+                return interventions.wait(lambda: stop_requested or agent._should_stop())
+            finally:
+                with status_lock:
+                    agent_status["hitl_question"] = ""
+
+        agent.request_intervention = request_intervention
+
         # The first reasoning call is observation-only; a fixed three-second
         # countdown only made the app appear stalled.
         time.sleep(0.1)
         
-        with status_lock:
-            default_max = agent_status["settings"].get("max_steps", 60)
-        policy_max = (run_policy or {}).get("max_steps")
-        max_steps = policy_max if policy_max is not None else default_max
+        max_steps = (run_policy or {}).get("max_steps")
         result = agent.run_task(task, max_steps=max_steps)
         
         if stop_requested:
@@ -938,15 +937,9 @@ def shutdown_runtime(*, include_console: bool = True) -> None:
 
 def main():
     global server_process, planner_process, console_process
-    from gui_telemetry import kill_port_owner
-    from cogniagent.gui.server import WebUIRequestHandler
-    # Do not terminate every llama-server or Electron process on the machine.
-    # Port cleanup is limited to OmniVLA's own fixed endpoints, while normal
-    # shutdown below only terminates processes this instance launched.
-    kill_port_owner(8000)
-    kill_port_owner(8082)
-    kill_port_owner(8089)
-    kill_port_owner(8090)
+    from cogniagent.gui.server import WebUIRequestHandler, local_session_token
+    # This credential is inherited only by our Electron child processes.
+    os.environ["OMNIVLA_SESSION_TOKEN"] = local_session_token
 
     os.environ["CHROMA_TELEMETRY_STATUS"] = "False"
     sync_chats_on_startup()
@@ -963,8 +956,8 @@ def main():
             break
         except OSError as e:
             logging.warning(f"Failed to bind to {server_host}:8000 (attempt {attempt+1}/5): {e}")
-            kill_port_owner(8000)
-            time.sleep(1.0)
+            logging.error("Port 8000 is occupied. Close the owning app or stop the existing OmniVLA instance.")
+            break
             
     if not httpd:
         logging.critical("CRITICAL: Failed to bind to port 8000 after 5 attempts. Exiting.")

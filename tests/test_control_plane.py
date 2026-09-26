@@ -50,7 +50,7 @@ class TestCommandCenterControlPlane(unittest.TestCase):
         self.assertNotIn("api_key", settings)
         self.assertEqual(settings["model_type"], "openai")
         self.assertEqual(settings["model_path"], "provider-vision-model")
-        self.assertEqual(settings["max_steps"], 20)
+        self.assertNotIn("max_steps", settings)
 
     def test_invalid_task_is_rejected_before_agent_execution(self):
         with self.assertRaises(RequestValidationError):
@@ -286,7 +286,7 @@ class TestCommandCenterControlPlane(unittest.TestCase):
 
     def test_legacy_planner_scratch_is_reduced_to_numbered_steps(self):
         dirty = "Thinking Process:\n* Goal: do a thing\n* Step 1: Open the app.\n* Step 2: Verify the result."
-        self.assertEqual(command_server._plan_copy(dirty), "1. Open the app.\n2. Verify the result.")
+        self.assertEqual(command_server._plan_copy(dirty), "1. Open the app.\n2. Verify the result.\nPrescribed Steps: 30")
 
     def test_any_model_authored_plan_can_be_selected(self):
         older = "1. Open the editor.\n2. Type the first draft."
@@ -311,7 +311,7 @@ class TestCommandCenterControlPlane(unittest.TestCase):
             patch.object(command_server, "save_chats_db"),
         ):
             handler._select_plan({"chat_id": "run-1", "plan": older})
-        self.assertEqual(database["chats"][0]["reviewed_plan"], older)
+        self.assertEqual(database["chats"][0]["reviewed_plan"], older + "\nPrescribed Steps: 30")
         handler._json_response.assert_called_once_with({"success": True})
 
     def test_retry_creates_a_fresh_reviewable_run(self):
@@ -385,7 +385,7 @@ class TestCommandCenterControlPlane(unittest.TestCase):
             # Test selecting by message_index
             handler._select_plan({"chat_id": "chat-42", "plan": raw_msg, "message_index": 1})
         self.assertEqual(database["chats"][0]["status"], "plan_created")
-        self.assertEqual(database["chats"][0]["reviewed_plan"], clean_plan)
+        self.assertEqual(database["chats"][0]["reviewed_plan"], clean_plan + "\nPrescribed Steps: 40")
         handler._json_response.assert_called_once_with({"success": True})
 
     def test_confirm_allows_whitespace_and_newline_variants(self):

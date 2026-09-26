@@ -19,7 +19,7 @@ function shutdownBackendAndQuit() {
     port: 8000,
     path: '/api/shutdown',
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Content-Length': 2 }
+    headers: { 'Content-Type': 'application/json', 'Content-Length': 2, 'X-OmniVLA-Session': process.env.OMNIVLA_SESSION_TOKEN || '' }
   }, finish);
   req.setTimeout(6000, () => { req.destroy(); finish(); });
   req.on('error', finish);

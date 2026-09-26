@@ -210,9 +210,9 @@ class TestCompoundActions(unittest.TestCase):
         res = self.router.execute_vlm_action(vlm_result, (1920, 1080))
         self.assertTrue(res["success"])
         self.assertIn("[1] Clicked [480, 270]", res["detail"])
-        self.assertIn("[2] Typed 6 character(s)", res["detail"])
+        self.assertIn("Re-observe", res["detail"])
         mock_click.assert_called_once_with(480, 270)
-        mock_paste.assert_called_once_with("Report")
+        mock_paste.assert_not_called()
 
     def test_assess_action_risk_detects_compound_risks(self):
         """assess_action_risk flags destructive or financial operations in compound actions."""

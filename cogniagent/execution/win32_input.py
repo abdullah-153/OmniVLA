@@ -1,5 +1,24 @@
 import ctypes
 import time
+import threading
+from contextlib import contextmanager
+
+_cancellation = threading.local()
+
+@contextmanager
+def cancellation_scope(callback):
+    previous = getattr(_cancellation, "callback", None)
+    _cancellation.callback = callback
+    try:
+        yield
+    finally:
+        _cancellation.callback = previous
+
+def check_cancelled():
+    callback = getattr(_cancellation, "callback", None)
+    if callback and callback():
+        raise RuntimeError("Native input cancelled.")
+
 from ctypes import wintypes
 
 # --- Constants ---
@@ -133,6 +152,7 @@ def enable_dpi_awareness():
 
 
 def check_failsafe():
+    check_cancelled()
     """Abort if the cursor is at a virtual-desktop corner.
 
     Windows reports cursor coordinates in the virtual desktop.  Using only the
@@ -155,7 +175,7 @@ def check_failsafe():
             return
         right = left + w - 1
         bottom = top + h - 1
-        
+
         # Corners of the full virtual desktop.
         # We check within a small 2-pixel margin
         if (x <= left + 2 and y <= top + 2) or \
@@ -220,18 +240,38 @@ def get_focus_context() -> tuple[int, int]:
     return foreground, 0
 
 
+def foreground_process_id(hwnd: int) -> int:
+    process_id = wintypes.DWORD()
+    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
+    return int(process_id.value)
+
+
+def restore_observed_focus(context: tuple[int, int], process_id: int) -> bool:
+    check_failsafe()
+    hwnd = context[0]
+    if not hwnd or not process_id or not user32.IsWindow(hwnd) or foreground_process_id(hwnd) != process_id:
+        return False
+    if get_focus_context()[0] != hwnd:
+        if user32.IsIconic(hwnd):
+            user32.ShowWindow(hwnd, 9)
+        check_failsafe()
+        user32.SetForegroundWindow(hwnd)
+        time.sleep(0.05)
+    return get_focus_context()[0] == hwnd
+
+
 def smooth_move_to(x: int, y: int, duration: float = 0.35):
     """Move cursor smoothly to absolute virtual-desktop pixel coordinates."""
     check_failsafe()
     target_x = int(x)
     target_y = int(y)
     start_x, start_y = get_cursor_pos()
-    
+
     # Calculate steps at ~60 Hz
     steps = int(duration * 60)
     if steps < 1:
         steps = 1
-        
+
     for i in range(1, steps + 1):
         check_failsafe()
         t = i / steps
@@ -241,8 +281,9 @@ def smooth_move_to(x: int, y: int, duration: float = 0.35):
         curr_y = int(start_y + (target_y - start_y) * t_smooth)
         user32.SetCursorPos(curr_x, curr_y)
         time.sleep(duration / steps)
-        
+
     # Ensure final coordinate is exactly reached
+    check_failsafe()
     user32.SetCursorPos(target_x, target_y)
     time.sleep(0.05)
 
@@ -266,17 +307,17 @@ def move_to(x: int, y: int):
 def mouse_click(x: int, y: int, button: str = "left"):
     """Move cursor smoothly and execute click using SendInput."""
     check_failsafe()
-    
+
     from cogniagent.config import config
     pause = getattr(config.execution, "click_pause", 0.3)
-    
+
     if pause == 0.0:
         set_cursor_pos(x, y)
     else:
         # Move smoothly over a fraction of the pause or default 0.25s
         smooth_move_to(x, y, duration=min(0.25, pause))
         time.sleep(0.05)
-    
+
     if button == "left":
         down_flag = MOUSEEVENTF_LEFTDOWN
         up_flag = MOUSEEVENTF_LEFTUP
@@ -290,7 +331,7 @@ def mouse_click(x: int, y: int, button: str = "left"):
         raise ValueError(f"Unknown button: {button}")
 
     inputs = (INPUT * 2)()
-    
+
     # Down event
     inputs[0].type = INPUT_MOUSE
     inputs[0].ii.mi.dx = 0
@@ -299,7 +340,7 @@ def mouse_click(x: int, y: int, button: str = "left"):
     inputs[0].ii.mi.dwFlags = down_flag
     inputs[0].ii.mi.time = 0
     inputs[0].ii.mi.dwExtraInfo = 0
-    
+
     # Up event
     inputs[1].type = INPUT_MOUSE
     inputs[1].ii.mi.dx = 0
@@ -308,7 +349,8 @@ def mouse_click(x: int, y: int, button: str = "left"):
     inputs[1].ii.mi.dwFlags = up_flag
     inputs[1].ii.mi.time = 0
     inputs[1].ii.mi.dwExtraInfo = 0
-    
+
+    check_failsafe()
     user32.SendInput(2, inputs, ctypes.sizeof(INPUT))
 
 
@@ -325,7 +367,7 @@ def mouse_drag(x1: int, y1: int, x2: int, y2: int, duration: float = 0.5):
     check_failsafe()
     set_cursor_pos(x1, y1)
     time.sleep(0.05)
-    
+
     # Send LEFTDOWN
     down_input = (INPUT * 1)()
     down_input[0].type = INPUT_MOUSE
@@ -335,43 +377,46 @@ def mouse_drag(x1: int, y1: int, x2: int, y2: int, duration: float = 0.5):
     down_input[0].ii.mi.dwFlags = MOUSEEVENTF_LEFTDOWN
     down_input[0].ii.mi.time = 0
     down_input[0].ii.mi.dwExtraInfo = 0
+    check_failsafe()
     user32.SendInput(1, down_input, ctypes.sizeof(INPUT))
     time.sleep(0.05)
-    
-    steps = int(duration * 60)  # 60Hz update rate
-    if steps < 1:
-        steps = 1
-        
-    for i in range(1, steps + 1):
-        check_failsafe()
-        t = i / steps
-        curr_x = int(x1 + (x2 - x1) * t)
-        curr_y = int(y1 + (y2 - y1) * t)
-        user32.SetCursorPos(curr_x, curr_y)
-        
-        time.sleep(duration / steps)
-        
-    set_cursor_pos(x2, y2)
-    time.sleep(0.05)
-    
-    # Send LEFTUP
-    up_input = (INPUT * 1)()
-    up_input[0].type = INPUT_MOUSE
-    up_input[0].ii.mi.dx = 0
-    up_input[0].ii.mi.dy = 0
-    up_input[0].ii.mi.mouseData = 0
-    up_input[0].ii.mi.dwFlags = MOUSEEVENTF_LEFTUP
-    up_input[0].ii.mi.time = 0
-    up_input[0].ii.mi.dwExtraInfo = 0
-    user32.SendInput(1, up_input, ctypes.sizeof(INPUT))
-    time.sleep(0.05)
+
+    try:
+        steps = int(duration * 60)  # 60Hz update rate
+        if steps < 1:
+            steps = 1
+
+        for i in range(1, steps + 1):
+            check_failsafe()
+            t = i / steps
+            curr_x = int(x1 + (x2 - x1) * t)
+            curr_y = int(y1 + (y2 - y1) * t)
+            user32.SetCursorPos(curr_x, curr_y)
+
+            time.sleep(duration / steps)
+
+        set_cursor_pos(x2, y2)
+        time.sleep(0.05)
+
+    finally:
+        # Send LEFTUP
+        up_input = (INPUT * 1)()
+        up_input[0].type = INPUT_MOUSE
+        up_input[0].ii.mi.dx = 0
+        up_input[0].ii.mi.dy = 0
+        up_input[0].ii.mi.mouseData = 0
+        up_input[0].ii.mi.dwFlags = MOUSEEVENTF_LEFTUP
+        up_input[0].ii.mi.time = 0
+        up_input[0].ii.mi.dwExtraInfo = 0
+        user32.SendInput(1, up_input, ctypes.sizeof(INPUT))
+        time.sleep(0.05)
 
 
 def mouse_scroll(amount: int):
     """Scroll mouse wheel using SendInput. Positive value scrolls UP, negative DOWN."""
     check_failsafe()
     unsigned_amount = amount & 0xFFFFFFFF
-    
+
     scroll_input = (INPUT * 1)()
     scroll_input[0].type = INPUT_MOUSE
     scroll_input[0].ii.mi.dx = 0
@@ -380,7 +425,7 @@ def mouse_scroll(amount: int):
     scroll_input[0].ii.mi.dwFlags = MOUSEEVENTF_WHEEL
     scroll_input[0].ii.mi.time = 0
     scroll_input[0].ii.mi.dwExtraInfo = 0
-    
+
     user32.SendInput(1, scroll_input, ctypes.sizeof(INPUT))
 
 
@@ -393,7 +438,7 @@ def resolve_vk(key: str) -> int:
         val = ord(k.upper())
         if (0x30 <= val <= 0x39) or (0x41 <= val <= 0x5A):  # 0-9, A-Z
             return val
-        
+
         punctuation_vks = {
             ';': 0xBA, ':': 0xBA,
             '=': 0xBB, '+': 0xBB,
@@ -409,7 +454,7 @@ def resolve_vk(key: str) -> int:
         }
         if k in punctuation_vks:
             return punctuation_vks[k]
-            
+
     raise ValueError(f"Unsupported key identifier: {key}")
 
 
@@ -419,11 +464,11 @@ def key_down(key: str):
     check_failsafe()
     vk = resolve_vk(key)
     scan = user32.MapVirtualKeyW(vk, MAPVK_VK_TO_VSC)
-    
+
     extended = 0
     if vk in [0x14, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x2D, 0x2E, 0x5B, 0x5C]:
         extended = KEYEVENTF_EXTENDEDKEY
-        
+
     inputs = (INPUT * 1)()
     inputs[0].type = INPUT_KEYBOARD
     inputs[0].ii.ki.wVk = vk
@@ -431,20 +476,20 @@ def key_down(key: str):
     inputs[0].ii.ki.dwFlags = extended
     inputs[0].ii.ki.time = 0
     inputs[0].ii.ki.dwExtraInfo = 0
-    
+
     user32.SendInput(1, inputs, ctypes.sizeof(INPUT))
 
 
 def key_up(key: str):
     """Send key up event using SendInput."""
-    check_failsafe()
+    # Releases must always run, even after cancellation or a failsafe.
     vk = resolve_vk(key)
     scan = user32.MapVirtualKeyW(vk, MAPVK_VK_TO_VSC)
-    
+
     extended = 0
     if vk in [0x14, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x2D, 0x2E, 0x5B, 0x5C]:
         extended = KEYEVENTF_EXTENDEDKEY
-        
+
     inputs = (INPUT * 1)()
     inputs[0].type = INPUT_KEYBOARD
     inputs[0].ii.ki.wVk = vk
@@ -452,7 +497,7 @@ def key_up(key: str):
     inputs[0].ii.ki.dwFlags = KEYEVENTF_KEYUP | extended
     inputs[0].ii.ki.time = 0
     inputs[0].ii.ki.dwExtraInfo = 0
-    
+
     user32.SendInput(1, inputs, ctypes.sizeof(INPUT))
 
 
@@ -568,20 +613,22 @@ def paste_text_preserving_clipboard(text: str) -> bool:
         finally:
             user32.CloseClipboard()
 
-        hotkey("ctrl", "v", delay=0.025)
-        time.sleep(0.12)
+        try:
+            hotkey("ctrl", "v", delay=0.025)
+            time.sleep(0.12)
 
-        if had_previous:
-            ole32.OleSetClipboard(previous)
-            vtable = ctypes.cast(previous, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
-            release = ctypes.WINFUNCTYPE(ctypes.c_ulong, ctypes.c_void_p)(vtable[2])
-            release(previous)
-        else:
-            if user32.OpenClipboard(None):
-                try:
-                    user32.EmptyClipboard()
-                finally:
-                    user32.CloseClipboard()
+        finally:
+            if had_previous:
+                ole32.OleSetClipboard(previous)
+                vtable = ctypes.cast(previous, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
+                release = ctypes.WINFUNCTYPE(ctypes.c_ulong, ctypes.c_void_p)(vtable[2])
+                release(previous)
+            else:
+                if user32.OpenClipboard(None):
+                    try:
+                        user32.EmptyClipboard()
+                    finally:
+                        user32.CloseClipboard()
         return True
     except Exception:
         return False
@@ -590,7 +637,7 @@ def paste_text_preserving_clipboard(text: str) -> bool:
 def _send_unicode_char(code: int):
     """Press and release a single Unicode character unit using SendInput."""
     inputs = (INPUT * 2)()
-    
+
     # Down
     inputs[0].type = INPUT_KEYBOARD
     inputs[0].ii.ki.wVk = 0
@@ -598,7 +645,7 @@ def _send_unicode_char(code: int):
     inputs[0].ii.ki.dwFlags = KEYEVENTF_UNICODE
     inputs[0].ii.ki.time = 0
     inputs[0].ii.ki.dwExtraInfo = 0
-    
+
     # Up
     inputs[1].type = INPUT_KEYBOARD
     inputs[1].ii.ki.wVk = 0
@@ -606,7 +653,8 @@ def _send_unicode_char(code: int):
     inputs[1].ii.ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP
     inputs[1].ii.ki.time = 0
     inputs[1].ii.ki.dwExtraInfo = 0
-    
+
+    check_failsafe()
     user32.SendInput(2, inputs, ctypes.sizeof(INPUT))
 
 
@@ -617,9 +665,9 @@ def get_open_windows():
     GetWindowTextW = ctypes.windll.user32.GetWindowTextW
     GetWindowTextLengthW = ctypes.windll.user32.GetWindowTextLengthW
     IsWindowVisible = ctypes.windll.user32.IsWindowVisible
-    
+
     titles = []
-    
+
     def foreach_window(hwnd, lParam):
         if IsWindowVisible(hwnd):
             length = GetWindowTextLengthW(hwnd)
@@ -630,7 +678,7 @@ def get_open_windows():
                 if title:
                     titles.append(title)
         return True
-        
+
     EnumWindows(EnumWindowsProc(foreach_window), 0)
     return titles
 
@@ -644,9 +692,9 @@ def focus_window(title_substring: str) -> bool:
     IsWindowVisible = ctypes.windll.user32.IsWindowVisible
     ShowWindow = ctypes.windll.user32.ShowWindow
     SetForegroundWindow = ctypes.windll.user32.SetForegroundWindow
-    
+
     found_hwnd = []
-    
+
     def foreach_window(hwnd, lParam):
         if IsWindowVisible(hwnd):
             length = GetWindowTextLengthW(hwnd)
@@ -658,9 +706,9 @@ def focus_window(title_substring: str) -> bool:
                     found_hwnd.append(hwnd)
                     return False  # Stop enumerating
         return True
-        
+
     EnumWindows(EnumWindowsProc(foreach_window), 0)
-    
+
     if found_hwnd:
         hwnd = found_hwnd[0]
         ShowWindow(hwnd, 9)  # SW_RESTORE (9) restores if minimized, otherwise normal
@@ -677,9 +725,9 @@ def maximize_window(title_substring: str) -> bool:
     GetWindowTextLengthW = ctypes.windll.user32.GetWindowTextLengthW
     IsWindowVisible = ctypes.windll.user32.IsWindowVisible
     ShowWindow = ctypes.windll.user32.ShowWindow
-    
+
     found_hwnd = []
-    
+
     def foreach_window(hwnd, lParam):
         if IsWindowVisible(hwnd):
             length = GetWindowTextLengthW(hwnd)
@@ -691,9 +739,9 @@ def maximize_window(title_substring: str) -> bool:
                     found_hwnd.append(hwnd)
                     return False
         return True
-        
+
     EnumWindows(EnumWindowsProc(foreach_window), 0)
-    
+
     if found_hwnd:
         ShowWindow(found_hwnd[0], 3)  # SW_MAXIMIZE (3)
         return True

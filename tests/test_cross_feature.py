@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 import sys
 import numpy as np
 from PIL import Image
@@ -26,6 +27,9 @@ class TestCrossFeature(unittest.TestCase):
         pass
 
     def setUp(self):
+        freshness = patch.object(CogniAgent, "_observation_matches", return_value=True)
+        freshness.start()
+        self.addCleanup(freshness.stop)
         config.llm.base_url = "http://127.0.0.1:58089/v1"
         self.server.clear()
         tests.conftest.init_mocks()
@@ -85,7 +89,7 @@ class TestCrossFeature(unittest.TestCase):
         
         # Verify warnings were injected in messages sent to the VLM server on step 2
         reqs = self.server.get_requests()
-        self.assertEqual(len(reqs), 2)
+        self.assertEqual(len(reqs), 2)  # An unresolved failure blocks completion before outcome verification.
         step2_payload = reqs[1]["messages"]
         
         # The warning should be in the native tool result before the second inference step.
@@ -179,7 +183,7 @@ class TestCrossFeature(unittest.TestCase):
         
         # Check last request payload
         reqs = self.server.get_requests()
-        last_payload = reqs[-1]["messages"]
+        last_payload = [request for request in reqs if request.get("tools")][-1]["messages"]
         
         image_count = 0
         eviction_count = 0

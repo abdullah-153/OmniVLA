@@ -10,6 +10,10 @@ logger = logging.getLogger(__name__)
 # Basic safety setup (replaces pyautogui configuration)
 win32_input.enable_dpi_awareness()
 
+class PauseRequested(RuntimeError):
+    pass
+
+
 class ActionRouter:
     """Routes VLM tool calls to Windows native system inputs using ctypes.
     
@@ -20,6 +24,28 @@ class ActionRouter:
     
     def __init__(self, config):
         self.config = config
+        self.check_cancelled = lambda: False
+        self.check_paused = lambda: False
+
+    def _guard(self):
+        if self.check_cancelled():
+            raise RuntimeError("Execution cancelled before input dispatch.")
+        if self.check_paused():
+            raise PauseRequested("Execution paused; obtain a fresh observation before continuing.")
+
+    def _input(self, name, *args, **kwargs):
+        self._guard()
+        with win32_input.cancellation_scope(self.check_cancelled):
+            return getattr(win32_input, name)(*args, **kwargs)
+
+    def _sleep(self, duration):
+        # Short slices bound Stop latency even during a wait tool.
+        remaining = max(0, float(duration))
+        while remaining > 0:
+            self._guard()
+            interval = min(0.05, remaining)
+            time.sleep(interval)
+            remaining -= interval
 
     @staticmethod
     def resolve_click_coordinates(action_data: dict, original_dims: tuple, screen_origin: object = (0, 0)) -> tuple[tuple[int, int] | None, str | None]:
@@ -185,6 +211,8 @@ class ActionRouter:
                     "tool_name": tool_name,
                 }
             return None
+        if tool_name == "key_press" and str(action_data.get("key", "")).lower().replace(" ", "") in {"enter", "return", "ctrl+enter", "alt+s"}:
+            return {"reasons": ["potential submission or confirmation"], "target": "focused control", "tool_name": tool_name}
         if tool_name not in {"click", "double_click", "right_click", "drag", "type"}:
             return None
         label = " ".join(
@@ -232,18 +260,18 @@ class ActionRouter:
                 else:
                     x, y = coords
                     if action_type == "double_click":
-                        win32_input.mouse_double_click(x, y)
+                        self._input("mouse_double_click", x, y)
                         results.append(f"Double-clicked [{x}, {y}]")
                     elif action_type == "right_click":
-                        win32_input.mouse_click(x, y, button="right")
+                        self._input("mouse_click", x, y, button="right")
                         results.append(f"Right-clicked [{x}, {y}]")
                     elif action_type == "move":
-                        win32_input.smooth_move_to(x, y, duration=0.25)
+                        self._input("smooth_move_to", x, y, duration=0.25)
                         results.append(f"Moved pointer to [{x}, {y}]")
                     else:
-                        win32_input.mouse_click(x, y)
+                        self._input("mouse_click", x, y)
                         results.append(f"Clicked [{x}, {y}]")
-                    time.sleep(self.config.execution.click_pause)
+                    self._sleep(self.config.execution.click_pause)
                     focus_after = win32_input.get_focus_context()
 
             elif action_type == "drag":
@@ -266,9 +294,9 @@ class ActionRouter:
                     return {"success": False, "detail": start_error or end_error, "is_done": False}
                 if isinstance(duration, bool) or not isinstance(duration, (int, float)) or not 0.2 <= duration <= 2.0:
                     return {"success": False, "detail": "Drag duration must be between 0.2 and 2 seconds.", "is_done": False}
-                win32_input.mouse_drag(*start, *end, duration=float(duration))
+                self._input("mouse_drag", *start, *end, duration=float(duration))
                 results.append(f"Dragged [{start[0]}, {start[1]}] to [{end[0]}, {end[1]}]")
-                time.sleep(self.config.execution.click_pause)
+                self._sleep(self.config.execution.click_pause)
                     
             elif action_type == "click_and_type":
                 focus_before = win32_input.get_focus_context()
@@ -299,28 +327,28 @@ class ActionRouter:
                     }
 
                 x, y = coords
-                win32_input.mouse_click(x, y)
+                self._input("mouse_click", x, y)
                 results.append(f"Clicked [{x}, {y}] to focus '{element[:80]}'")
-                time.sleep(self.config.execution.click_pause)
+                self._sleep(self.config.execution.click_pause)
 
                 if clear_existing:
-                    win32_input.hotkey("ctrl", "a")
-                    time.sleep(0.05)
-                    win32_input.key_press("backspace")
-                    time.sleep(0.05)
+                    self._input("hotkey", "ctrl", "a")
+                    self._sleep(0.05)
+                    self._input("key_press", "backspace")
+                    self._sleep(0.05)
                     results.append("Cleared existing text")
 
                 if text:
                     interval = self.config.execution.typing_interval
-                    if not win32_input.paste_text_preserving_clipboard(text):
-                        win32_input.type_text(text, interval=interval)
+                    if not self._input("paste_text_preserving_clipboard", text):
+                        self._input("type_text", text, interval=interval)
                     results.append(f"Typed {len(text)} character(s)")
 
                 if submit:
-                    win32_input.key_press("enter")
+                    self._input("key_press", "enter")
                     results.append("Pressed Enter")
 
-                time.sleep(self.config.execution.click_pause)
+                self._sleep(self.config.execution.click_pause)
                 focus_after = win32_input.get_focus_context()
 
             elif action_type == "compound_action":
@@ -331,7 +359,8 @@ class ActionRouter:
                     return {"success": False, "detail": "compound_action exceeds maximum limit of 5 sub-actions.", "is_done": False}
 
                 sub_steps = []
-                for idx, sub_act in enumerate(actions):
+                for idx, sub_act in enumerate(actions[:1]):
+                    self._guard()
                     if not isinstance(sub_act, dict):
                         return {"success": False, "detail": f"Sub-action {idx+1} is not a valid action dictionary.", "is_done": False}
                     sub_vlm_result = {
@@ -350,9 +379,9 @@ class ActionRouter:
                     if sub_res.get("is_done", False):
                         is_done = True
                         break
-                    time.sleep(self.config.execution.click_pause)
+                    self._sleep(self.config.execution.click_pause)
 
-                results.append(" -> ".join(sub_steps))
+                results.append(" -> ".join(sub_steps) + " Remaining compound actions were withheld. Re-observe the screen and choose the next action.")
 
             elif action_type == "type":
                 text = action_data.get("text", "")
@@ -382,14 +411,14 @@ class ActionRouter:
                         "is_done": False,
                     }
                 interval = self.config.execution.typing_interval
-                if not win32_input.paste_text_preserving_clipboard(text):
-                    win32_input.type_text(text, interval=interval)
+                if not self._input("paste_text_preserving_clipboard", text):
+                    self._input("type_text", text, interval=interval)
                 results.append(f"Typed {len(text)} character(s)")
                 
                 if submit:
-                    win32_input.key_press("enter")
+                    self._input("key_press", "enter")
                     results.append("Pressed Enter")
-                time.sleep(self.config.execution.click_pause)
+                self._sleep(self.config.execution.click_pause)
                 
             elif action_type == "key_press":
                 key = action_data.get("key")
@@ -420,13 +449,13 @@ class ActionRouter:
                         # held down after a partial hotkey execution.
                         for part in parts:
                             win32_input.resolve_vk(part)
-                        win32_input.hotkey(*parts)
+                        self._input("hotkey", *parts)
                         results.append(f"Pressed hotkey '{normalized_key}'")
                     else:
                         win32_input.resolve_vk(key)
-                        win32_input.key_press(key)
+                        self._input("key_press", key)
                         results.append(f"Pressed key '{key}'")
-                    time.sleep(self.config.execution.click_pause)
+                    self._sleep(self.config.execution.click_pause)
 
                 else:
                     success = False
@@ -449,18 +478,18 @@ class ActionRouter:
                         vlm_result.get("screen_origin", (0, 0)),
                     )
                     if coords:
-                        win32_input.set_cursor_pos(coords[0], coords[1])
-                        time.sleep(0.05)
+                        self._input("set_cursor_pos", coords[0], coords[1])
+                        self._sleep(0.05)
                 else:
                     origin_x, origin_y = vlm_result.get("screen_origin", (0, 0))
                     orig_w, orig_h = original_dims if isinstance(original_dims, tuple) and len(original_dims) == 2 else (1920, 1080)
-                    win32_input.set_cursor_pos(origin_x + orig_w // 2, origin_y + orig_h // 2)
-                    time.sleep(0.05)
+                    self._input("set_cursor_pos", origin_x + orig_w // 2, origin_y + orig_h // 2)
+                    self._sleep(0.05)
 
                 amount = 360 if direction == "up" else -360
-                win32_input.mouse_scroll(amount)
+                self._input("mouse_scroll", amount)
                 results.append(f"Scrolled {direction}")
-                time.sleep(self.config.execution.click_pause)
+                self._sleep(self.config.execution.click_pause)
                 
             elif action_type == "wait":
                 duration = action_data.get("duration", 3)
@@ -472,7 +501,7 @@ class ActionRouter:
                     }
                 duration = max(1, min(float(duration), self.config.safety.max_wait_seconds))
                 logger.info(f"Waiting for {duration} seconds...")
-                time.sleep(duration)
+                self._sleep(duration)
                 results.append(f"Waited for {duration} seconds")
                 
             elif action_type == "get_open_apps":
@@ -487,7 +516,7 @@ class ActionRouter:
                         "detail": "Application title is missing or exceeds the safety limit.",
                         "is_done": False
                     }
-                focused = win32_input.focus_window(app_title)
+                focused = self._input("focus_window", app_title)
                 if focused:
                     results.append(f"Switched focus to application matching '{app_title}'")
                 else:
@@ -507,16 +536,16 @@ class ActionRouter:
                         "detail": "Application name is missing or invalid.",
                         "is_done": False,
                     }
-                win32_input.key_press("win")
-                time.sleep(0.25)
-                win32_input.type_text(app_name.strip(), interval=min(self.config.execution.typing_interval, 0.03))
+                self._input("key_press", "win")
+                self._sleep(0.25)
+                self._input("type_text", app_name.strip(), interval=min(self.config.execution.typing_interval, 0.03))
                 time.sleep(0.1)
-                win32_input.key_press("enter")
+                self._input("key_press", "enter")
                 time.sleep(0.8)
                 results.append(f"Opened app search for '{app_name.strip()}'")
                     
             elif action_type == "minimize_all_apps":
-                win32_input.minimize_all_windows()
+                self._input("minimize_all_windows")
                 results.append("Minimized all windows to show desktop")
                 
             elif action_type == "terminate":

@@ -6,13 +6,14 @@ import threading
 import copy
 import base64
 import json
+import secrets
 from io import BytesIO
 from PIL import Image
 import numpy as np
 
 from cogniagent.config import config
 from cogniagent.perception.vlm_engine import VLMEngine, checkpoint_execution_context
-from cogniagent.execution.router import ActionRouter
+from cogniagent.execution.router import ActionRouter, PauseRequested
 from cogniagent.memory.episodic_memory import EpisodicMemory, Episode, Trajectory
 from cogniagent.perception.verification import ScreenVerifier
 from cogniagent.reasoning.action_reasoner import AgentAction
@@ -44,11 +45,15 @@ class CogniAgent:
         self.check_stop_callback = None
         self.check_pause_callback = None
         self.action_policy = {"mode": "supervised"}
+        self.run_id = secrets.token_urlsafe(18)
+        self.request_intervention = None
+        self.expected_output = ""
+        self.executor.check_cancelled = self._should_stop
+        self.executor.check_paused = lambda: bool(callable(self.check_pause_callback) and self.check_pause_callback())
 
     def stop(self):
         """Signal the agent to abort execution immediately."""
         self.stop_requested = True
-        self._notify("stopped", "Emergency stop executed.")
 
     def _should_stop(self) -> bool:
         """Check if an emergency stop was requested by UI or operator."""
@@ -69,6 +74,49 @@ class CogniAgent:
                 return True
             time.sleep(0.1)
         return self._should_stop()
+
+    def _ask(self, kind, question, action=None):
+        if callable(self.request_intervention):
+            return self.request_intervention(kind, question, action)
+        self._notify("hitl", question)
+        return self.wait_for_hitl_response() if callable(self.wait_for_hitl_response) else "deny"
+
+    def _observation_matches(self, result):
+        """Re-check the screen immediately before dispatch, including after approval."""
+        if not result.get("captured_at"):
+            return True  # Non-runtime callers must supply their own observation contract.
+        if self._should_stop():
+            return False
+        from cogniagent.execution import win32_input
+        if result.get("focus_context") != win32_input.get_focus_context():
+            return False
+        fresh, dims = self.vlm.capture_screen(for_vlm=False)
+        if dims != result.get("orig_dims"):
+            return False
+        fresh = fresh.resize(result["screenshot"].size)
+        diff = self.verifier.compute_screen_diff(np.array(result["screenshot"]), np.array(fresh))
+        return diff.get("diff_ratio", 1) < 0.01 and time.monotonic() - result["captured_at"] <= 120
+
+    def _dispatch(self, result, dimensions):
+        if self._wait_while_paused() or not self._observation_matches(result):
+            return {"success": False, "is_done": False, "detail": "Input withheld: execution stopped or the observed screen changed. Re-observe and re-ground the next action."}
+        try:
+            return self.executor.execute_vlm_action(result, dimensions)
+        except PauseRequested:
+            return {"success": False, "is_done": False, "detail": "Paused at an input boundary. Re-observe before resuming."}
+
+    def _verify_completion(self, task, result):
+        if self._should_stop():
+            return False
+        try:
+            outcome = self.vlm.verify_completion(task, self.expected_output)
+        except Exception:
+            outcome = {"verified": False, "evidence": "Independent verification was unavailable."}
+        if isinstance(outcome, dict) and outcome.get("verified") is True and outcome.get("evidence"):
+            return True
+        reason = outcome.get("evidence", "The outcome could not be independently established.") if isinstance(outcome, dict) else "Verification unavailable."
+        answer = self._ask("completion", f"Confirm the requested outcome was achieved: {self.expected_output or task[:400]}\n{reason}", result.get("parsed_action"))
+        return answer == "approve" and not self._should_stop()
 
     @staticmethod
     def _memory_action(parsed_action: dict) -> str:
@@ -241,7 +289,7 @@ class CogniAgent:
 
     def run_task(self, task: str, max_steps: int | None = None) -> dict:
         """Run a desktop task end-to-end using pure VLM perception and Win32 execution."""
-        logger.info(f"=== Starting Task: {task} ===")
+        logger.info("Starting desktop task, run %s", self.run_id)
         start_time = time.time()
         
         # Route reusable guidance locally. This must remain outside both model
@@ -261,7 +309,7 @@ class CogniAgent:
         try:
             from cogniagent.memory.user_profile import get_user_profile
             user_profile = get_user_profile()
-            vla_guidance = user_profile.get_vla_context()
+            vla_guidance = user_profile.get_vla_context(task)
             if vla_guidance:
                 active_task_prompt += f"\n\n{vla_guidance}"
         except Exception as profile_error:
@@ -441,11 +489,11 @@ class CogniAgent:
                 break
 
             action_risk = None
-            if parsed_action.get("tool_name") in {"click", "double_click", "right_click", "drag", "type", "click_and_type", "compound_action"}:
+            if parsed_action.get("tool_name") in {"click", "double_click", "right_click", "drag", "type", "click_and_type", "compound_action", "key_press"}:
                 action_risk = self.executor.assess_action_risk(parsed_action)
             if action_risk and self.action_policy.get("mode", "supervised") == "supervised":
                 reasons = ", ".join(action_risk["reasons"])
-                is_auth_risk = "authentication or verification code" in action_risk.get("reasons", [])
+                is_auth_risk = "authentication or verification code" in action_risk.get("reasons", []) and parsed_action.get("tool_name") in {"type", "click_and_type"}
                 if is_auth_risk:
                     question = (
                         f"Verification code required for ‘{action_risk['target']}’. "
@@ -457,11 +505,10 @@ class CogniAgent:
                         f"‘{action_risk['target']}’ ({reasons}). Reply Approve to continue or Deny to block it."
                     )
                 logger.info("High-impact action paused for just-in-time approval: %s", reasons)
-                self._notify("hitl", question)
-                response = self.wait_for_hitl_response() if callable(self.wait_for_hitl_response) else "deny"
+                response = self._ask("secret" if is_auth_risk else "approval", question, parsed_action)
                 clean_response = str(response or "").strip()
                 denied_words = {"deny", "denied", "stop", "cancel", "no"}
-                if not clean_response or clean_response.casefold() in denied_words:
+                if (not clean_response or clean_response.casefold() in denied_words or (not is_auth_risk and clean_response != "approve") or (is_auth_risk and (clean_response.casefold() in {"approve", "approved", "yes", "continue"} or not re.fullmatch(r"[A-Za-z0-9 -]{4,32}", clean_response)))):
                     result = {
                         "success": False,
                         "detail": "High-impact action denied or not explicitly approved by the operator.",
@@ -474,7 +521,13 @@ class CogniAgent:
                             parsed_action["text"] = clean_response
                             if isinstance(vlm_result.get("parsed_action"), dict):
                                 vlm_result["parsed_action"]["text"] = clean_response
-                    result = self.executor.execute_vlm_action(vlm_result, orig_dims)
+                    if vlm_result.get("captured_at") and vlm_result.get("focus_context") and not self._should_stop():
+                        from cogniagent.execution import win32_input
+                        # Operator controls can take focus. Restore only the exact observed process/window,
+                        # then compare a new frame before dispatching any approved input.
+                        with win32_input.cancellation_scope(self._should_stop):
+                            win32_input.restore_observed_focus(vlm_result["focus_context"], vlm_result.get("foreground_pid", 0))
+                    result = self._dispatch(vlm_result, orig_dims)
                     exec_time = int((time.time() - exec_start) * 1000)
 
             elif (
@@ -489,18 +542,12 @@ class CogniAgent:
                     "is_done": False,
                 }
                 exec_time = int((time.time() - exec_start) * 1000)
-            elif (
-                action_desp == "terminate"
-                and completion_status == "success"
-                and self.config.safety.require_verified_progress_for_success
-                and (has_unresolved_failure or not verified_progress)
-            ):
-                reason = (
-                    "Completion blocked: a prior action is still unverified or failed."
-                    if has_unresolved_failure
-                    else "Completion blocked: no verified task progress was observed."
-                )
-                result = {"success": False, "detail": reason, "is_done": True}
+            elif action_desp == "terminate" and completion_status == "success" and has_unresolved_failure:
+                result = {"success": False, "is_done": True, "detail": "Completion blocked: an action is still failed or unverified."}
+                exec_time = int((time.time() - exec_start) * 1000)
+            elif action_desp == "terminate" and completion_status == "success":
+                verified = self._verify_completion(task, vlm_result)
+                result = {"success": verified, "is_done": True, "detail": "Outcome independently verified." if verified else "The requested outcome was not verified."}
                 exec_time = int((time.time() - exec_start) * 1000)
             elif (
                 self.config.safety.block_repeated_failed_actions
@@ -540,16 +587,12 @@ class CogniAgent:
             elif action_desp == "hitl_intervention":
                 question = parsed_action.get("question", "Verification or input required.")
                 logger.info(f"VLM requested Human Intervention: {question}")
-                self._notify("hitl", question)
-                
-                user_msg = "No response"
-                if callable(self.wait_for_hitl_response):
-                    user_msg = self.wait_for_hitl_response()
+                user_msg = self._ask("clarification", question, parsed_action)
                 
                 exec_time = int((time.time() - exec_start) * 1000)
                 result = {
                     "success": True,
-                    "detail": f"Human responded: {user_msg}",
+                    "detail": "Operator supplied a response.",
                     "is_done": False
                 }
                 user_msg_clean = str(user_msg or "").strip()
@@ -561,7 +604,7 @@ class CogniAgent:
                     consecutive_failures = 0
                     has_unresolved_failure = False
             else:
-                result = self.executor.execute_vlm_action(vlm_result, orig_dims)
+                result = self._dispatch(vlm_result, orig_dims)
                 exec_time = int((time.time() - exec_start) * 1000)
 
             self._record_timing("action", exec_time)
@@ -643,7 +686,7 @@ class CogniAgent:
                         ),
                     })
             else:
-                if action_desp not in {"wait", "get_open_apps", "terminate"}:
+                if action_desp not in {"wait", "get_open_apps", "terminate", "scroll", "hitl_intervention"}:
                     has_unresolved_failure = False
                     verified_progress = True
                     successful_tool_names.add(action_desp)
@@ -651,7 +694,7 @@ class CogniAgent:
                         successful_tool_names.add("click")
                         successful_tool_names.add("type")
                     elif action_desp == "compound_action":
-                        for sub in parsed_action.get("actions", []):
+                        for sub in parsed_action.get("actions", [])[:1]:
                             if isinstance(sub, dict) and sub.get("tool_name"):
                                 successful_tool_names.add(sub["tool_name"])
                 tool_name = action_desp or "unknown"
@@ -686,7 +729,7 @@ class CogniAgent:
                 step_screenshot_b64 = ""
                 if vlm_result and vlm_result.get("screenshot"):
                     try:
-                        s_img = vlm_result["screenshot"].copy()
+                        s_img = (after_img if self.config.perception.visual_verification_enabled else vlm_result["screenshot"]).copy()
                         if s_img.width > 360 or s_img.height > 220:
                             s_img.thumbnail((360, 220), Image.Resampling.BILINEAR)
                         buf = BytesIO()
@@ -731,39 +774,12 @@ class CogniAgent:
                 self._notify("done" if task_success else "failed", result["detail"])
                 break
             
-            # Human Intervention at step limit
+            # The planner owns the budget. A new reviewed plan is required to extend it.
             if step_idx + 1 >= max_steps and not result.get("is_done"):
-                question = (
-                    f"The task reached its limit of {max_steps} steps. "
-                    "Type 'continue' to add 10 more steps, provide new instructions, or type 'stop' to end."
-                )
-                logger.info(f"Task limit reached. Requesting Human Intervention: {question}")
-                self._notify("hitl", question)
-                
-                user_msg = "stop"
-                if callable(self.wait_for_hitl_response):
-                    user_msg = self.wait_for_hitl_response()
-                
-                user_msg_clean = str(user_msg or "").strip()
-                if user_msg_clean.lower() not in ["stop", "exit", "quit", "no", "deny"]:
-                    max_steps += 10
-                    consecutive_failures = 0
-                    has_unresolved_failure = False
-                    if user_msg_clean.lower() not in ["continue", "yes", "proceed", "done"]:
-                        messages.append({
-                            "role": "user",
-                            "content": f"Operator instruction: {user_msg_clean}"
-                        })
-                        segment_counter += 1
-                    else:
-                        messages.append({
-                            "role": "user",
-                            "content": "Operator approved continuing the task. Inspect the current screen and proceed."
-                        })
-                    self._notify("acting", "Resuming task with extended step limit")
-                else:
-                    break
-            
+                self._notify("failed", "The planner's budget was exhausted. Review a revised plan to continue.")
+                final_terminal_reason = "Planner budget exhausted; no further input dispatched."
+                break
+
             time.sleep(0.05)
             step_idx += 1
             

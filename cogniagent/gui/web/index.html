@@ -8,7 +8,7 @@
     <meta name="description" content="A local desktop assistant." />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/assets/icons/omnivla-mark.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/assets/app.css?v=18" />
+    <link rel="stylesheet" href="/assets/app.css?v=19" />
     <title>OmniVLA</title>
   </head>
   <body class="execution-closed">
@@ -105,7 +105,7 @@
                         <div class="empty-card-icon"><svg><use href="#i-chat" /></svg></div>
                         <div class="empty-card-content">
                           <strong>Check unread emails</strong>
-                          <span>Summarize inbox in Gmail via Microsoft Edge</span>
+                          <span>Summarize my inbox using my preferences</span>
                         </div>
                       </button>
                       <button type="button" class="empty-card" data-suggestion="Open my latest download and move it to Documents">
@@ -403,13 +403,13 @@
         <section class="workspace-view utility-view" data-workspace-view="settings" aria-labelledby="settings-title">
           <header class="utility-header"><div><button class="icon-button back-to-chat" type="button" aria-label="Back to chat"><svg><use href="#i-back" /></svg></button><h1 id="settings-title">Settings</h1></div></header>
           <form class="settings-form" id="settings-form">
-            <section class="settings-section"><div><h2>Execution</h2><p>Choose when tasks may begin and keep them bounded.</p></div><div class="settings-fields"><label class="select-field"><span>Before a task starts</span><div class="select-wrap"><select id="safety-mode"><option value="supervised">Review the plan</option><option value="autonomous">Start immediately</option></select><svg class="select-chevron" aria-hidden="true"><use href="#i-chevron-down" /></svg></div></label><label class="select-field"><span>Maximum actions per task</span><input id="max-steps" type="number" min="1" max="100" /></label><label class="toggle-row"><span><strong>Require plan approval</strong><small>Review every plan before the first action.</small></span><input id="require-plan-approval" type="checkbox" /></label></div></section>
+            <section class="settings-section"><div><h2>Execution</h2><p>Choose when tasks may begin and keep them bounded.</p></div><div class="settings-fields"><label class="select-field"><span>Before a task starts</span><div class="select-wrap"><select id="safety-mode"><option value="supervised">Review the plan</option><option value="autonomous">Start immediately</option></select><svg class="select-chevron" aria-hidden="true"><use href="#i-chevron-down" /></svg></div></label><label class="toggle-row"><span><strong>Require plan approval</strong><small>Review every plan before the first action.</small></span><input id="require-plan-approval" type="checkbox" /></label></div></section>
             <section class="settings-section"><div><h2>Privacy</h2><p>Choose what this device keeps after a task finishes.</p></div><div class="settings-fields"><label class="toggle-row"><span><strong>Conversation recall</strong><small>Use redacted local history to help with later chats.</small></span><input id="memory-enabled" type="checkbox" /></label><label class="toggle-row"><span><strong>Record execution video</strong><small>Save a local video of each task. Off by default.</small></span><input id="enable-recording" type="checkbox" /></label><button class="danger-button" id="clear-memory" type="button">Clear conversation recall</button></div></section>
             <section class="settings-section">
               <div><h2>Personal Agent Memory</h2><p>Lifetime user profile and habits automatically injected into planning and execution.</p></div>
               <div class="settings-fields">
-                <label class="select-field"><span>Primary email address</span><input id="pref-email-account" type="email" placeholder="ak1399er@gmail.com" /></label>
-                <label class="select-field"><span>Preferred email service</span><div class="select-wrap"><select id="pref-email-service"><option value="Gmail">Gmail (Web)</option><option value="Outlook">Desktop Outlook</option></select><svg class="select-chevron" aria-hidden="true"><use href="#i-chevron-down" /></svg></div></label>
+                <label class="select-field"><span>Primary email address</span><input id="pref-email-account" type="email" placeholder="Your email address" /></label>
+                <label class="select-field"><span>Preferred email service</span><div class="select-wrap"><select id="pref-email-service"><option value="">Ask when needed</option><option value="Gmail">Gmail (Web)</option><option value="Outlook">Desktop Outlook</option></select><svg class="select-chevron" aria-hidden="true"><use href="#i-chevron-down" /></svg></div></label>
                 <label class="select-field"><span>Default web browser</span><input id="pref-browser" type="text" placeholder="Microsoft Edge" /></label>
                 <div class="profile-facts-section">
                   <span class="profile-facts-label">Learned Facts &amp; Rules</span>
@@ -421,6 +421,8 @@
                 </div>
               </div>
             </section>
+            <section class="settings-section"><div><h2>Personal learning</h2><p>Remember explicit preferences and retrieve relevant context for future tasks.</p></div><div class="settings-fields"><label class="toggle-row"><span>Learn personal context from my messages and completed tasks</span><input id="personal-learning" type="checkbox" /></label><p id="memory-summary"></p><button id="clear-personal-memory" class="danger-button" type="button">Forget learned context</button><details><summary>Memory sources</summary><ul id="memory-provenance"></ul></details></div></section>
+            <section class="settings-section" id="pairing-settings"><div><h2>Companion access</h2><p>Pair a browser on your trusted local network.</p></div><div class="settings-fields"><button id="pairing-show" class="secondary-button" type="button">Create pairing code</button><p id="pairing-details" aria-live="polite"></p><label class="toggle-row"><span>Allow paired devices to control tasks</span><input id="remote-control" type="checkbox" /></label></div></section>
             <section class="settings-section"><div><h2>App health</h2><p>Work stays on this computer. Restart OmniVLA only if tasks stop responding.</p></div><div class="settings-fields"><div class="service-state"><span class="state-dot" id="settings-service-dot"></span><strong id="settings-service-label">Checking</strong></div><button class="secondary-button" id="restart-models" type="button"><svg><use href="#i-retry" /></svg><span>Restart OmniVLA</span></button></div></section>
             <div class="settings-save"><span id="settings-save-state"></span><button class="primary-button" type="submit">Save settings</button></div>
           </form>
@@ -428,8 +430,21 @@
       </div>
     </div>
 
+    <section class="intervention-card" id="intervention-card" hidden aria-labelledby="intervention-title">
+      <h2 id="intervention-title">Your review is needed</h2>
+      <p id="intervention-question"></p>
+      <form id="intervention-form">
+        <label id="intervention-input-wrap"><span id="intervention-input-label">Response</span><input id="intervention-input" maxlength="2000" autocomplete="off" /></label>
+        <div class="intervention-actions"><button class="primary-button" id="intervention-approve" type="button">Approve</button><button class="danger-button" id="intervention-deny" type="button">Deny</button><button class="primary-button" id="intervention-send" type="submit">Send response</button></div>
+        <p id="intervention-error" role="status"></p>
+      </form>
+    </section>
+    <section class="pairing-card" id="pairing-card" hidden aria-labelledby="pairing-title">
+      <h2 id="pairing-title">Connect to your desktop</h2><p>Enter the pairing code shown in OmniVLA's desktop Settings. Codes expire after 15 minutes.</p>
+      <form id="pairing-form"><label for="pairing-input">Pairing code</label><input id="pairing-input" type="password" autocomplete="off" required maxlength="100" /><button class="primary-button" type="submit">Connect</button><p id="pairing-error" role="status"></p></form>
+    </section>
     <div class="toast-region" id="toast-region" aria-live="polite"></div>
     <div class="chat-menu" id="chat-menu" hidden><button id="menu-delete-chat" type="button"><svg><use href="#i-trash" /></svg><span>Delete chat</span></button></div>
-    <script src="/assets/app.js?v=18" defer></script>
+    <script src="/assets/app.js?v=19" defer></script>
   </body>
 </html>

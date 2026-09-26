@@ -1,5 +1,5 @@
-const CACHE_NAME = "omnivla-app-v18-fresh";
-const APP_SHELL = ["/", "/assets/app.css?v=18", "/assets/app.js?v=18", "/manifest.webmanifest", "/assets/icons/omnivla-mark.svg"];
+const CACHE_NAME = "omnivla-app-v19-fresh";
+const APP_SHELL = ["/", "/assets/app.css?v=19", "/assets/app.js?v=19", "/manifest.webmanifest", "/assets/icons/omnivla-mark.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
@@ -15,7 +15,7 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const requestUrl = new URL(event.request.url);
-  if (requestUrl.pathname.startsWith("/api/")) return;
+  if (requestUrl.pathname.startsWith("/api/") || requestUrl.pathname.startsWith("/overlay/")) return;
 
   if (event.request.mode === "navigate") {
     event.respondWith(

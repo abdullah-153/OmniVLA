@@ -23,22 +23,23 @@ class TestUserProfileMemory(unittest.TestCase):
 
     def test_default_user_profile_initialization(self):
         data = self.memory.to_dict()
-        self.assertEqual(data["preferences"]["email"]["service"], "Gmail")
-        self.assertEqual(data["preferences"]["email"]["account"], "ak1399er@gmail.com")
-        self.assertEqual(data["preferences"]["browser"]["default"], "Microsoft Edge")
-        self.assertTrue(len(data["facts"]) >= 2)
+        self.assertEqual(data["preferences"]["email"]["account"], "")
+        self.assertEqual(data["preferences"]["browser"]["default"], "")
+        self.assertEqual(data["facts"], [])
 
     def test_planner_context_includes_email_preference(self):
+        self.memory.update_preference("email", "account", "owner@example.invalid")
+        self.memory.update_preference("email", "service", "Outlook")
         ctx = self.memory.get_planner_context()
-        self.assertIn("ak1399er@gmail.com", ctx)
-        self.assertIn("Gmail", ctx)
-        self.assertIn("Microsoft Edge", ctx)
-        self.assertIn("Do NOT open desktop Outlook", ctx)
+        self.assertIn("owner@example.invalid", ctx)
+        self.assertIn("Outlook", ctx)
+        self.assertNotIn("Do NOT open desktop Outlook", ctx)
 
     def test_vla_context_includes_guidance(self):
+        self.memory.update_preference("browser", "default", "Firefox")
         vla = self.memory.get_vla_context()
-        self.assertIn("ak1399er@gmail.com", vla)
-        self.assertIn("Gmail", vla)
+        self.assertIn("Firefox", vla)
+        self.assertIn("Current user instructions override", vla)
 
     def test_update_preference_persists(self):
         self.memory.update_preference("browser", "default", "Google Chrome")
@@ -65,8 +66,8 @@ class TestUserProfileMemory(unittest.TestCase):
             status="success",
             summary="Checked unread messages",
         )
-        self.assertEqual(self.memory.to_dict()["preferences"]["email"]["service"], "Gmail")
-        self.assertEqual(self.memory.to_dict()["preferences"]["email"]["account"], "ak1399er@gmail.com")
+        self.assertEqual(self.memory.to_dict()["preferences"]["email"]["account"], "")
+        self.assertEqual(len(self.memory.to_dict()["workflows"]), 1)
 
     def test_learn_from_message_extracts_name_and_facts(self):
         learned = self.memory.learn_from_message("Hello, my name is Abdullah and remember that my downloads folder is D:\\Downloads.")
@@ -213,7 +214,7 @@ class TestControlPlaneProfileAndSteps(unittest.TestCase):
             })
             self.assertTrue(mock_start.called)
             run_policy = mock_start.call_args.args[1]
-            self.assertEqual(run_policy.get("max_steps"), 45)
+            self.assertEqual(run_policy.get("max_steps"), 30)  # Stored planner budget, not client override.
 
 
 if __name__ == "__main__":

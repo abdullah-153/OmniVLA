@@ -40,7 +40,11 @@ function createWindow() {
   // Enable click-through
   win.setIgnoreMouseEvents(true, { forward: true });
 
-  win.loadFile(path.join(__dirname, 'index.html'));
+  win.loadURL('http://127.0.0.1:8000/overlay/index.html');
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-navigate', (event, url) => {
+    if (url !== 'http://127.0.0.1:8000/overlay/index.html') event.preventDefault();
+  });
 
   win.on('closed', () => {
     win = null;

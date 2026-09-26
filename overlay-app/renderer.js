@@ -37,16 +37,27 @@ const phaseCopy = {
   error: "Needs attention",
 };
 
-const api = (path, options = {}) => {
+let sessionToken = "";
+let intervention = null;
+const api = async (path, options = {}) => {
+  if (!sessionToken) {
+    const session = await fetch("/api/session", { cache: "no-store" });
+    if (!session.ok) throw new Error("Desktop session unavailable");
+    sessionToken = (await session.json()).token;
+  }
   const headers = new Headers(options.headers || {});
+  headers.set("X-OmniVLA-Session", sessionToken);
   if (options.body !== undefined && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  return fetch("http://127.0.0.1:8000" + path, {
+  const response = await fetch(path, {
     cache: "no-store",
     ...options,
     headers,
   });
+  if (response.status === 401) sessionToken = "";
+  if (!response.ok) throw new Error((await response.json()).error || "Request failed");
+  return response;
 };
 
 const setInteractive = (enabled) => {
@@ -142,12 +153,20 @@ const renderStatus = (data) => {
   renderTrace(data, phase);
 
 
-  const needsHitl = phase === "hitl" || data.status === "hitl";
+  intervention = data.intervention || null;
+  const needsHitl = Boolean(intervention);
+  hitlPanel.dataset.requestId = intervention?.id || "";
+  const approval = ["approval", "completion"].includes(intervention?.kind);
+  document.getElementById("hitl-approve").hidden = !approval;
+  document.getElementById("hitl-deny").hidden = !needsHitl;
+  hitlInput.hidden = approval;
+  hitlSubmit.hidden = approval;
+  hitlInput.type = intervention?.kind === "secret" ? "password" : "text";
   hitlPanel.hidden = !needsHitl;
   if (needsHitl) {
-    hitlQuestion.textContent = data.current_action || "Human input is required.";
+    hitlQuestion.textContent = intervention.question;
     setInteractive(true);
-    if (document.activeElement !== hitlInput) hitlInput.focus();
+    if (!approval && document.activeElement !== hitlInput) hitlInput.focus();
   } else if (!active) {
     setInteractive(false);
   }
@@ -159,13 +178,13 @@ const submitHitl = () => {
   api("/api/hitl_submit", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ response }),
+    body: JSON.stringify({ ...intervention, response }),
   })
     .then(() => {
       hitlInput.value = "";
       setInteractive(false);
     })
-    .catch(() => undefined);
+    .catch(error => { hitlQuestion.textContent = error.message; });
 };
 
 beacon.addEventListener("mouseenter", () => setInteractive(true));
@@ -200,6 +219,8 @@ if (closeButton) {
 }
 
 
+document.getElementById("hitl-approve").addEventListener("click", () => { hitlInput.value = "approve"; submitHitl(); });
+document.getElementById("hitl-deny").addEventListener("click", () => { hitlInput.value = "deny"; submitHitl(); });
 hitlSubmit.addEventListener("click", submitHitl);
 hitlInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey) {

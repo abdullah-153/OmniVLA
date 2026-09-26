@@ -8,6 +8,9 @@ and requires a short-lived pairing token for optional LAN companion sessions.
 from __future__ import annotations
 
 import json
+import copy
+from pathlib import Path
+from cogniagent.gui.state_store import StateStore
 import logging
 import os
 import re
@@ -59,7 +62,6 @@ DEFAULT_SETTINGS = {
     "model_path": "models/Holo-3.1-4B-abliterated-rdo.Q4_K_M.gguf",
     "planner_model_path": "models/Spark-X2.5-4B-Q4_K_M.gguf" if os.path.exists("models/Spark-X2.5-4B-Q4_K_M.gguf") else "models/Qwen3.5-4B.Q4_K_M.gguf",
     "temperature": 0.2,
-    "max_steps": 60,
     "enable_recording": False,
     "memory_enabled": False,
     "model_type": "local",
@@ -81,6 +83,7 @@ planner_active_chat_id = None
 _db_cache: dict[str, Any] | None = None
 telemetry_thread: threading.Thread | None = None
 pairing_session = PairingSession()
+local_session_token = secrets.token_urlsafe(32)
 skills_registry = SkillRegistry()
 observation_learner = ObservationLearner()
 native_observation_recorder = NativeObservationRecorder(observation_learner)
@@ -239,7 +242,15 @@ def _plan_copy(content: Any, limit: int = 24_000) -> str:
         try:
             from cogniagent.gui.server_manager import extract_planner_output
 
-            value = extract_planner_output(value)
+            from cogniagent.gui.server_manager import parse_agentic_plan
+            parsed = parse_agentic_plan(value)
+            if parsed.get("has_plan"):
+                value = parsed["steps_text"]
+                if parsed.get("expected_output"):
+                    value += "\nExpected Output: " + parsed["expected_output"]
+                value += "\nPrescribed Steps: " + str(parsed["prescribed_steps"])
+            else:
+                value = extract_planner_output(value)
         except (RuntimeError, ValueError):
             pass
     return re.sub(
@@ -421,51 +432,22 @@ def _normalize_run_metrics(value: Any) -> dict[str, Any] | None:
 def load_chats_db() -> dict[str, Any]:
     global _db_cache
     with db_lock:
-        if _db_cache is not None:
-            return _db_cache
-
-        if not os.path.exists(CHATS_DB_PATH) or os.path.getsize(CHATS_DB_PATH) == 0:
-            _db_cache = _default_database()
-            save_chats_db(_db_cache)
-            return _db_cache
-
-        try:
-            with open(CHATS_DB_PATH, "r", encoding="utf-8") as database_file:
-                raw_database = json.load(database_file)
-            _db_cache = _recover_interrupted_chats(_normalize_database(raw_database))
-            # Persist schema/security migrations immediately. In particular,
-            # legacy API keys must not remain on disk simply because the user
-            # has not changed another setting yet.
-            if raw_database != _db_cache:
-                save_chats_db(_db_cache)
-            return _db_cache
-        except (OSError, ValueError, json.JSONDecodeError) as error:
-            logger.error("Unable to read chat database; restoring a clean schema: %s", error)
-            _db_cache = _default_database()
-            save_chats_db(_db_cache)
-            return _db_cache
+        if _db_cache is None:
+            store = StateStore(CHATS_DB_PATH)
+            raw = store.load()
+            normalized = _recover_interrupted_chats(_normalize_database(raw)) if raw is not None else _default_database()
+            # Migration is committed before publishing state. The JSON original remains intact.
+            store.save(normalized)
+            _db_cache = normalized
+        return copy.deepcopy(_db_cache)
 
 
 def save_chats_db(database: dict[str, Any]) -> None:
-    """Atomically persist settings, conversations, policy, and the audit journal."""
     global _db_cache
     with db_lock:
-        normalized = _normalize_database(database)
-        temporary_path = CHATS_DB_PATH + ".tmp"
-        try:
-            with open(temporary_path, "w", encoding="utf-8") as database_file:
-                json.dump(normalized, database_file, ensure_ascii=False, indent=2)
-                database_file.flush()
-                os.fsync(database_file.fileno())
-            os.replace(temporary_path, CHATS_DB_PATH)
-            _db_cache = normalized
-        except OSError as error:
-            logger.error("Unable to persist chat database: %s", error)
-            try:
-                if os.path.exists(temporary_path):
-                    os.remove(temporary_path)
-            except OSError:
-                pass
+        normalized = _normalize_database(copy.deepcopy(database))
+        StateStore(CHATS_DB_PATH).save(normalized)
+        _db_cache = normalized
 
 
 def _find_chat(database: dict[str, Any], chat_id: str) -> dict[str, Any] | None:
@@ -563,23 +545,15 @@ def _active_plan(database: dict[str, Any]) -> dict[str, Any] | None:
         "",
     )
 
-    prescribed_steps = 35
-    budget_match = re.search(r"(?i)prescribed\s*(?:step\s*budget|steps?)\s*[:=]?\s*(\d+)", plan)
-    if budget_match:
-        try:
-            prescribed_steps = int(budget_match.group(1))
-        except ValueError:
-            pass
-    else:
-        items = len(re.findall(r"(?m)^\s*\d+[.)]\s+", plan))
-        prescribed_steps = max(30, items * 10 + 10)
-
+    from cogniagent.gui.server_manager import parse_agentic_plan
+    from cogniagent.config import config
+    parsed = parse_agentic_plan(plan)
+    budget = parsed.get("prescribed_steps") or 30
     return {
-        "plan": plan,
-        "execution_task": plan,
-        "source_task": source_task,
+        "plan": plan, "execution_task": plan, "source_task": source_task,
         "risk": assess_task_risk(source_task + "\n" + plan),
-        "prescribed_steps": min(100, prescribed_steps),
+        "prescribed_steps": max(1, min(config.safety.max_steps_per_task, int(budget))),
+        "expected_output": parsed.get("expected_output", ""),
     }
 
 
@@ -732,13 +706,34 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         return payload
 
     def _authorize(self, *, mutating: bool = False, local_only: bool = False) -> bool:
+        host = self.headers.get("Host", "")
+        try:
+            parsed_host = urlsplit("http://" + host)
+            port = parsed_host.port or 80
+            address = parsed_host.hostname
+            allowed = {"localhost", "127.0.0.1", "::1"}
+            bind_host, bind_port = self.server.server_address[:2]
+            if bind_host not in {"0.0.0.0", "::"}:
+                allowed.add(bind_host)
+            else:
+                allowed.update(item[4][0] for item in socket.getaddrinfo(socket.gethostname(), None))
+                lan = _lan_url(bind_port)
+                if lan:
+                    allowed.add(urlsplit(lan).hostname)
+            valid_host = address in allowed and port == bind_port and not parsed_host.username and not parsed_host.password
+        except (ValueError, OSError, AttributeError):
+            valid_host = False
+        if not valid_host:
+            self._error(403, "This host is not an authorized OmniVLA address.")
+            return False
         origin = self.headers.get("Origin")
-        host = self.headers.get("Host")
-        if origin and (not host or origin != f"http://{host}"):
+        if origin and origin != f"http://{host}":
             self._error(403, "Cross-origin control requests are not allowed.")
             return False
-
         if self._is_local:
+            if mutating and not secrets.compare_digest(self.headers.get("X-OmniVLA-Session", ""), local_session_token):
+                self._error(401, "The desktop session changed. Reconnect and try again.")
+                return False
             return True
 
         candidate = self.headers.get("X-OmniVLA-Pairing")
@@ -787,6 +782,9 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             )
         }
         agent_state["hitl_question"] = safe_live_state.get("hitl_question", "")
+        intervention = gui_app.interventions.snapshot()
+        agent_state["intervention"] = intervention
+        agent_state["execution_live"]["intervention"] = intervention
         agent_state["chat_history"] = list(active.get("chat_history", []))
         agent_state["current_task"] = active.get("current_task", "")
         agent_state["active_intent"] = active.get("intent", "")
@@ -864,7 +862,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 from cogniagent.memory.user_profile import get_user_profile
                 user_prof = get_user_profile()
                 user_prof.learn_from_message(message)
-                profile_context = user_prof.get_planner_context()
+                profile_context = user_prof.get_planner_context(message)
             except Exception as profile_err:
                 logger.debug("Failed to get user profile context: %s", profile_err)
 
@@ -900,7 +898,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 if chat:
                     chat["chat_history"].append({"role": "assistant", "content": response})
                     if has_plan:
-                        chat["reviewed_plan"] = parsed_plan.get("steps_text") or response
+                        chat["reviewed_plan"] = parsed_plan.get("formatted") or response
                         chat["status"] = "plan_created"
                         _record_audit(database, "plan.ready", "Plan prepared and waiting for approval.")
                     else:
@@ -1062,42 +1060,49 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             self._error(428, "Configure a runtime-only provider API key before starting a cloud run.")
             return
 
-        max_steps = payload.get("max_steps")
-        if max_steps is not None:
-            try:
-                max_steps = max(1, min(100, int(max_steps)))
-            except (TypeError, ValueError):
-                max_steps = None
+        max_steps = stored_plan["prescribed_steps"]
 
         # The reviewed plan is useful guidance, but the original objective is
         # authoritative. Giving both to the visual reasoner prevents a planner
         # paraphrase from silently adding or dropping user constraints.
         execution_prompt = f"User objective:\n{source_task}\n\nReviewed plan:\n{task}"
-        if not _start_agent_task(
-            execution_prompt,
-            {"mode": policy.get("mode", "supervised"), "chat_id": run_chat_id, "max_steps": max_steps},
-        ):
-            self._error(409, "An agent run is already active. Stop or finish it before starting another.")
-            return
-
-        with db_lock:
-            database = load_chats_db()
-            chat = _find_chat(database, run_chat_id)
-            if chat is None:
-                self._error(409, "The approved run no longer exists.")
+        with gui_app.execution_lock:
+            if (gui_app.running_thread and gui_app.running_thread.is_alive()) or planner_active_chat_id or planner_lock.locked():
+                self._error(409, "Finish the active run or plan before starting another.")
                 return
-            chat["current_task"] = task
-            chat["status"] = "running"
-            chat["execution"] = _normalize_execution_snapshot({
-                "status": "thinking",
-                "phase": "thinking",
-                "phase_started_at": time.time(),
-                "current_action": "Reading the screen",
-            })
-            chat["updated_at"] = int(time.time())
-            _record_audit(database, "run.approved", "Reviewed run approved and started.")
-            save_chats_db(database)
-            self._sync_active_chat(chat)
+            with db_lock:
+                database = load_chats_db()
+                chat = _find_chat(database, run_chat_id)
+                if chat is None:
+                    self._error(409, "The approved run no longer exists.")
+                    return
+                review_database = {**database, "active_chat_id": run_chat_id}
+                current_plan = _active_plan(review_database)
+                if not current_plan or current_plan["execution_task"] != task or database["safety"] != policy:
+                    self._error(409, "The plan or safety policy changed. Review it again.")
+                    return
+                previous_chat = copy.deepcopy(chat)
+                chat["current_task"] = task
+                chat["status"] = "running"
+                chat["execution"] = _normalize_execution_snapshot({
+                    "status": "thinking", "phase": "thinking", "phase_started_at": time.time(),
+                    "current_action": "Reading the screen",
+                })
+                chat["updated_at"] = int(time.time())
+                _record_audit(database, "run.approved", "Reviewed run approved before dispatch.")
+                # No thread or native input can start if committing approval fails.
+                save_chats_db(database)
+                started = _start_agent_task(execution_prompt, {
+                    "mode": policy.get("mode", "supervised"), "chat_id": run_chat_id,
+                    "max_steps": max_steps, "expected_output": stored_plan.get("expected_output", ""),
+                })
+                if not started:
+                    chat.clear()
+                    chat.update(previous_chat)
+                    save_chats_db(database)
+                    self._error(409, "An agent run is already active.")
+                    return
+                self._sync_active_chat(chat)
 
         with gui_app.status_lock:
             gui_app.agent_status["ui_mode"] = "executor"
@@ -1139,13 +1144,9 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                         continue
                     msg_content = message["content"].strip()
                     copied = _plan_copy(msg_content).strip()
-                    if _norm(selected) in (_norm(msg_content), _norm(copied), _norm(_plan_copy(selected))):
+                    if _norm(selected) in (_norm(msg_content), _norm(copied)) or _norm(_plan_copy(selected)) == _norm(copied):
                         chosen_plan = copied or msg_content
                         break
-
-            # 3. Fallback: if selected itself is already a numbered plan
-            if not chosen_plan and selected and len(re.findall(r"(?m)^\s*\d+[.)]\s+", selected)) >= 2:
-                chosen_plan = _plan_copy(selected)
 
             if not chosen_plan:
                 self._error(409, "That plan is no longer available in this chat.")
@@ -1302,16 +1303,16 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             current = dict(gui_app.agent_status.get("settings", {}))
         settings, runtime_api_key = validate_settings(payload, current)
 
-        with gui_app.status_lock:
-            gui_app.agent_status["settings"].update(settings)
-            if runtime_api_key is not None:
-                gui_app.agent_status["settings"]["api_key"] = runtime_api_key
-
         with db_lock:
             database = load_chats_db()
             database["settings"] = settings
             _record_audit(database, "environment.saved", "Execution environment updated; provider keys were kept out of storage.")
             save_chats_db(database)
+        with gui_app.status_lock:
+            gui_app.agent_status["settings"].update(settings)
+            if runtime_api_key is not None:
+                gui_app.agent_status["settings"]["api_key"] = runtime_api_key
+
         self._json_response({"success": True, "settings": _public_settings()})
 
     def _save_safety(self, payload: dict[str, Any]) -> None:
@@ -1327,9 +1328,10 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         with gui_app.status_lock:
             gui_app.hitl_response.append("stop")
             gui_app.hitl_event.set()
-            gui_app.agent_status["status"] = "stopped"
-            gui_app.agent_status["current_action"] = "Execution stopped by operator."
-            gui_app.agent_status["phase"] = "stopped"
+            stopping = bool(gui_app.running_thread and gui_app.running_thread.is_alive())
+            gui_app.agent_status["status"] = "stopping" if stopping else "stopped"
+            gui_app.agent_status["current_action"] = "Stopping at the input boundary." if stopping else "Execution stopped by operator."
+            gui_app.agent_status["phase"] = "stopping" if stopping else "stopped"
             gui_app.agent_status["phase_started_at"] = time.time()
             gui_app.agent_status["ui_mode"] = "chat"
             execution_chat_id = gui_app.agent_status.get("execution_chat_id")
@@ -1339,7 +1341,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             database = load_chats_db()
             execution_chat = _find_chat(database, execution_chat_id) if execution_chat_id else None
             if execution_chat:
-                execution_chat["status"] = "stopped"
+                execution_chat["status"] = "stopping" if stopping else "stopped"
                 execution_chat["updated_at"] = int(time.time())
             _record_audit(database, "run.stop_requested", "Operator requested the active run to stop.")
             save_chats_db(database)
@@ -1362,10 +1364,11 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         self._json_response({"success": True, "paused": paused})
 
     def _submit_hitl(self, payload: dict[str, Any]) -> None:
-        response = validate_hitl_response(payload.get("response"))
-        with gui_app.status_lock:
-            gui_app.hitl_response.append(response)
-            gui_app.hitl_event.set()
+        try:
+            gui_app.interventions.submit(payload)
+        except ValueError as error:
+            self._error(409, str(error))
+            return
         with db_lock:
             database = load_chats_db()
             _record_audit(database, "hitl.responded", "Human intervention response submitted.")
@@ -1594,6 +1597,23 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             if path.startswith("/assets/"):
                 self._asset_response(path.removeprefix("/assets/"))
                 return
+            if path.startswith("/overlay/"):
+                name = path.removeprefix("/overlay/")
+                if name not in {"index.html", "index.css", "renderer.js"}:
+                    self._error(404, "Asset not found.")
+                    return
+                content = (Path(__file__).resolve().parents[2] / "overlay-app" / name).read_bytes()
+                self.send_response(200)
+                content_type = {"html": "text/html", "css": "text/css", "js": "application/javascript"}[name.rsplit(".", 1)[1]]
+                self._send_headers(content_type + "; charset=utf-8", cache_control="no-store")
+                self.send_header("Content-Length", str(len(content)))
+                self.end_headers()
+                self.wfile.write(content)
+                return
+            if path == "/api/session":
+                if self._authorize(local_only=True):
+                    self._json_response({"token": local_session_token})
+                return
             if path == "/api/status":
                 if self._authorize():
                     self._json_response(self._status_payload())
@@ -1628,7 +1648,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         path = self._path
         local_only_routes = {
-            "/api/settings", "/api/safety", "/api/pairing/rotate", "/api/clear_vram", "/api/memory/clear",
+            "/api/profile", "/api/settings", "/api/safety", "/api/pairing/rotate", "/api/clear_vram", "/api/memory/clear",
             "/api/skills", "/api/skills/delete", "/api/skills/synthesize", "/api/skills/generate_intelligent",
             "/api/observe/start", "/api/observe/action", "/api/observe/stop",
             "/api/shutdown", "/shutdown",
@@ -1676,10 +1696,6 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                     time.sleep(0.35)
                     try:
                         gui_app.shutdown_runtime()
-                        from gui_telemetry import kill_port_owner
-                        kill_port_owner(8089)
-                        kill_port_owner(8090)
-                        kill_port_owner(8082)
                     except Exception:
                         pass
                     os._exit(0)
@@ -1734,6 +1750,10 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             elif path == "/api/profile":
                 from cogniagent.memory.user_profile import get_user_profile
                 profile = get_user_profile()
+                if "learning_enabled" in payload:
+                    profile.configure_learning(payload["learning_enabled"])
+                if payload.get("clear_learned") is True:
+                    profile.clear_learned()
                 if "preference" in payload and isinstance(payload["preference"], dict):
                     p = payload["preference"]
                     profile.update_preference(str(p.get("category", "general")), str(p.get("key", "")), p.get("value"))
@@ -1750,7 +1770,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 self._stop_observation_session()
             else:
                 self._error(410, "Create and approve a plan before starting a task.")
-        except RequestValidationError as error:
+        except (RequestValidationError, ValueError) as error:
             self._error(400, str(error))
         except Exception as error:
             logger.exception("Unhandled POST error for %s: %s", path, error)

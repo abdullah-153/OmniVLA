@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 import sys
 import time
 from PIL import Image
@@ -23,6 +24,12 @@ class TestScenarios(unittest.TestCase):
         pass
 
     def setUp(self):
+        freshness = patch.object(CogniAgent, "_observation_matches", return_value=True)
+        freshness.start()
+        self.addCleanup(freshness.stop)
+        completion = patch("cogniagent.perception.vlm_engine.VLMEngine.verify_completion", return_value={"verified": True, "evidence": "Scenario postcondition confirmed by test fixture."})
+        completion.start()
+        self.addCleanup(completion.stop)
         from cogniagent.config import config
         config.llm.base_url = "http://127.0.0.1:58089/v1"
         self.server.clear()

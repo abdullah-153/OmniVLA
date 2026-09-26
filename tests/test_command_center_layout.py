@@ -44,10 +44,10 @@ def test_service_worker_tracks_the_current_versioned_shell_assets():
     markup = (WEB_ROOT / "index.html").read_text(encoding="utf-8")
     worker = (WEB_ROOT / "sw.js").read_text(encoding="utf-8")
 
-    assert "/assets/app.css?v=18" in markup
-    assert "/assets/app.js?v=18" in markup
-    assert "/assets/app.css?v=18" in worker
-    assert "/assets/app.js?v=18" in worker
+    assert "/assets/app.css?v=19" in markup
+    assert "/assets/app.js?v=19" in markup
+    assert "/assets/app.css?v=19" in worker
+    assert "/assets/app.js?v=19" in worker
 
 
 def test_overlay_is_excluded_from_capture_without_hide_show_flicker():

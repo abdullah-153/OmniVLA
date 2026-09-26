@@ -112,6 +112,7 @@ class TestStepLimitContinuationAndHITL(unittest.TestCase):
     def test_step_limit_continuation_with_instruction(self, mock_sleep):
         """Verify that when step limit is reached, user's instruction is appended and execution continues."""
         mock_vlm = MagicMock()
+        mock_vlm.verify_completion.return_value = {"verified": True, "evidence": "Expected test result visible."}
         mock_vlm.capture_screen.return_value = (Image.new("RGB", (100, 100)), (100, 100))
         
         # Step 1: Click search
@@ -151,13 +152,15 @@ class TestStepLimitContinuationAndHITL(unittest.TestCase):
 
         result = self.agent.run_task("Sign in and check order", max_steps=1)
 
-        self.assertIn("hitl", notified_phases)
-        self.assertEqual(result["status"], "success")
+        self.assertNotIn("hitl", notified_phases)
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(mock_vlm.reason.call_count, 1)
 
     @patch("cogniagent.agent.time.sleep")
     def test_step_limit_continuation_with_continue_keyword(self, mock_sleep):
         """Verify that typing 'continue' extends the budget and proceeds."""
         mock_vlm = MagicMock()
+        mock_vlm.verify_completion.return_value = {"verified": True, "evidence": "Expected test result visible."}
         mock_vlm.capture_screen.return_value = (Image.new("RGB", (100, 100)), (100, 100))
         
         step1_res = {
@@ -188,12 +191,14 @@ class TestStepLimitContinuationAndHITL(unittest.TestCase):
         self.agent.wait_for_hitl_response = lambda: "continue"
 
         result = self.agent.run_task("Navigate through pages", max_steps=1)
-        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(mock_vlm.reason.call_count, 1)
 
     @patch("cogniagent.agent.time.sleep")
     def test_step_limit_abort_on_stop(self, mock_sleep):
         """Verify that typing 'stop' at step limit aborts the task."""
         mock_vlm = MagicMock()
+        mock_vlm.verify_completion.return_value = {"verified": True, "evidence": "Expected test result visible."}
         mock_vlm.capture_screen.return_value = (Image.new("RGB", (100, 100)), (100, 100))
         
         step1_res = {
@@ -217,6 +222,7 @@ class TestStepLimitContinuationAndHITL(unittest.TestCase):
     def test_otp_hitl_replaces_dummy_code_with_user_code(self, mock_sleep):
         """Verify that when an OTP action triggers risk assessment, the operator's real code replaces the text."""
         mock_vlm = MagicMock()
+        mock_vlm.verify_completion.return_value = {"verified": True, "evidence": "Expected test result visible."}
         mock_vlm.capture_screen.return_value = (Image.new("RGB", (100, 100)), (100, 100))
 
         otp_step = {
@@ -265,6 +271,7 @@ class TestStepLimitContinuationAndHITL(unittest.TestCase):
     def test_cycle_detection_triggers_for_repetitive_typing(self, mock_sleep):
         """Verify cycle detection catches repetitive typing loops."""
         mock_vlm = MagicMock()
+        mock_vlm.verify_completion.return_value = {"verified": True, "evidence": "Expected test result visible."}
         mock_vlm.capture_screen.return_value = (Image.new("RGB", (100, 100)), (100, 100))
 
         type_step = {
@@ -293,12 +300,13 @@ class TestPromptEfficiencyAndProfileContext(unittest.TestCase):
         self.assertIn("hitl_intervention", VLM_SYSTEM_PROMPT)
 
     def test_user_profile_vla_context_has_auth_guidance(self):
-        profile = UserProfileMemory()
-        vla_ctx = profile.get_vla_context()
-        self.assertIn("ak1399er@gmail.com", vla_ctx)
-        self.assertIn("Gmail", vla_ctx)
-        self.assertIn("hitl_intervention", vla_ctx)
-        self.assertIn("saved passwords", vla_ctx)
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            profile = UserProfileMemory(directory)
+            vla_ctx = profile.get_vla_context()
+        self.assertNotIn("ak1399er@gmail.com", vla_ctx)
+        self.assertIn("never permission to bypass review", vla_ctx)
+
 
 
 if __name__ == "__main__":

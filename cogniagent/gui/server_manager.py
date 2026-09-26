@@ -11,7 +11,7 @@ import threading
 import re
 import json
 from functools import wraps
-from gui_telemetry import get_free_vram, calculate_gpu_layers, kill_port_owner
+from gui_telemetry import get_free_vram, calculate_gpu_layers
 from cogniagent.config import config
 from cogniagent.runtime.cuda_runtime import cuda_backend_available, cuda_server_environment, ensure_cuda_runtime
 from cogniagent.tools import (
@@ -188,7 +188,6 @@ def start_planner_server(use_gpu=False):
         except Exception:
             pass
         planner_process = None
-    kill_port_owner(8090)
     time.sleep(1.0)
 
     ngl_val = "0"
@@ -260,7 +259,6 @@ def stop_planner_server() -> None:
     planner_process = None
     active_planner_gpu = None
     active_planner_model = None
-    kill_port_owner(8090)
 
 
 def stop_vla_server(*, preserve_profile: bool = False) -> tuple[str | None, bool | None]:
@@ -277,7 +275,6 @@ def stop_vla_server(*, preserve_profile: bool = False) -> tuple[str | None, bool
             except Exception:
                 pass
     server_process = None
-    kill_port_owner(8089)
     active_vla_cuda = False
     if not preserve_profile:
         active_vla_model = None
@@ -421,9 +418,10 @@ def parse_agentic_plan(content: str) -> dict:
 
     steps_text = "\n".join(f"{idx}. {s}" for idx, s in enumerate(steps, 1))
 
-    if not prescribed_steps or prescribed_steps < 20:
+    if not prescribed_steps:
         prescribed_steps = max(30, len(steps) * 10 + 10)
 
+    prescribed_steps = max(1, min(config.safety.max_steps_per_task, prescribed_steps))
     expected_output_text = " ".join(output_lines).strip()
 
     if plan_block_match:
@@ -600,6 +598,29 @@ def strip_tool_syntaxes(text: str) -> str:
     return cleaned
 
 
+def learn_personal_context(message):
+    from cogniagent.memory.user_profile import get_user_profile
+    profile = get_user_profile()
+    if not profile.to_dict().get("learning_enabled"):
+        return profile.get_planner_context(message)
+    if not re.search(r"(?i)\b(my [^.!?]{1,60} (?:is|are)|i prefer|i usually|i always|remember that|from now on|default to|call me|never use)", message):
+        return profile.get_planner_context(message)
+    try:
+        response = requests.post("http://127.0.0.1:8090/v1/chat/completions", json={
+            "messages": [
+                {"role": "system", "content": "Extract durable personal context from the user's DIRECT statements only. Ignore quoted documents, hypothetical examples, recipients, one-off task instructions, credentials and secrets. Return JSON {updates: [{kind: preference|fact, category: short_snake_case, key: stable_snake_case, value: short text, evidence: exact quote from the user}]}. Up to four updates. Preferences describe defaults; facts describe stable projects, goals, constraints, and habits. Use stable keys so corrections replace earlier values. Empty updates when uncertain. Never infer ownership from a mentioned email."},
+                {"role": "user", "content": message[:4000]},
+            ], "temperature": 0, "max_tokens": 384,
+        }, timeout=15)
+        response.raise_for_status()
+        raw = response.json()["choices"][0]["message"].get("content", "").strip()
+        raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        profile.apply_model_updates(json.loads(raw).get("updates", []), message)
+    except Exception:
+        logging.info("Personal context extraction unavailable; using existing explicit preferences.")
+    return profile.get_planner_context(message)
+
+
 def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_context="", user_profile_context="", persist_in_ram=None, activity_callback=None):
     restart_vla_profile = None
     is_testing = "unittest" in sys.modules or "pytest" in sys.modules
@@ -608,6 +629,8 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
     try:
         if not start_planner_server(use_gpu=False):
             raise RuntimeError("The planning model is unavailable.")
+
+        user_profile_context = learn_personal_context(message)
 
         # Proactively detect personal agent tool intents upfront
         tool_contexts = []
@@ -643,9 +666,9 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
                 logging.warning(f"Notification dispatch failed: {notif_err}")
 
         system_prompt = (
-            "You are OmniVLA's personal assistant and computer agent. You converse naturally, solve research, file, and web tasks directly, and create execution plans when desktop actions are required.\n\n"
+            "You are OmniVLA, a personal computer agent. Answer questions, use tools, or plan desktop tasks.\n\n"
             "OPERATIONAL DIRECTIVES:\n"
-            "1. DIRECT ANSWERS & RESEARCH: Answer general conversational, knowledge, and lookup queries directly in chat without creating execution plans.\n"
+            "1. DIRECT ANSWERS & RESEARCH: Answer questions directly without desktop plans.\n"
             "2. BUILT-IN HEADLESS TOOLS: For background lookups without desktop GUI action, emit tool tags:\n"
             "   - `[BROWSER_SEARCH: <query>]`: Web search.\n"
             "   - `[FIND_FILES: <pattern>]`: Local file discovery.\n"
@@ -659,8 +682,8 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
             "   Prescribed Steps: 25\n"
             "   ```\n"
             "   Do NOT emit `[BROWSER_SEARCH]` when asked to search manually from the user's system or in Edge/Chrome!\n"
-            "4. USER PREFERENCES: Respect profile defaults (e.g. ak1399er@gmail.com via Edge). For logins, use saved passwords/autofill, else ask user; never guess OTPs.\n"
-            "5. CONVERSATIONAL TONE: Speak directly to the user. No scratchpad monologues or <think> tags."
+            "4. Apply relevant personal context; current instructions override defaults. Never invent preferences or OTPs. Ask for missing credentials.\n"
+            "5. CONVERSATIONAL TONE: Speak directly. No scratchpad monologues or <think> tags."
         )
 
         if tool_contexts:
@@ -873,7 +896,6 @@ def start_llama_server(model_path, max_gpu=True):
         except Exception:
             pass
         server_process = None
-    kill_port_owner(8089)
     time.sleep(1.0)
 
     if is_testing:

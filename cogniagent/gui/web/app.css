@@ -1399,3 +1399,15 @@ body.execution-closed .execution-panel { opacity: 0; pointer-events: none; trans
 }
 
 
+
+/* Typed operator requests remain available across conversations. */
+.intervention-card, .pairing-card { position: fixed; z-index: 90; inset-inline-end: 24px; bottom: 24px; width: min(460px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); overflow: auto; padding: 20px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--paper); color: var(--ink); box-shadow: 0 12px 36px rgba(31,31,29,.18); }
+.intervention-card h2, .pairing-card h2 { margin: 0 0 12px; font-size: 18px; }
+.intervention-card p, .pairing-card p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.intervention-card label, .pairing-card label { display: grid; gap: 8px; }
+.intervention-card input, .pairing-card input { width: 100%; min-height: 44px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); padding: 10px; font-size: 16px; }
+.intervention-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.intervention-actions button, .pairing-card button { min-height: 44px; }
+#pairing-details, #memory-provenance { overflow-wrap: anywhere; }
+#memory-provenance li { margin-block: 10px; }
+@media (max-width: 700px) { .intervention-card, .pairing-card { inset-inline-end: 16px; bottom: 16px; } }

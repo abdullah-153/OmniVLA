@@ -102,14 +102,14 @@ class TestPerformanceProfile(unittest.TestCase):
             server_manager.active_vla_model = "models/holo.gguf"
             server_manager.active_vla_max_gpu = True
             server_manager.active_vla_cuda = True
-            with patch.object(server_manager, "kill_port_owner") as kill:
+            with patch("gui_telemetry.kill_port_owner") as kill:
                 profile = server_manager.stop_vla_server()
 
             self.assertEqual(profile, ("models/holo.gguf", True))
             self.assertIsNone(server_manager.active_vla_model)
             self.assertIsNone(server_manager.active_vla_max_gpu)
             self.assertFalse(server_manager.active_vla_cuda)
-            kill.assert_called_once_with(8089)
+            kill.assert_not_called()
         finally:
             (
                 server_manager.server_process,

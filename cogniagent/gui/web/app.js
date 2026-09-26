@@ -49,6 +49,77 @@ tags: [desktop]
     latestIntelligentSkill: null,
   };
 
+  let localToken = "";
+  let pairingToken = sessionStorage.getItem("omnivla-pairing") || "";
+  let authRequest = null;
+  const isDesktopHost = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+  async function ensureSession() {
+    if (!isDesktopHost || localToken) return;
+    if (!authRequest) authRequest = fetch("/api/session", { cache: "no-store" }).then(async response => {
+      if (!response.ok) throw new Error("Desktop session unavailable. Restart or reconnect to OmniVLA.");
+      localToken = (await response.json()).token;
+    }).finally(() => { authRequest = null; });
+    await authRequest;
+  }
+
+  let pendingIntervention = null;
+  function renderIntervention(data) {
+    const request = data.intervention || data.execution_live?.intervention;
+    const card = $("intervention-card");
+    card.hidden = !request;
+    if (!request) { pendingIntervention = null; return; }
+    const changed = pendingIntervention?.id !== request.id;
+    pendingIntervention = request;
+    card.dataset.requestId = request.id;
+    $("intervention-question").textContent = request.question;
+    const approval = ["approval", "completion"].includes(request.kind);
+    $("intervention-title").textContent = request.kind === "completion" ? "Verify the result" : approval ? "Review this action" : "Your input is needed";
+    $("intervention-approve").hidden = !approval;
+    $("intervention-deny").hidden = false;
+    $("intervention-send").hidden = approval;
+    $("intervention-input-wrap").hidden = approval;
+    $("intervention-input").type = request.kind === "secret" ? "password" : "text";
+    $("intervention-input-label").textContent = request.kind === "secret" ? "Verification code" : "Response";
+    const readOnly = data.access?.is_local === false && !data.access?.remote_control_enabled;
+    card.querySelectorAll("button, input").forEach(control => { control.disabled = readOnly; });
+    if (readOnly) $("intervention-error").textContent = "Read-only companion. Respond on the desktop.";
+    if (changed) { $("intervention-input").value = ""; if (!readOnly) $("intervention-error").textContent = ""; }
+  }
+  async function answerIntervention(response) {
+    if (!pendingIntervention) return;
+    const request = { ...pendingIntervention, response };
+    try {
+      await api("/api/hitl_submit", { method: "POST", body: request });
+      $("intervention-input").value = "";
+      $("intervention-card").hidden = true;
+      await fetchStatus();
+    } catch (error) { $("intervention-error").textContent = error.message; }
+  }
+  $("intervention-approve").addEventListener("click", () => answerIntervention("approve"));
+  $("intervention-deny").addEventListener("click", () => answerIntervention("deny"));
+  $("intervention-form").addEventListener("submit", event => { event.preventDefault(); answerIntervention($("intervention-input").value); });
+  $("pairing-form").addEventListener("submit", async event => {
+    event.preventDefault(); pairingToken = $("pairing-input").value.trim();
+    try {
+      const data = await api("/api/status");
+      sessionStorage.setItem("omnivla-pairing", pairingToken);
+      $("pairing-input").value = ""; $("pairing-card").hidden = true;
+      renderStatus(data);
+    } catch (error) { $("pairing-error").textContent = error.message; }
+  });
+  $("pairing-show").addEventListener("click", async () => {
+    try {
+      const pairing = await api("/api/pairing/rotate", { method: "POST", body: {} });
+      const mobile = state.status?.mobile || {};
+      $("pairing-details").textContent = `Code: ${pairing.token} · Expires ${new Date(pairing.expires_at * 1000).toLocaleTimeString()}. ${mobile.lan_url || "To use a companion, restart the server with OMNIVLA_HOST=0.0.0.0 on a trusted network."}`;
+    } catch (error) { $("pairing-details").textContent = error.message; }
+  });
+  $("clear-personal-memory").addEventListener("click", async () => {
+    if (!window.confirm("Forget learned personal context and successful workflows? Preferences saved in Settings are kept.")) return;
+    try { await api("/api/profile", { method: "POST", body: { clear_learned: true } }); await fetchStatus(); }
+    catch (error) { toast(error.message, true); }
+  });
+
   const icon = (name) => `<svg aria-hidden="true"><use href="#i-${name}" /></svg>`;
   const escapeHtml = (value) => String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -97,7 +168,10 @@ tags: [desktop]
   }
 
   async function api(path, options = {}) {
+    await ensureSession();
     const headers = new Headers(options.headers || {});
+    if (localToken) headers.set("X-OmniVLA-Session", localToken);
+    if (pairingToken) headers.set("X-OmniVLA-Pairing", pairingToken);
     const request = { cache: "no-store", ...options, headers };
     if (request.body !== undefined) {
       headers.set("Content-Type", "application/json");
@@ -106,6 +180,10 @@ tags: [desktop]
     const response = await fetch(path, request);
     let payload = {};
     try { payload = await response.json(); } catch (_) { /* empty response */ }
+    if (response.status === 401) {
+      if (isDesktopHost) localToken = "";
+      else { pairingToken = ""; sessionStorage.removeItem("omnivla-pairing"); $("pairing-card").hidden = false; }
+    }
     if (!response.ok) throw new Error(payload.error || `Request failed (${response.status})`);
     return payload;
   }
@@ -340,7 +418,7 @@ tags: [desktop]
             <span class="plan-card-icon"><svg><use href="#i-terminal" /></svg></span>
             <strong>Proposed Action Plan</strong>
           </div>
-          <span class="plan-card-budget">~${plan.prescribedSteps} steps</span>
+          <span class="plan-card-budget">Planner budget: ${plan.prescribedSteps} steps</span>
         </div>
         <div class="plan-card-body">
           <ol class="plan-card-steps">
@@ -503,12 +581,11 @@ tags: [desktop]
     const activeSelected = isSelectedExecution(data);
     const hasText = Boolean($("composer-input").value.trim());
 
-    if (isHitl && activeSelected) {
-      const question = data?.hitl_question || live.hitl_question || data?.current_action || "Operator response required";
-      $("send-message").disabled = !hasText;
-      $("composer-input").disabled = false;
-      $("composer-input").placeholder = `Input needed: ${question}`;
-      $("composer-hint").textContent = "Type your response, OTP, or instruction · Enter to submit";
+    if (isHitl) {
+      $("send-message").disabled = true;
+      $("composer-input").disabled = true;
+      $("composer-input").placeholder = "Respond using the review card";
+      $("composer-hint").textContent = "Your response applies only to the pending action.";
       return;
     }
 
@@ -574,7 +651,6 @@ tags: [desktop]
     const signature = JSON.stringify([data.settings, data.safety, data.user_profile]);
     if (state.settingsSignature === signature || $("settings-form").contains(document.activeElement)) return;
     state.settingsSignature = signature;
-    $("max-steps").value = data.settings?.max_steps ?? 60;
     $("memory-enabled").checked = Boolean(data.settings?.memory_enabled);
     $("enable-recording").checked = Boolean(data.settings?.enable_recording);
     $("safety-mode").value = data.safety?.mode || "supervised";
@@ -583,10 +659,19 @@ tags: [desktop]
     const profile = data.user_profile || {};
     const emailPref = profile.preferences?.email || {};
     const browserPref = profile.preferences?.browser || {};
-    if ($("pref-email-account")) $("pref-email-account").value = emailPref.account || "ak1399er@gmail.com";
-    if ($("pref-email-service")) $("pref-email-service").value = emailPref.service || "Gmail";
-    if ($("pref-browser")) $("pref-browser").value = browserPref.default || "Microsoft Edge";
+    if ($("pref-email-account")) $("pref-email-account").value = emailPref.account || "";
+    if ($("pref-email-service")) $("pref-email-service").value = emailPref.service || "";
+    if ($("pref-browser")) $("pref-browser").value = browserPref.default || "";
     renderProfileFacts(profile.facts || []);
+    $("personal-learning").checked = profile.learning_enabled !== false;
+    $("remote-control").checked = Boolean(data.safety?.remote_control_enabled);
+    $("pairing-settings").hidden = data.access?.is_local === false;
+    $("memory-summary").textContent = `${(profile.memories || []).length} personal records · ${(profile.workflows || []).length} successful workflows available for relevant tasks`;
+    $("memory-provenance").replaceChildren(...(profile.memories || []).slice(-20).reverse().map(record => {
+      const item = document.createElement("li");
+      item.textContent = `${record.key}: ${record.value} — Source: ${record.source}`;
+      return item;
+    }));
   }
 
   function updateExecutionVisibility(data) {
@@ -626,6 +711,7 @@ tags: [desktop]
     renderComposer(data);
     renderLocalState(data);
     renderSettings(data);
+    renderIntervention(data);
   }
 
   async function fetchStatus() {
@@ -668,7 +754,7 @@ tags: [desktop]
     if (isHitl && isSelectedExecution(state.status)) {
       setBusy($("send-message"), true, "Sending");
       try {
-        await api("/api/hitl_submit", { method: "POST", body: { response: message } });
+        await api("/api/hitl_submit", { method: "POST", body: { ...state.status?.intervention, response: message } });
         input.value = "";
         resizeComposer();
         toast("Response submitted to agent.");
@@ -863,7 +949,6 @@ tags: [desktop]
       return;
     }
     setBusy($("run-plan"), true, "Starting");
-    const chosenSteps = Number(plan.prescribed_steps || 35);
     try {
       await api("/api/confirm", { method: "POST", body: {
         task: plan.execution_task || plan.plan,
@@ -871,7 +956,6 @@ tags: [desktop]
         approved: true,
         risk_acknowledged: !highRisk || Boolean($("risk-ack")?.checked),
         chat_id: state.status?.active_chat_id,
-        max_steps: chosenSteps,
       } });
       document.body.classList.remove("execution-closed");
       await fetchStatus();
@@ -1175,13 +1259,13 @@ tags: [desktop]
     $("settings-save-state").textContent = "Saving…";
     try {
       await api("/api/settings", { method: "POST", body: {
-        max_steps: Number($("max-steps").value),
         memory_enabled: $("memory-enabled").checked,
         enable_recording: $("enable-recording").checked,
       } });
       await api("/api/safety", { method: "POST", body: {
         mode: $("safety-mode").value,
         require_plan_approval: $("require-plan-approval").checked,
+        remote_control_enabled: $("remote-control").checked,
       } });
       if ($("pref-email-account")) {
         await api("/api/profile", { method: "POST", body: {
@@ -1198,6 +1282,7 @@ tags: [desktop]
           preference: { category: "browser", key: "default", value: $("pref-browser").value.trim() }
         } });
       }
+      await api("/api/profile", { method: "POST", body: { learning_enabled: $("personal-learning").checked } });
       $("settings-save-state").textContent = "Saved";
       await fetchStatus();
     } catch (error) { $("settings-save-state").textContent = error.message; toast(error.message, true); }

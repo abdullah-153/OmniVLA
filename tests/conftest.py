@@ -71,3 +71,9 @@ def pytest_sessionfinish(session, exitstatus):
     from tests.mocks.mock_llama_server import stop_shared_server
     stop_shared_server()
 
+
+
+@pytest.fixture(autouse=True)
+def isolated_personal_memory(tmp_path, monkeypatch):
+    from cogniagent.memory import user_profile
+    monkeypatch.setattr(user_profile, "_profile_memory_instance", user_profile.UserProfileMemory(str(tmp_path / "personal")))
