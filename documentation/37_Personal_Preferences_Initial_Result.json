@@ -1,0 +1,81 @@
+{
+  "model": "models/Spark-X2.5-4B-Q4_K_M.gguf",
+  "scope": "Real local planner; isolated synthetic preferences; external tools disabled; lexical checks require answer review.",
+  "cases": [
+    {
+      "id": "global_default",
+      "answer": "Outlook",
+      "context_receipts": [
+        {
+          "kind": "preference",
+          "label": "email service: Outlook",
+          "source": "Settings"
+        }
+      ],
+      "memory_unchanged": true,
+      "tool_calls": [],
+      "passed": true,
+      "duration_seconds": 26.22
+    },
+    {
+      "id": "project_default",
+      "answer": "Gmail",
+      "context_receipts": [
+        {
+          "kind": "preference",
+          "label": "email service: Gmail (Project Atlas)",
+          "source": "Personal memory"
+        }
+      ],
+      "memory_unchanged": true,
+      "tool_calls": [],
+      "passed": true,
+      "duration_seconds": 10.24
+    },
+    {
+      "id": "unrelated_project",
+      "answer": "Outlook",
+      "context_receipts": [
+        {
+          "kind": "preference",
+          "label": "email service: Outlook",
+          "source": "Settings"
+        }
+      ],
+      "memory_unchanged": true,
+      "tool_calls": [],
+      "passed": true,
+      "duration_seconds": 9.88
+    },
+    {
+      "id": "current_override",
+      "answer": "Gmail",
+      "context_receipts": [
+        {
+          "kind": "preference",
+          "label": "email service: Gmail (Project Atlas)",
+          "source": "Personal memory"
+        }
+      ],
+      "memory_unchanged": true,
+      "tool_calls": [],
+      "passed": false,
+      "duration_seconds": 10.39
+    },
+    {
+      "id": "conflicting_projects",
+      "answer": "Based on your personal context, you have two scoped email services:\n\n- **Project Atlas**: Gmail\n- **Project Apollo**: Outlook\n\nSince you need to send one joint update for both projects, you would need to use **both services** \u2014 one for each project. \n\nIf you need to coordinate the update across both, you would likely send the update to both Gmail (Project Atlas) and Outlook (Project Apollo) to ensure it reaches both teams. Would you like me to help with anything else, such as drafting the update or setting up a shared channel?",
+      "context_receipts": [
+        {
+          "kind": "conflict",
+          "label": "email service: Project Atlas = Gmail; Project Apollo = Outlook",
+          "source": "Needs clarification"
+        }
+      ],
+      "memory_unchanged": true,
+      "tool_calls": [],
+      "passed": true,
+      "duration_seconds": 19.02
+    }
+  ]
+}

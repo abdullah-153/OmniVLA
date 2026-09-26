@@ -1,0 +1,70 @@
+{
+  "model": "models/Spark-X2.5-4B-Q4_K_M.gguf",
+  "requested_output_tokens": 640,
+  "scope": "Real local planner; isolated synthetic preferences; external tools disabled; lexical checks require answer review.",
+  "cases": [
+    {
+      "id": "global_default",
+      "answer": "Outlook",
+      "context_receipts": [
+        {
+          "kind": "preference",
+          "label": "email service: Outlook",
+          "source": "Settings"
+        }
+      ],
+      "memory_unchanged": true,
+      "tool_calls": [],
+      "passed": true,
+      "duration_seconds": 26.84
+    },
+    {
+      "id": "project_default",
+      "answer": "Gmail",
+      "context_receipts": [
+        {
+          "kind": "preference",
+          "label": "email service: Gmail (Project Atlas)",
+          "source": "Personal memory"
+        }
+      ],
+      "memory_unchanged": true,
+      "tool_calls": [],
+      "passed": true,
+      "duration_seconds": 10.07
+    },
+    {
+      "id": "unrelated_project",
+      "answer": "Outlook",
+      "context_receipts": [
+        {
+          "kind": "preference",
+          "label": "email service: Outlook",
+          "source": "Settings"
+        }
+      ],
+      "memory_unchanged": true,
+      "tool_calls": [],
+      "passed": true,
+      "duration_seconds": 9.45
+    },
+    {
+      "id": "current_override",
+      "answer": "Outlook",
+      "context_receipts": [],
+      "memory_unchanged": true,
+      "tool_calls": [],
+      "passed": true,
+      "duration_seconds": 8.2
+    },
+    {
+      "id": "conflicting_projects",
+      "answer": "Your saved email service preferences differ:\n- Project Atlas: Gmail\n- Project Apollo: Outlook\n\nWhich email service should I use for this task?",
+      "context_receipts": [],
+      "memory_unchanged": true,
+      "tool_calls": [],
+      "passed": true,
+      "duration_seconds": 0.0
+    }
+  ]
+}

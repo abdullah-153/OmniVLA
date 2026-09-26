@@ -727,9 +727,14 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
             else:
                 from cogniagent.memory.user_profile import get_user_profile
                 user_profile_context = get_user_profile().get_planner_context(message)
-            from cogniagent.memory.user_profile import get_user_profile
+            from cogniagent.memory.user_profile import get_user_profile, preference_conflict_question
             from cogniagent.tools.file_search import project_search_roots
-            file_search_roots = project_search_roots(get_user_profile().build_context_pack(message))
+            context_pack = get_user_profile().build_context_pack(message)
+            conflict_question = preference_conflict_question(context_pack, message)
+            if conflict_question:
+                check_planner_cancelled(cancel_event)
+                return conflict_question
+            file_search_roots = project_search_roots(context_pack)
 
         gateway = PersonalToolGateway(
             browser_search=execute_browser_search, find_files=find_local_files,
