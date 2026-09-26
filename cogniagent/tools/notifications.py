@@ -52,9 +52,9 @@ def send_notification(
         except Exception as win_err:
             logger.warning("Failed to show toast via winotify: %s", win_err)
 
-    # Fallback for environments without winotify or non-Windows
-    logger.info("[NOTIFICATION][%s] %s: %s", app_id, clean_title, clean_msg)
-    return True
+    # A log entry is not a delivered desktop notification.
+    logger.warning("Notification unavailable for %s", app_id)
+    return False
 
 
 def detect_notification_intent(message: str) -> tuple[bool, str, str]:
@@ -85,4 +85,3 @@ def detect_notification_intent(message: str) -> tuple[bool, str, str]:
                 return True, "OmniVLA Reminder", content
 
     return False, "", ""
-

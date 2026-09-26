@@ -8,11 +8,29 @@ slow visual browser navigation.
 from __future__ import annotations
 
 import logging
+import ipaddress
 import re
+import socket
 from typing import Any
 import urllib.parse
 
 logger = logging.getLogger("omnivla.tools.web_reader")
+MAX_RESPONSE_BYTES = 1_000_000
+MAX_REDIRECTS = 3
+
+
+def _public_destination(url: str) -> bool:
+    """Reject local, private, and ambiguous destinations before each request."""
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+            return False
+        if len(url) > 2048 or parsed.port is None and parsed.netloc.endswith(":"):
+            return False
+        addresses = socket.getaddrinfo(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM)
+        return bool(addresses) and all(ipaddress.ip_address(item[4][0].split("%", 1)[0]).is_global for item in addresses)
+    except (ValueError, OSError):
+        return False
 
 try:
     import trafilatura
@@ -37,41 +55,55 @@ def read_webpage(
     if not clean_url.startswith(("http://", "https://")):
         clean_url = "https://" + clean_url
 
-    # Attempt 1: trafilatura high-fidelity extraction
-    if trafilatura is not None:
-        try:
-            downloaded = trafilatura.fetch_url(clean_url)
-            if downloaded:
-                extracted = trafilatura.extract(
-                    downloaded,
-                    output_format="markdown",
-                    include_links=True,
-                    include_images=False,
-                    favor_precision=True,
-                )
-                if extracted and extracted.strip():
-                    # Attempt to extract metadata title
-                    meta = trafilatura.extract_metadata(downloaded)
-                    title = meta.title if meta and meta.title else ""
-                    return {
-                        "title": title,
-                        "url": clean_url,
-                        "text": extracted.strip()[:max_chars],
-                        "success": True,
-                    }
-        except Exception as traf_err:
-            logger.warning("Trafilatura failed for '%s': %s", clean_url, traf_err)
+    if not _public_destination(clean_url):
+        return {"title": "", "url": clean_url, "text": "This destination is unavailable to the web reader.", "success": False}
 
-    # Attempt 2: Fallback via requests and regex text extraction
+    # One bounded fetch path is shared by trafilatura and the HTML fallback.
+    # This prevents the extractor's independent downloader from bypassing the
+    # destination policy and timeout.
     try:
         import requests
-        resp = requests.get(
-            clean_url,
-            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"},
-            timeout=timeout_sec,
-        )
-        if resp.status_code == 200:
-            html = resp.text
+        current = clean_url
+        for _ in range(MAX_REDIRECTS + 1):
+            if not _public_destination(current):
+                raise ValueError("Redirect target is not public")
+            with requests.get(
+                current,
+                headers={"User-Agent": "OmniVLA-WebReader/1.0", "Accept": "text/html,application/xhtml+xml,text/plain"},
+                timeout=(min(3.0, timeout_sec), timeout_sec), stream=True, allow_redirects=False,
+            ) as resp:
+                if resp.status_code in {301, 302, 303, 307, 308}:
+                    location = resp.headers.get("Location", "")
+                    if not location:
+                        raise ValueError("Redirect has no destination")
+                    current = urllib.parse.urljoin(current, location)
+                    continue
+                if resp.status_code != 200:
+                    raise ValueError(f"HTTP {resp.status_code}")
+                content_type = resp.headers.get("Content-Type", "text/html").split(";", 1)[0].lower()
+                if content_type not in {"text/html", "application/xhtml+xml", "text/plain"}:
+                    raise ValueError("Unsupported page content type")
+                if resp.headers.get("Content-Length", "").isdigit() and int(resp.headers["Content-Length"]) > MAX_RESPONSE_BYTES:
+                    raise ValueError("Page exceeds the download limit")
+                chunks = []
+                size = 0
+                for chunk in resp.iter_content(chunk_size=16_384):
+                    size += len(chunk)
+                    if size > MAX_RESPONSE_BYTES:
+                        raise ValueError("Page exceeds the download limit")
+                    chunks.append(chunk)
+                html = b"".join(chunks).decode(resp.encoding or "utf-8", errors="replace")
+            clean_url = current
+            if trafilatura is not None:
+                try:
+                    extracted = trafilatura.extract(html, output_format="markdown", include_links=True,
+                                                    include_images=False, favor_precision=True)
+                    if extracted and extracted.strip():
+                        meta = trafilatura.extract_metadata(html)
+                        return {"title": meta.title if meta and meta.title else "", "url": clean_url,
+                                "text": extracted.strip()[:max_chars], "success": True}
+                except Exception as traf_err:
+                    logger.warning("Page extraction failed for '%s': %s", clean_url, traf_err)
             # Extract title
             title_m = re.search(r"<title[^>]*>(.*?)</title>", html, flags=re.IGNORECASE | re.DOTALL)
             title = title_m.group(1).strip() if title_m else ""
@@ -87,6 +119,9 @@ def read_webpage(
                     "text": clean_text[:max_chars],
                     "success": True,
                 }
+            break
+        else:
+            raise ValueError("Too many redirects")
     except Exception as req_err:
         logger.warning("Requests fallback failed for '%s': %s", clean_url, req_err)
 

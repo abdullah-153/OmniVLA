@@ -98,6 +98,10 @@ class TestNotificationTool(unittest.TestCase):
         mock_winotify.Notification.assert_called_once()
         mock_toast.show.assert_called_once()
 
+    @patch("cogniagent.tools.notifications.winotify", None)
+    def test_missing_native_notifier_is_not_reported_as_delivered(self):
+        self.assertFalse(send_notification("Alert", "Done"))
+
     def test_detect_notification_intent(self):
         queries = [
             ("send me a notification with title 'Alert' and message 'Meeting in 5 mins'", "Alert", "Meeting in 5 mins"),
@@ -116,9 +120,13 @@ class TestNotificationTool(unittest.TestCase):
 
 
 class TestWebReaderTool(unittest.TestCase):
+    @patch("cogniagent.tools.web_reader._public_destination", return_value=True)
+    @patch("requests.get")
     @patch("cogniagent.tools.web_reader.trafilatura")
-    def test_read_webpage_via_trafilatura(self, mock_traf):
-        mock_traf.fetch_url.return_value = "<html>mock html</html>"
+    def test_read_webpage_via_trafilatura(self, mock_traf, mock_get, _public):
+        response=MagicMock(status_code=200, headers={"Content-Type":"text/html"}, encoding="utf-8")
+        response.iter_content.return_value=[b"<html>mock html</html>"]
+        mock_get.return_value.__enter__.return_value=response
         mock_traf.extract.return_value = "# Article Title\n\nThis is clean markdown content."
         mock_meta = MagicMock()
         mock_meta.title = "Article Title"
@@ -276,4 +284,3 @@ class TestPlannerPersonalAgentIntegration(unittest.TestCase):
         result = run_planner_chat("send me a notification with title 'Alert' and message 'Done'", [])
         mock_notify.assert_called_once_with("Alert", "Done")
         self.assertIn("sent the toast notification", result)
-

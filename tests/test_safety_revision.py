@@ -326,3 +326,29 @@ def test_remote_pairing_and_control_policy(http_app):
         assert requests.get(http_app+"/api/status",headers=headers,timeout=3).status_code == 200
         assert requests.post(http_app+"/api/chats/new",headers=headers,json={},timeout=3).status_code == 403
         assert requests.get(http_app+"/api/session",headers=headers,timeout=3).status_code == 403
+
+
+def test_web_reader_blocks_private_destinations_before_network():
+    from cogniagent.tools.web_reader import read_webpage
+    with patch("requests.get") as get:
+        result=read_webpage("http://127.0.0.1:8000/api/session")
+    assert result["success"] is False
+    get.assert_not_called()
+
+
+def test_web_reader_rechecks_redirect_and_bounds_download():
+    from cogniagent.tools.web_reader import read_webpage, MAX_RESPONSE_BYTES
+    redirect=MagicMock(status_code=302, headers={"Location":"http://127.0.0.1/private"})
+    with patch("cogniagent.tools.web_reader._public_destination", side_effect=[True, True, False]), \
+         patch("requests.get") as get:
+        get.return_value.__enter__.return_value=redirect
+        result=read_webpage("https://example.com/page")
+    assert result["success"] is False
+    assert get.call_count == 1
+    page=MagicMock(status_code=200, headers={"Content-Type":"text/html"}, encoding="utf-8")
+    page.iter_content.return_value=[b"x" * (MAX_RESPONSE_BYTES + 1)]
+    with patch("cogniagent.tools.web_reader._public_destination", return_value=True), \
+         patch("requests.get") as get:
+        get.return_value.__enter__.return_value=page
+        result=read_webpage("https://example.com/page")
+    assert result["success"] is False
