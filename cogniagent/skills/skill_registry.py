@@ -9,6 +9,8 @@ import os
 import re
 import json
 import logging
+import hashlib
+from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 from cogniagent.skills.skill_schema import SkillDefinition
@@ -41,6 +43,7 @@ class SkillRegistry:
             return self._skills_cache
 
         for root, dirs, files in os.walk(self.skills_dir):
+            dirs[:] = [directory for directory in dirs if directory != ".history"]
             dirs.sort()
             for fname in sorted(files):
                 fpath = os.path.join(root, fname)
@@ -98,6 +101,19 @@ class SkillRegistry:
         os.makedirs(target_dir, exist_ok=True)
         fpath = os.path.join(target_dir, "SKILL.md")
 
+        previous_path = self._skill_paths.get(skill.name, fpath)
+        if os.path.isfile(previous_path):
+            previous = Path(previous_path).read_bytes()
+            if previous != skill.to_markdown().encode("utf-8"):
+                history = Path(target_dir) / ".history"
+                history.mkdir(exist_ok=True)
+                digest = hashlib.sha256(previous).hexdigest()
+                # Keep the original format so legacy JSON skills remain restorable.
+                suffix = ".json" if previous_path.lower().endswith(".json") else ".md"
+                snapshot = history / (digest + suffix)
+                if not snapshot.exists():
+                    snapshot.write_bytes(previous)
+
         temp_path = f"{fpath}.tmp"
         with open(temp_path, "w", encoding="utf-8") as f:
             f.write(skill.to_markdown())
@@ -107,6 +123,34 @@ class SkillRegistry:
         self._skill_paths[skill.name] = os.path.abspath(fpath)
         logger.info("Saved intelligent skill '%s' to %s", skill.name, fpath)
         return fpath
+
+    def list_revisions(self, name: str) -> List[Dict[str, Any]]:
+        """List retained versions without loading them as executable skills."""
+        name = self.validate_skill_name(name)
+        history = Path(self.skills_dir) / name / ".history"
+        if not history.is_dir():
+            return []
+        return [{"revision": item.stem, "format": item.suffix[1:], "size_bytes": item.stat().st_size}
+                for item in sorted(history.iterdir())
+                if re.fullmatch(r"[a-f0-9]{64}\.(md|json)", item.name)]
+
+    def restore_revision(self, name: str, revision: str) -> str:
+        """Restore a verified snapshot, retaining the replaced version."""
+        name = self.validate_skill_name(name)
+        if not re.fullmatch(r"[a-f0-9]{64}", str(revision)):
+            raise ValueError("Invalid skill revision.")
+        history = Path(self.skills_dir) / name / ".history"
+        source = next((history / (revision + suffix) for suffix in (".md", ".json")
+                       if (history / (revision + suffix)).is_file()), None)
+        if source is None:
+            raise ValueError("Skill revision was not found.")
+        raw = source.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != revision:
+            raise ValueError("Skill revision content is damaged.")
+        skill = (SkillDefinition.from_dict(json.loads(raw.decode("utf-8"))) if source.suffix == ".json"
+                 else SkillDefinition.from_markdown(raw.decode("utf-8")))
+        skill.name = name
+        return self.save_skill(skill)
 
     def delete_skill(self, name: str) -> bool:
         """Delete a skill from disk and memory."""
