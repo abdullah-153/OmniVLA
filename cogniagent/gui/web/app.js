@@ -1205,13 +1205,15 @@ tags: [desktop]
     $("restore-skill").disabled = true;
     $("skill-revision-preview").hidden = true;
     if (!revision) return;
+    $("skill-history-status").textContent = "Loading version…";
     try {
       const result = await api("/api/skills/revision", {method: "POST", body: {name, revision}});
       if (request !== skillHistoryRequest) return;
       $("skill-revision-preview").textContent = result.skill.raw_markdown || JSON.stringify(result.skill, null, 2);
       $("skill-revision-preview").hidden = false;
       $("restore-skill").disabled = false;
-    } catch (error) { if (request === skillHistoryRequest) $("skill-history-status").textContent = error.message; }
+      $("skill-history-status").textContent = "Preview ready. Restoring retains your current saved version.";
+    } catch (error) { if (request === skillHistoryRequest) $("skill-history-status").textContent = `${error.message} Choose another version, then select this one to retry.`; }
   });
 
   $("restore-skill").addEventListener("click", async () => {

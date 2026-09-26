@@ -12,7 +12,7 @@ app.whenReady().then(async()=>{
   const errors=[];
   const windows=[];
   try {
-    const win=new BrowserWindow({show:false,width:1280,height:900,webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false,webSecurity:true,preload:path.join(root,'console-app','preload.js')}});
+    const win=new BrowserWindow({show:false,width:1280,height:900,webPreferences:{offscreen:true,backgroundThrottling:false,sandbox:true,contextIsolation:true,nodeIntegration:false,webSecurity:true,preload:path.join(root,'console-app','preload.js')}});
     windows.push(win);
     win.webContents.on('console-message',(_e,level,message)=>{if(level===3) errors.push(message)});
     await win.loadURL(base);
