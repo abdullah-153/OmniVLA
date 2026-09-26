@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from copy import deepcopy
 from pathlib import Path
 import json
 import os
@@ -51,10 +52,13 @@ class PersonalToolGateway:
         self._discovered_paths: set[str] = set()
         self.file_matches: list[dict[str, Any]] = []
         self._cache: dict[tuple[str, tuple[tuple[str, str], ...]], ToolResult] = {}
+        self._file_match_cache: dict[tuple[str, tuple[tuple[str, str], ...]], list[dict[str, Any]]] = {}
         self._delivered: set[tuple[str, tuple[tuple[str, str], ...]]] = set()
 
     def run(self, name: str, arguments: dict[str, Any]) -> ToolResult:
         started = time.monotonic()
+        if name == "FIND_FILES":
+            self.file_matches = []
         if name not in self._fields or not isinstance(arguments, dict):
             return ToolResult(str(name)[:40], False, "Unsupported tool request.", 0)
         allowed = self._fields[name]
@@ -65,6 +69,8 @@ class PersonalToolGateway:
                 return ToolResult(name, False, f"Invalid {field} argument.", 0)
             values[field] = value.strip()
         cache_key = (name, tuple(sorted(values.items())))
+        if name == "FIND_FILES":
+            cache_key = (name, cache_key[1] + (("search_roots", json.dumps(self.file_search_roots)),))
         if name == "READ_LOCAL_FILE":
             try:
                 resolved = str(Path(values["path"]).resolve(strict=True)).casefold()
@@ -73,6 +79,8 @@ class PersonalToolGateway:
             if resolved not in self._discovered_paths or self.read_local_file is None or self.format_local_file is None:
                 return ToolResult(name, False, "Read a file discovered during this request.", 0)
         if name not in {"NOTIFY", "READ_LOCAL_FILE"} and cache_key in self._cache:
+            if name == "FIND_FILES":
+                self.file_matches = deepcopy(self._file_match_cache[cache_key])
             return self._cache[cache_key]
         if name == "NOTIFY" and cache_key in self._delivered:
             return ToolResult(name, True, "<notification_event>\nAlready delivered during this request.\n</notification_event>", 0)
@@ -91,12 +99,6 @@ class PersonalToolGateway:
                 retry_pattern = simplify_scoped_pattern(pattern, roots) if roots and not matches else None
                 if retry_pattern:
                     matches = self.find_files(retry_pattern, search_roots=roots)
-                self.file_matches = matches[:15]
-                for item in matches[:15]:
-                    try:
-                        self._discovered_paths.add(str(Path(item["path"]).resolve(strict=True)).casefold())
-                    except (KeyError, OSError, TypeError, ValueError):
-                        continue
                 content = self.format_files(matches, pattern=values["pattern"])
                 if retry_pattern:
                     content = ("Original filename query had no matches. Retried within the same folder using "
@@ -104,6 +106,13 @@ class PersonalToolGateway:
                 if roots is not None:
                     content = ("Search limited to remembered project folders: " + json.dumps(roots)
                                + ". Missing folders do not trigger a broader search.\n" + content)
+                pending_matches = deepcopy(matches[:15])
+                pending_paths = set()
+                for item in pending_matches:
+                    try:
+                        pending_paths.add(str(Path(item["path"]).resolve(strict=True)).casefold())
+                    except (KeyError, OSError, TypeError, ValueError):
+                        continue
                 ok = True
             elif name == "READ_WEBPAGE":
                 page = self.read_page(values["url"])
@@ -125,6 +134,10 @@ class PersonalToolGateway:
         result = ToolResult(name, ok, str(content)[:16000] if name == "READ_LOCAL_FILE" else str(content)[:8000],
                             int((time.monotonic() - started) * 1000), artifact_sha256)
         if name not in {"NOTIFY", "READ_LOCAL_FILE"} and ok:
+            if name == "FIND_FILES":
+                self._file_match_cache[cache_key] = pending_matches
+                self.file_matches = deepcopy(pending_matches)
+                self._discovered_paths.update(pending_paths)
             self._cache[cache_key] = result
         if name == "NOTIFY" and ok:
             self._delivered.add(cache_key)

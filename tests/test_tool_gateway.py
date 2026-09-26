@@ -4,6 +4,7 @@ from cogniagent.tools.gateway import PersonalToolGateway
 from cogniagent.tools.local_file_reader import read_local_text_file, format_local_file, detect_local_file_read_intent
 from cogniagent.tools.file_search import find_local_files
 from unittest.mock import patch
+import pytest
 
 
 def make_gateway():
@@ -26,6 +27,46 @@ def test_gateway_validates_and_caches_read_only_tool_results():
     second = gateway.run("BROWSER_SEARCH", {"query": "research report"})
     assert first.ok and second.content == "Search results"
     callbacks["browser_search"].assert_called_once_with("research report", max_results=5)
+
+
+def test_cached_search_restores_its_own_matches_without_another_scan():
+    gateway, callbacks = make_gateway()
+    callbacks["find_files"].side_effect = [[{"name": "atlas.md"}], [{"name": "boreal.md"}]]
+    first = gateway.run("FIND_FILES", {"pattern": "atlas"})
+    gateway.file_matches[0]["name"] = "changed by caller"
+    gateway.run("FIND_FILES", {"pattern": "boreal"})
+    cached = gateway.run("FIND_FILES", {"pattern": "atlas"})
+    assert cached == first
+    assert gateway.file_matches == [{"name": "atlas.md"}]
+    assert callbacks["find_files"].call_count == 2
+
+
+@pytest.mark.parametrize("failure", ["search", "format", "invalid", "invalid_type"])
+def test_failed_search_clears_previous_matches(failure):
+    gateway, callbacks = make_gateway()
+    assert gateway.run("FIND_FILES", {"pattern": "previous"}).ok
+    if failure == "search":
+        callbacks["find_files"].side_effect = OSError("Search unavailable")
+    elif failure == "format":
+        callbacks["format_files"].side_effect = ValueError("Formatting failed")
+    arguments = {"pattern": "" if failure == "invalid" else "new"}
+    if failure == "invalid_type":
+        arguments = None
+    assert not gateway.run("FIND_FILES", arguments).ok
+    assert gateway.file_matches == []
+
+
+def test_failed_discovery_does_not_authorize_new_file(tmp_path):
+    gateway, callbacks = make_gateway()
+    report = tmp_path / "report.md"
+    report.write_text("private report", encoding="utf-8")
+    callbacks["find_files"].return_value = [{"name": report.name, "path": str(report)}]
+    callbacks["format_files"].side_effect = ValueError("Formatting failed")
+    gateway.read_local_file = MagicMock(return_value={"success": True})
+    gateway.format_local_file = MagicMock(return_value="Read")
+    assert not gateway.run("FIND_FILES", {"pattern": "report"}).ok
+    assert not gateway.run("READ_LOCAL_FILE", {"path": str(report)}).ok
+    gateway.read_local_file.assert_not_called()
 
 
 def test_gateway_reports_failed_effects_and_never_caches_them():

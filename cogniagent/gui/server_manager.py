@@ -739,9 +739,12 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
         if is_file_read and read_pattern:
             if activity_callback:
                 activity_callback(f'Finding {read_pattern} before reading...')
-            use_tool("FIND_FILES", {"pattern": read_pattern})
+            discovery = use_tool("FIND_FILES", {"pattern": read_pattern})
             matches = gateway.file_matches
-            if len(matches) == 1 and matches[0].get("path"):
+            if not discovery.ok:
+                tool_contexts.append("The requested local file search failed. No file was read for this request. "
+                                     "Report the search failure; do not claim the file is absent or summarize another file.")
+            elif len(matches) == 1 and matches[0].get("path"):
                 outcome = use_tool("READ_LOCAL_FILE", {"path": matches[0]["path"]})
                 if outcome.ok:
                     tool_contexts.append(outcome.content)

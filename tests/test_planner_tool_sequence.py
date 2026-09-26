@@ -45,6 +45,27 @@ def test_planner_can_discover_then_read_and_answer(tmp_path):
     assert receipts[-1].artifact_sha256
 
 
+def test_failed_upfront_read_discovery_never_reads_an_earlier_match(tmp_path):
+    old_report = tmp_path / "old.md"
+    old_report.write_text("Outdated status", encoding="utf-8")
+    receipts = []
+    with patch.object(server_manager, "start_planner_server", return_value=True), \
+         patch.object(server_manager, "stop_planner_server"), \
+         patch.object(server_manager, "detect_file_search_intent", return_value=(True, "old.md")), \
+         patch.object(server_manager, "detect_local_file_read_intent", return_value=(True, "new.md")), \
+         patch.object(server_manager, "find_local_files", side_effect=[
+             [{"name": old_report.name, "path": str(old_report)}], OSError("Search failed")]), \
+         patch.object(server_manager, "read_local_text_file") as read_file, \
+         patch.object(server_manager.requests, "post", return_value=reply("The file search failed.")) as model:
+        server_manager.run_planner_chat("Find old.md and read new.md", [],
+            user_profile_context="No defaults.", learn_personal_context_enabled=False,
+            tool_result_callback=receipts.append)
+    read_file.assert_not_called()
+    assert [(r.name, r.ok) for r in receipts] == [("FIND_FILES", True), ("FIND_FILES", False)]
+    prompt = model.call_args.kwargs["json"]["messages"][0]["content"]
+    assert "file search failed" in prompt
+
+
 def test_repeated_tool_call_stops_without_claiming_completion():
     with patch.object(server_manager, "start_planner_server", return_value=True), \
          patch.object(server_manager, "stop_planner_server"), \
