@@ -265,7 +265,8 @@ def start_planner_server(use_gpu=False):
     return res
 
 def run_planner_chat(message, chat_history=None, rag_context="", user_profile_context="", activity_callback=None,
-                     learn_personal_context=True, tool_result_callback=None, cancel_event=None):
+                     learn_personal_context=True, tool_result_callback=None, cancel_event=None,
+                     context_receipt_callback=None):
     import cogniagent.gui.server_manager as sm
     if chat_history is None:
         history = list(agent_status.get("chat_history", []))
@@ -277,7 +278,8 @@ def run_planner_chat(message, chat_history=None, rag_context="", user_profile_co
     return sm.run_planner_chat(message, history, temp, max_tokens, rag_context,
                                user_profile_context=user_profile_context, activity_callback=activity_callback,
                                learn_personal_context_enabled=learn_personal_context,
-                               tool_result_callback=tool_result_callback, cancel_event=cancel_event)
+                               tool_result_callback=tool_result_callback, cancel_event=cancel_event,
+                               context_receipt_callback=context_receipt_callback)
 
 def start_llama_server(max_gpu=True):
     import cogniagent.gui.server_manager as sm

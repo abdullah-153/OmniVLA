@@ -376,13 +376,16 @@ def test_context_pack_scopes_preferences_and_exposes_provenance(tmp_path):
     assert "browser" not in mail["preferences"]
 
 
-def test_plan_context_references_survive_database_normalization():
+@pytest.mark.parametrize("verified", [False, True])
+def test_plan_context_references_survive_database_normalization(verified):
     database=server._default_database()
     database["chats"][0]["chat_history"]=[{"role":"assistant", "content":"1. Open a report\n2. Save it",
+                                               "context_receipts_verified":verified,
                                                "context_refs":[{"kind":"fact","label":"Reports in D:/Research","source":"Your earlier statement"}]}]
     normalized=server._normalize_database(database)
     refs=normalized["chats"][0]["chat_history"][0]["context_refs"]
     assert refs == [{"kind":"fact","label":"Reports in D:/Research","source":"Your earlier statement"}]
+    assert normalized["chats"][0]["chat_history"][0]["context_receipts_verified"] is verified
 
 
 def test_tool_receipts_survive_database_normalization_without_payloads():
@@ -608,6 +611,26 @@ def test_stopped_planner_discards_late_answer_and_preserves_receipts(monkeypatch
     assert "Late answer" not in str(chat["chat_history"])
     assert chat["chat_history"][-1]["tool_receipts"][0]["name"] == "FIND_FILES"
     assert not lock.locked()
+
+
+def test_planner_persists_actual_context_receipts_without_rebuilding_memory(monkeypatch):
+    database = server._default_database()
+    chat = database["chats"][0]
+    sent = {"kind": "fact", "label": "Snapshot supplied during inference", "source": "Personal memory"}
+    def response(*args, **kwargs):
+        kwargs["context_receipt_callback"]([sent])
+        kwargs["context_receipt_callback"]([sent])
+        return "A grounded answer."
+    monkeypatch.setattr(server, "load_chats_db", lambda: database)
+    monkeypatch.setattr(server, "save_chats_db", MagicMock())
+    monkeypatch.setattr(server.gui_app, "run_planner_chat", response)
+    lock = threading.Lock()
+    lock.acquire()
+    monkeypatch.setattr(server, "planner_lock", lock)
+    handler = object.__new__(server.WebUIRequestHandler)
+    handler._plan_in_background(chat["id"], "Check Atlas", learn_profile=False)
+    assert chat["chat_history"][-1]["context_refs"] == [sent]
+    assert chat["chat_history"][-1]["context_receipts_verified"] is True
 
 
 def test_skill_revision_api_preview_restore_and_authorization(http_app, tmp_path, monkeypatch):

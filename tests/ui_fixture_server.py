@@ -15,6 +15,19 @@ server.skills_registry.save_skill(SkillDefinition(name='fixture_report',title='O
 server.skills_registry.save_skill(SkillDefinition(name='fixture_report',title='Updated report',description='Updated fixture procedure'))
 class FixtureHandler(server.WebUIRequestHandler):
     def do_POST(self):
+        if self.path == '/__fixture/context-receipts':
+            with server.db_lock:
+                database=server.load_chats_db()
+                chat=server._active_chat(database)
+                chat['chat_history']=[{'role':'user','content':'Which email app should I use for Atlas?'},
+                    {'role':'assistant','content':'Your Atlas preference is Outlook.',
+                     'context_receipts_verified':True,'context_refs':[
+                         {'kind':'preference','label':'email service: Outlook (Atlas)','source':'Settings'}]},
+                    {'role':'assistant','content':'An earlier answer with legacy memory metadata.',
+                     'context_refs':[{'kind':'fact','label':'Reports belong in Research','source':'Your earlier statement'}]}]
+                server.save_chats_db(database)
+            self._json_response({'success':True})
+            return
         if self.path == '/__fixture/planning':
             if not server.planner_lock.acquire(blocking=False):
                 self._error(409, 'Planner busy')
@@ -51,7 +64,7 @@ class FixtureHandler(server.WebUIRequestHandler):
                 chat['reviewed_plan']=plan
                 chat['status']='plan_created'
                 chat['chat_history']=[{'role':'user','content':'Save the report'},
-                                      {'role':'assistant','content':plan,'context_refs':[
+                                      {'role':'assistant','content':plan,'context_receipts_verified':True,'context_refs':[
                                           {'kind':'fact','label':'Reports belong in D:/Research','source':'Your earlier statement'}],
                                        'tool_receipts':[{'name':'FIND_FILES','ok':True,'result_sha256':'a'*64,
                                                          'artifact_sha256':'b'*64,'elapsed_ms':12,'observed_at':123}]}]

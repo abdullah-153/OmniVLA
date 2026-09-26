@@ -344,6 +344,7 @@ def _normalize_database(database: Any) -> dict[str, Any]:
                         ] if isinstance(raw_evidence.get("criteria"), list) else [],
                     }
             if message["role"] == "assistant" and isinstance(message.get("context_refs"), list):
+                normalized_message["context_receipts_verified"] = message.get("context_receipts_verified") is True
                 normalized_message["context_refs"] = [
                     {"kind": str(ref.get("kind", ""))[:24],
                      "label": str(ref.get("label", ""))[:160],
@@ -940,6 +941,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
     def _plan_in_background(self, chat_id: str, message: str, learn_profile: bool = True) -> None:
         try:
             tool_receipts = []
+            context_refs = []
             check_planner_cancelled(planner_cancel_event)
             chat_history = []
             memory_enabled = False
@@ -986,6 +988,11 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                     "elapsed_ms": max(0, int(outcome.elapsed_ms)), "observed_at": int(time.time()),
                 })
 
+            def on_context_receipts(receipts):
+                for receipt in receipts:
+                    if len(context_refs) < 10 and receipt not in context_refs:
+                        context_refs.append(receipt)
+
             response = gui_app.run_planner_chat(
                 message,
                 chat_history=chat_history,
@@ -994,6 +1001,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 learn_personal_context=learn_profile,
                 tool_result_callback=on_tool_result,
                 cancel_event=planner_cancel_event,
+                context_receipt_callback=on_context_receipts,
             )
             check_planner_cancelled(planner_cancel_event)
             if not response or not str(response).strip():
@@ -1006,27 +1014,6 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
             from cogniagent.gui.server_manager import parse_agentic_plan
             parsed_plan = parse_agentic_plan(response)
             has_plan = parsed_plan.get("has_plan", False)
-            context_refs = []
-            try:
-                from cogniagent.memory.user_profile import get_user_profile
-                pack = get_user_profile().build_context_pack(message)
-                context_refs = [
-                    {"kind": ref["kind"], "label": (str(ref["value"]) +
-                     (" (" + ref["scope"] + ")" if ref.get("scope") else ""))[:160],
-                     "source": "Settings" if ref["source"] == "settings" else "Your earlier statement"}
-                    for ref in pack["references"][:8]
-                ]
-                context_refs.extend({"kind": "workflow", "label": w.get("intent", "")[:160], "source": "Completed task"}
-                                    for w in pack["successful_workflows"][:2])
-                context_refs.extend({"kind": "conflict",
-                                     "label": (conflict["category"] + " " + conflict["key"] + ": " +
-                                               "; ".join(option["scope"] + " = " + str(option["value"])
-                                                         for option in conflict["options"]))[:160],
-                                     "source": "Needs clarification"}
-                                    for conflict in pack.get("conflicts", [])[:3])
-            except Exception as profile_err:
-                logger.debug("Failed to identify supplied personal context: %s", profile_err)
-
             with db_lock:
                 check_planner_cancelled(planner_cancel_event)
                 database = load_chats_db()
@@ -1034,6 +1021,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 if chat:
                     chat["chat_history"].append({"role": "assistant", "content": response,
                                                  "context_refs": context_refs,
+                                                 "context_receipts_verified": True,
                                                  "tool_receipts": tool_receipts})
                     if has_plan:
                         chat["reviewed_plan"] = parsed_plan.get("formatted") or response

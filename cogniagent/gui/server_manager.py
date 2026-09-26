@@ -16,6 +16,7 @@ from cogniagent.config import config
 from cogniagent.runtime.cuda_runtime import cuda_backend_available, cuda_server_environment, ensure_cuda_runtime
 from cogniagent.runtime.planner_context import PLANNER_CONTEXT_TOKENS, count_planner_tokens, fit_planner_context
 from cogniagent.runtime.cancellation import PlannerCancelled, check_planner_cancelled
+from cogniagent.runtime.context_receipts import personal_context_receipts
 from cogniagent.tools import (
     execute_browser_search,
     detect_file_search_intent, find_local_files, format_file_results,
@@ -694,7 +695,7 @@ def learn_personal_context(message, cancel_event=None):
 
 def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_context="", user_profile_context="", persist_in_ram=None,
                      activity_callback=None, learn_personal_context_enabled=True, tool_result_callback=None,
-                     cancel_event=None):
+                     cancel_event=None, context_receipt_callback=None):
     restart_vla_profile = None
     is_testing = "unittest" in sys.modules or "pytest" in sys.modules
     if persist_in_ram is None:
@@ -707,6 +708,11 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
             check_planner_cancelled(cancel_event)
             raise
         check_planner_cancelled(cancel_event)
+        if response.status_code == 200 and context_receipt_callback is not None:
+            try:
+                context_receipt_callback(personal_context_receipts(user_profile_context, payload["messages"]))
+            except Exception:
+                logging.exception("Unable to record supplied personal context")
         return response
     try:
         check_planner_cancelled(cancel_event)

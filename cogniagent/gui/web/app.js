@@ -411,7 +411,15 @@ tags: [desktop]
     };
   }
 
-  function renderAssistantMessageBody(content, messageIndex, isLatest, contextRefs = [], completionEvidence = null) {
+  function renderAssistantMessageBody(content, messageIndex, isLatest, contextRefs = [], completionEvidence = null, contextVerified = false) {
+    const contextHtml = Array.isArray(contextRefs) && contextRefs.length ? `
+      <details class="plan-context">
+        <summary>${contextVerified ? "Personal context supplied to the planner" : "Related personal context"} (${contextRefs.length})</summary>
+        <ul>${contextRefs.map((ref) => `
+          <li><span>${escapeHtml(ref.label || "")}</span><small>${escapeHtml(ref.source || "")}</small></li>
+        `).join("")}</ul>
+      </details>
+    ` : "";
     const plan = extractPlanCardData(content);
     if (!plan) {
       const evidenceHtml = completionEvidence && ["visual", "operator", "inconclusive"].includes(completionEvidence.source) ? `
@@ -421,7 +429,7 @@ tags: [desktop]
           ${Array.isArray(completionEvidence.criteria) && completionEvidence.criteria.length ? `<ul>${completionEvidence.criteria.map((check) =>
             `<li>${check.met ? "✓" : "○"} ${escapeHtml(check.evidence || "No visible evidence")}</li>`).join("")}</ul>` : ""}
         </details>` : "";
-      return renderMarkdown(content) + evidenceHtml;
+      return renderMarkdown(content) + contextHtml + evidenceHtml;
     }
 
     const prefaceHtml = plan.preface ? renderMarkdown(plan.preface) : "";
@@ -439,14 +447,6 @@ tags: [desktop]
         <strong>Expected Output:</strong>
         <span>${escapeHtml(plan.expectedOutput)}</span>
       </div>
-    ` : "";
-    const contextHtml = Array.isArray(contextRefs) && contextRefs.length ? `
-      <details class="plan-context">
-        <summary>Personal context supplied to the planner (${contextRefs.length})</summary>
-        <ul>${contextRefs.map((ref) => `
-          <li><span>${escapeHtml(ref.label || "")}</span><small>${escapeHtml(ref.source || "")}</small></li>
-        `).join("")}</ul>
-      </details>
     ` : "";
     const criteriaHtml = plan.successCriteria.length ? `
       <div class="plan-card-criteria"><strong>Success criteria</strong><ul>
@@ -507,7 +507,7 @@ tags: [desktop]
       const role = message.role === "user" ? "user" : "assistant";
       const isLatest = messageIndex === latestPlanIndex;
       const bodyHtml = role === "assistant"
-        ? renderAssistantMessageBody(message.content, messageIndex, isLatest, message.context_refs, message.completion_evidence)
+        ? renderAssistantMessageBody(message.content, messageIndex, isLatest, message.context_refs, message.completion_evidence, message.context_receipts_verified)
         : renderMarkdown(message.content);
       const receipts = role === "assistant" && Array.isArray(message.tool_receipts) && message.tool_receipts.length
         ? `<details class="plan-context"><summary>Tool receipts (${message.tool_receipts.length})</summary><ul>${message.tool_receipts.map((receipt) =>

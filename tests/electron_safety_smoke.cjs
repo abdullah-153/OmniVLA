@@ -19,6 +19,11 @@ app.whenReady().then(async()=>{
     await waitFor(win,`document.getElementById('local-state-label')?.textContent !== 'Checking' && document.getElementById('chat-list')?.children.length > 0`);
     const setup = await win.webContents.executeJavaScript(`(async()=>{ const session=await (await fetch('/api/session')).json(); return {token:!!session.token,manualBudget:!!document.getElementById('max-steps'),profileSection:!!document.getElementById('memory-provenance')}; })()`);
     if(!setup.token || setup.manualBudget || !setup.profileSection) throw new Error('Console setup failed: '+JSON.stringify(setup));
+    await win.webContents.executeJavaScript(`fetch('/__fixture/context-receipts',{method:'POST'})`);
+    await waitFor(win,`[...document.querySelectorAll('.plan-context summary')].some(s=>s.textContent.includes('Personal context supplied')) && [...document.querySelectorAll('.plan-context summary')].some(s=>s.textContent.includes('Related personal context'))`);
+    await win.webContents.executeJavaScript(`document.querySelectorAll('.plan-context').forEach(e=>e.open=true)`);
+    await delay(300);
+    await fs.promises.writeFile(path.join(root,'scratch','context-receipts.png'), (await win.webContents.capturePage()).toPNG());
     await win.webContents.executeJavaScript(`fetch('/__fixture/planning',{method:'POST'})`);
     await waitFor(win,`!document.getElementById('stop-planning').hidden && !document.getElementById('stop-planning').disabled`);
     await fs.promises.writeFile(path.join(root,'scratch','planning-stop.png'), (await win.webContents.capturePage()).toPNG());
@@ -64,7 +69,7 @@ app.whenReady().then(async()=>{
     await overlay.webContents.executeJavaScript(`document.getElementById('hitl-approve').click()`);
     await waitFor(overlay,`fetch('/__fixture/result').then(r=>r.json()).then(r=>r.response==='approve')`);
     if(errors.some(e=> /Uncaught|CORS|Refused/.test(e))) throw new Error(errors.join('\n'));
-    const result={console:setup,desktopDeny:true,mobileRendered:true,overlayApprove:true,consoleErrors:errors};
+    const result={console:setup,contextReceipts:true,desktopDeny:true,mobileRendered:true,overlayApprove:true,consoleErrors:errors};
     fs.writeFileSync(path.join(root,"scratch","electron-safety-result.json"),JSON.stringify(result,null,2));
     console.log(JSON.stringify(result));
   } catch(error) { console.error(error.stack); fs.writeFileSync(path.join(root,"scratch","electron-safety-result.json"),JSON.stringify({error:error.stack,consoleErrors:errors},null,2)); process.exitCode=1; }
