@@ -51,7 +51,10 @@ def detect_local_file_read_intent(message: str) -> tuple[bool, str]:
     """Recognize an explicit request to inspect one named, supported text file."""
     if not isinstance(message, str) or not re.search(r"(?i)\b(read|summari[sz]e|inspect|review|analy[sz]e)\b", message):
         return False, ""
-    quoted = re.search(r"(?i)[\"']([^\"']{1,100}\.(?:txt|md|csv|json|py|log))[\"']", message)
+    # A URL ending in .md or .json belongs to the web reader.
+    message = re.sub(r"https?://[^\s\"']+", "", message, flags=re.I)
+    quoted = re.search(r"(?i)[\"']([^\"']{1,2048}\.(?:txt|md|csv|json|py|log))[\"']", message)
+    located = re.search(r"(?i)(?<!\w)((?:[a-z]:[\\/]|/|\.\.?[\\/])[^\s\"']+\.(?:txt|md|csv|json|py|log))\b", message)
     unquoted = re.search(r"(?i)(?<![\w.])([\w.-]{1,100}\.(?:txt|md|csv|json|py|log))\b", message)
-    candidate = (quoted or unquoted)
+    candidate = (quoted or located or unquoted)
     return (True, candidate.group(1).strip()) if candidate else (False, "")

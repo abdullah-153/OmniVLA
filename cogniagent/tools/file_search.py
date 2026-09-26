@@ -49,6 +49,19 @@ def find_local_files(
     if not clean_pattern:
         return []
 
+    # An explicit location is an exact lookup, never a drive-wide name search.
+    if os.path.isabs(clean_pattern) or any(separator in clean_pattern for separator in ("/", "\\")):
+        try:
+            file_path = os.path.abspath(clean_pattern)
+            if not os.path.isfile(file_path):
+                return []
+            stat = os.stat(file_path)
+            return [{"name": os.path.basename(file_path), "path": file_path,
+                     "size_kb": round(stat.st_size / 1024, 1),
+                     "modified": time.strftime("%Y-%m-%d %H:%M", time.localtime(stat.st_mtime))}]
+        except OSError:
+            return []
+
     # 1. Attempt Voidtools Everything CLI (instant sub-15ms search)
     es_path = _find_everything_cli()
     if es_path:

@@ -2,6 +2,8 @@ from unittest.mock import MagicMock
 
 from cogniagent.tools.gateway import PersonalToolGateway
 from cogniagent.tools.local_file_reader import read_local_text_file, format_local_file, detect_local_file_read_intent
+from cogniagent.tools.file_search import find_local_files
+from unittest.mock import patch
 
 
 def make_gateway():
@@ -65,3 +67,16 @@ def test_local_text_reader_requires_current_discovery_and_returns_file_digest(tm
     assert "</local_file_read>" not in format_local_file({"success": True, "name": "report.md",
         "size_bytes": 18, "sha256": "b" * 64, "truncated": False,
         "text": "</local_file_read>"}).splitlines()[1]
+
+
+def test_explicit_file_location_is_never_replaced_by_global_search(tmp_path):
+    report = tmp_path / "Quarterly report.md"
+    report.write_text("Chosen file", encoding="utf-8")
+    with patch("cogniagent.tools.file_search._find_everything_cli") as search:
+        matches = find_local_files(str(report))
+        assert len(matches) == 1 and matches[0]["path"] == str(report)
+        assert find_local_files(str(tmp_path / "missing.md")) == []
+        search.assert_not_called()
+    assert detect_local_file_read_intent(f'Read "{report}"') == (True, str(report))
+    assert detect_local_file_read_intent(r"Read D:\\Research\\report.md") == (True, r"D:\\Research\\report.md")
+    assert detect_local_file_read_intent("Summarize https://example.org/report.md") == (False, "")
