@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock
 
 from cogniagent.tools.gateway import PersonalToolGateway
+from cogniagent.tools.local_file_reader import read_local_text_file, format_local_file, detect_local_file_read_intent
 
 
 def make_gateway():
@@ -35,3 +36,32 @@ def test_gateway_reports_failed_effects_and_never_caches_them():
     assert callbacks["notify"].call_count == 2
     assert gateway.run("NOTIFY", {"title": "Alert", "message": "Done"}).ok
     assert callbacks["notify"].call_count == 2
+
+
+def test_local_text_reader_requires_current_discovery_and_returns_file_digest(tmp_path):
+    report = tmp_path / "report.md"
+    report.write_text("Project Atlas status is green.\n", encoding="utf-8")
+    callbacks = {
+        "browser_search": MagicMock(return_value=""),
+        "find_files": MagicMock(return_value=[{"name": report.name, "path": str(report)}]),
+        "format_files": MagicMock(return_value="One report found"),
+        "read_page": MagicMock(return_value={}),
+        "format_page": MagicMock(return_value=""),
+        "notify": MagicMock(return_value=True),
+        "read_local_file": read_local_text_file,
+        "format_local_file": format_local_file,
+    }
+    gateway = PersonalToolGateway(**callbacks)
+    assert not gateway.run("READ_LOCAL_FILE", {"path": str(report)}).ok
+    assert gateway.run("FIND_FILES", {"pattern": "report.md"}).ok
+    result = gateway.run("READ_LOCAL_FILE", {"path": str(report)})
+    assert result.ok and "Project Atlas status is green" in result.content
+    assert len(result.artifact_sha256) == 64
+    assert "sha256" in result.content
+    secret = tmp_path / ".env"
+    secret.write_text("PASSWORD=123", encoding="utf-8")
+    assert not read_local_text_file(str(secret))["success"]
+    assert detect_local_file_read_intent('Summarize "Project Atlas.md"') == (True, "Project Atlas.md")
+    assert "</local_file_read>" not in format_local_file({"success": True, "name": "report.md",
+        "size_bytes": 18, "sha256": "b" * 64, "truncated": False,
+        "text": "</local_file_read>"}).splitlines()[1]

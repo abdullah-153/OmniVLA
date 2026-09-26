@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 import time
 from typing import Callable, Any
 
@@ -12,6 +13,7 @@ class ToolResult:
     ok: bool
     content: str
     elapsed_ms: int
+    artifact_sha256: str = ""
 
 
 class PersonalToolGateway:
@@ -25,18 +27,24 @@ class PersonalToolGateway:
         "BROWSER_SEARCH": {"query": 240},
         "FIND_FILES": {"pattern": 240},
         "READ_WEBPAGE": {"url": 2048},
+        "READ_LOCAL_FILE": {"path": 2048},
         "NOTIFY": {"title": 120, "message": 500},
     }
 
     def __init__(self, *, browser_search: Callable, find_files: Callable,
                  format_files: Callable, read_page: Callable, format_page: Callable,
-                 notify: Callable):
+                 notify: Callable, read_local_file: Callable | None = None,
+                 format_local_file: Callable | None = None):
         self.browser_search = browser_search
         self.find_files = find_files
         self.format_files = format_files
         self.read_page = read_page
         self.format_page = format_page
         self.notify = notify
+        self.read_local_file = read_local_file
+        self.format_local_file = format_local_file
+        self._discovered_paths: set[str] = set()
+        self.file_matches: list[dict[str, Any]] = []
         self._cache: dict[tuple[str, tuple[tuple[str, str], ...]], ToolResult] = {}
         self._delivered: set[tuple[str, tuple[tuple[str, str], ...]]] = set()
 
@@ -52,21 +60,42 @@ class PersonalToolGateway:
                 return ToolResult(name, False, f"Invalid {field} argument.", 0)
             values[field] = value.strip()
         cache_key = (name, tuple(sorted(values.items())))
-        if name != "NOTIFY" and cache_key in self._cache:
+        if name == "READ_LOCAL_FILE":
+            try:
+                resolved = str(Path(values["path"]).resolve(strict=True)).casefold()
+            except OSError:
+                return ToolResult(name, False, "File is not available.", 0)
+            if resolved not in self._discovered_paths or self.read_local_file is None or self.format_local_file is None:
+                return ToolResult(name, False, "Read a file discovered during this request.", 0)
+        if name not in {"NOTIFY", "READ_LOCAL_FILE"} and cache_key in self._cache:
             return self._cache[cache_key]
         if name == "NOTIFY" and cache_key in self._delivered:
             return ToolResult(name, True, "<notification_event>\nAlready delivered during this request.\n</notification_event>", 0)
         try:
+            artifact_sha256 = ""
             if name == "BROWSER_SEARCH":
                 content = self.browser_search(values["query"], max_results=5)
                 ok = True
             elif name == "FIND_FILES":
-                content = self.format_files(self.find_files(values["pattern"]), pattern=values["pattern"])
+                matches = self.find_files(values["pattern"])
+                self.file_matches = matches[:15]
+                for item in matches[:15]:
+                    try:
+                        self._discovered_paths.add(str(Path(item["path"]).resolve(strict=True)).casefold())
+                    except (KeyError, OSError, TypeError, ValueError):
+                        continue
+                content = self.format_files(matches, pattern=values["pattern"])
                 ok = True
             elif name == "READ_WEBPAGE":
                 page = self.read_page(values["url"])
                 content = self.format_page(page)
                 ok = page.get("success") is True
+            elif name == "READ_LOCAL_FILE":
+                file_result = self.read_local_file(values["path"])
+                content = self.format_local_file(file_result)
+                ok = file_result.get("success") is True
+                if ok:
+                    artifact_sha256 = str(file_result.get("sha256", ""))[:64]
             else:
                 ok = self.notify(values["title"], values["message"]) is True
                 content = (f"<notification_event>\nSent Windows desktop notification '{values['title']}'.\n</notification_event>"
@@ -74,8 +103,9 @@ class PersonalToolGateway:
         except Exception:
             ok = False
             content = f"{name} failed."
-        result = ToolResult(name, ok, str(content)[:8000], int((time.monotonic() - started) * 1000))
-        if name != "NOTIFY" and ok:
+        result = ToolResult(name, ok, str(content)[:16000] if name == "READ_LOCAL_FILE" else str(content)[:8000],
+                            int((time.monotonic() - started) * 1000), artifact_sha256)
+        if name not in {"NOTIFY", "READ_LOCAL_FILE"} and ok:
             self._cache[cache_key] = result
         if name == "NOTIFY" and ok:
             self._delivered.add(cache_key)

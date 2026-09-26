@@ -21,6 +21,9 @@ from cogniagent.tools import (
     detect_webpage_read_intent, read_webpage, format_webpage_summary,
 )
 from cogniagent.tools.gateway import PersonalToolGateway
+from cogniagent.tools.local_file_reader import (
+    detect_local_file_read_intent, read_local_text_file, format_local_file,
+)
 
 
 
@@ -510,7 +513,7 @@ def parse_model_tool_call(text: str) -> tuple[str | None, dict[str, str]]:
 
     # 1. Standard tag format: [BROWSER_SEARCH: <query>], [FIND_FILES: <pattern>], etc.
     tag_m = re.search(
-        r"\[(BROWSER_SEARCH|FIND_FILES|READ_WEBPAGE|NOTIFY):\s*([^\]]+)\]",
+        r"\[(BROWSER_SEARCH|FIND_FILES|READ_LOCAL_FILE|READ_WEBPAGE|NOTIFY):\s*([^\]]+)\]",
         text,
         re.IGNORECASE,
     )
@@ -521,6 +524,8 @@ def parse_model_tool_call(text: str) -> tuple[str | None, dict[str, str]]:
             return name, {"query": arg_str}
         elif name == "FIND_FILES":
             return name, {"pattern": arg_str}
+        elif name == "READ_LOCAL_FILE":
+            return name, {"path": arg_str}
         elif name == "READ_WEBPAGE":
             return name, {"url": arg_str}
         elif name == "NOTIFY":
@@ -538,12 +543,13 @@ def parse_model_tool_call(text: str) -> tuple[str | None, dict[str, str]]:
                 parsed = parsed[0]
             if isinstance(parsed, dict):
                 t_name = str(parsed.get("tool") or parsed.get("name") or "").strip().upper()
-                if t_name in ("BROWSER_SEARCH", "FIND_FILES", "READ_WEBPAGE", "NOTIFY"):
+                if t_name in ("BROWSER_SEARCH", "FIND_FILES", "READ_LOCAL_FILE", "READ_WEBPAGE", "NOTIFY"):
                     args = parsed.get("arguments") or parsed.get("parameters") or parsed
                     if not isinstance(args, dict):
                         args = {"query": str(args)}
                     query = str(args.get("query") or parsed.get("query") or "").strip()
                     pattern = str(args.get("pattern") or parsed.get("pattern") or "").strip()
+                    path = str(args.get("path") or parsed.get("path") or "").strip()
                     url = str(args.get("url") or parsed.get("url") or "").strip()
                     title = str(args.get("title") or parsed.get("title") or "").strip()
                     msg = str(args.get("message") or args.get("body") or parsed.get("message") or "").strip()
@@ -551,6 +557,8 @@ def parse_model_tool_call(text: str) -> tuple[str | None, dict[str, str]]:
                         return t_name, {"query": query}
                     elif t_name == "FIND_FILES" and (pattern or query):
                         return t_name, {"pattern": pattern or query}
+                    elif t_name == "READ_LOCAL_FILE" and (path or query):
+                        return t_name, {"path": path or query}
                     elif t_name == "READ_WEBPAGE" and (url or query):
                         return t_name, {"url": url or query}
                     elif t_name == "NOTIFY":
@@ -560,14 +568,14 @@ def parse_model_tool_call(text: str) -> tuple[str | None, dict[str, str]]:
 
     # 3. Flexible / Partial JSON regex fallback (for unclosed/truncated JSON streams)
     tool_rgx = re.search(
-        r'["\']?(?:tool|name)["\']?\s*:\s*["\']?(BROWSER_SEARCH|FIND_FILES|READ_WEBPAGE|NOTIFY)["\']?',
+        r'["\']?(?:tool|name)["\']?\s*:\s*["\']?(BROWSER_SEARCH|FIND_FILES|READ_LOCAL_FILE|READ_WEBPAGE|NOTIFY)["\']?',
         text,
         re.IGNORECASE,
     )
     if tool_rgx:
         t_name = tool_rgx.group(1).upper()
         query_m = re.search(
-            r'["\']?(?:query|pattern|url|target|arguments|parameters)["\']?\s*:\s*["\']?([^"\'\n\}\]]+)["\']?',
+            r'["\']?(?:query|pattern|path|url|target|arguments|parameters)["\']?\s*:\s*["\']?([^"\'\n\}\]]+)["\']?',
             text,
             re.IGNORECASE,
         )
@@ -576,6 +584,8 @@ def parse_model_tool_call(text: str) -> tuple[str | None, dict[str, str]]:
             return t_name, {"query": val}
         elif t_name == "FIND_FILES":
             return t_name, {"pattern": val}
+        elif t_name == "READ_LOCAL_FILE":
+            return t_name, {"path": val}
         elif t_name == "READ_WEBPAGE":
             return t_name, {"url": val}
         elif t_name == "NOTIFY":
@@ -594,23 +604,23 @@ def strip_tool_syntaxes(text: str) -> str:
         return ""
     # Strip whole markdown codeblocks containing tool calls
     cleaned = re.sub(
-        r"```+[a-zA-Z0-9_-]*[\s\S]*?(?:BROWSER_SEARCH|FIND_FILES|READ_WEBPAGE|NOTIFY)[\s\S]*?```+",
+        r"```+[a-zA-Z0-9_-]*[\s\S]*?(?:BROWSER_SEARCH|FIND_FILES|READ_LOCAL_FILE|READ_WEBPAGE|NOTIFY)[\s\S]*?```+",
         "",
         text,
         flags=re.IGNORECASE,
     )
     # Strip tag calls
-    cleaned = re.sub(r"\[(?:BROWSER_SEARCH|FIND_FILES|READ_WEBPAGE|NOTIFY):[^\]]+\]", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\[(?:BROWSER_SEARCH|FIND_FILES|READ_LOCAL_FILE|READ_WEBPAGE|NOTIFY):[^\]]+\]", "", cleaned, flags=re.IGNORECASE)
     # Strip full JSON tool call arrays / objects
     cleaned = re.sub(
-        r"\[\s*\{\s*[\"']?(?:tool|name)[\"']?\s*:\s*[\"']?(?:BROWSER_SEARCH|FIND_FILES|READ_WEBPAGE|NOTIFY)[\"']?[\s\S]*?\}\s*\]",
+        r"\[\s*\{\s*[\"']?(?:tool|name)[\"']?\s*:\s*[\"']?(?:BROWSER_SEARCH|FIND_FILES|READ_LOCAL_FILE|READ_WEBPAGE|NOTIFY)[\"']?[\s\S]*?\}\s*\]",
         "",
         cleaned,
         flags=re.IGNORECASE,
     )
     # Strip partial/open JSON blocks
     cleaned = re.sub(
-        r"\[?\s*\{\s*[\"']?(?:tool|name)[\"']?\s*:\s*[\"']?(?:BROWSER_SEARCH|FIND_FILES|READ_WEBPAGE|NOTIFY)[\"']?[\s\S]*?(?:\}\s*\]?|$)",
+        r"\[?\s*\{\s*[\"']?(?:tool|name)[\"']?\s*:\s*[\"']?(?:BROWSER_SEARCH|FIND_FILES|READ_LOCAL_FILE|READ_WEBPAGE|NOTIFY)[\"']?[\s\S]*?(?:\}\s*\]?|$)",
         "",
         cleaned,
         flags=re.IGNORECASE,
@@ -667,6 +677,7 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
             browser_search=execute_browser_search, find_files=find_local_files,
             format_files=format_file_results, read_page=read_webpage,
             format_page=format_webpage_summary, notify=send_notification,
+            read_local_file=read_local_text_file, format_local_file=format_local_file,
         )
 
         def use_tool(name, arguments):
@@ -690,6 +701,25 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
                 tool_contexts.append(outcome.content)
             else:
                 logging.warning("Local file search failed: %s", outcome.content)
+
+        is_file_read, read_pattern = detect_local_file_read_intent(message)
+        if is_file_read and read_pattern:
+            if activity_callback:
+                activity_callback(f'Finding {read_pattern} before reading...')
+            use_tool("FIND_FILES", {"pattern": read_pattern})
+            matches = gateway.file_matches
+            if len(matches) == 1 and matches[0].get("path"):
+                outcome = use_tool("READ_LOCAL_FILE", {"path": matches[0]["path"]})
+                if outcome.ok:
+                    tool_contexts.append(outcome.content)
+                else:
+                    logging.warning("Local file read failed: %s", outcome.content)
+                    tool_contexts.append("The requested local file could not be read. Ask the user for another file.")
+            elif matches:
+                tool_contexts.append(format_file_results(matches, pattern=read_pattern) +
+                                     "\nMultiple files match. Ask the user to choose one before reading.")
+            else:
+                tool_contexts.append("No matching local file was found. Ask the user for its exact filename or location.")
 
         is_web_read, web_url = detect_webpage_read_intent(message)
         if is_web_read and web_url:
@@ -718,6 +748,7 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
             "2. BUILT-IN HEADLESS TOOLS: For background lookups without desktop GUI action, emit tool tags:\n"
             "   - `[BROWSER_SEARCH: <query>]`: Web search.\n"
             "   - `[FIND_FILES: <pattern>]`: Local file discovery.\n"
+            "   - `[READ_LOCAL_FILE: <exact discovered path>]`: Read one supported text file found in this request.\n"
             "   - `[READ_WEBPAGE: <url>]`: Extract text from URL.\n"
             "   - `[NOTIFY: <title> | <message>]`: Desktop toast.\n"
             "3. DESKTOP EXECUTION PLANS: When asked to act \"manually\", \"from my system\", or in an app (e.g. \"in Edge\", \"open Chrome\"), you MUST emit a desktop plan for Holo VLA:\n"
@@ -793,6 +824,13 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
                     if activity_callback:
                         activity_callback(f'Finding local files matching "{dyn_pat}"...')
                     tool_feedback = use_tool("FIND_FILES", {"pattern": dyn_pat}).content
+                    tool_executed = True
+            elif tool_name == "READ_LOCAL_FILE":
+                dyn_path = tool_args.get("path", "").strip()
+                if dyn_path:
+                    if activity_callback:
+                        activity_callback("Reading a discovered local file...")
+                    tool_feedback = use_tool("READ_LOCAL_FILE", {"path": dyn_path}).content
                     tool_executed = True
             elif tool_name == "READ_WEBPAGE":
                 dyn_url = tool_args.get("url", "").strip()

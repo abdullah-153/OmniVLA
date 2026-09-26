@@ -375,7 +375,7 @@ def test_tool_receipts_survive_database_normalization_without_payloads():
                            "elapsed_ms": 42, "observed_at": 123, "message": "private body"}]}]
     message = server._normalize_database(database)["chats"][0]["chat_history"][0]
     assert message["tool_receipts"] == [{"name": "NOTIFY", "ok": True, "result_sha256": "a" * 64,
-                                          "elapsed_ms": 42, "observed_at": 123}]
+                                          "artifact_sha256": "", "elapsed_ms": 42, "observed_at": 123}]
 
 
 def test_model_memory_correction_and_evidence(tmp_path):

@@ -511,7 +511,7 @@ tags: [desktop]
         : renderMarkdown(message.content);
       const receipts = role === "assistant" && Array.isArray(message.tool_receipts) && message.tool_receipts.length
         ? `<details class="plan-context"><summary>Tool receipts (${message.tool_receipts.length})</summary><ul>${message.tool_receipts.map((receipt) =>
-          `<li><span>${escapeHtml(receipt.name)}: ${receipt.ok ? "returned successfully" : "failed"}</span><small>Result fingerprint ${escapeHtml(receipt.result_sha256?.slice(0, 12) || "")} · ${escapeHtml(receipt.elapsed_ms)} ms</small></li>`
+          `<li><span>${escapeHtml(receipt.name)}: ${receipt.ok ? "returned successfully" : "failed"}</span><small>${receipt.artifact_sha256 ? "File SHA-256 " + escapeHtml(receipt.artifact_sha256.slice(0, 12)) + " · " : ""}Result fingerprint ${escapeHtml(receipt.result_sha256?.slice(0, 12) || "")} · ${escapeHtml(receipt.elapsed_ms)} ms</small></li>`
         ).join("")}</ul><p>Receipts show tool dispatch and returned status. They do not prove an external outcome.</p></details>`
         : "";
       return `<article class="message is-${role}"><div class="message-avatar" aria-hidden="true">${role === "user" ? "You" : "O"}</div><div class="message-body">${bodyHtml}${receipts}</div></article>`;

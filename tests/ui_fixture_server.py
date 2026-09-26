@@ -30,7 +30,7 @@ class FixtureHandler(server.WebUIRequestHandler):
                                       {'role':'assistant','content':plan,'context_refs':[
                                           {'kind':'fact','label':'Reports belong in D:/Research','source':'Your earlier statement'}],
                                        'tool_receipts':[{'name':'FIND_FILES','ok':True,'result_sha256':'a'*64,
-                                                         'elapsed_ms':12,'observed_at':123}]}]
+                                                         'artifact_sha256':'b'*64,'elapsed_ms':12,'observed_at':123}]}]
                 server.save_chats_db(database)
             self._json_response({'success':True})
             return

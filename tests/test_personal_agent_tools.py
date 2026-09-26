@@ -22,7 +22,7 @@ from cogniagent.tools.web_reader import (
     format_webpage_summary,
     detect_webpage_read_intent,
 )
-from cogniagent.gui.server_manager import parse_agentic_plan, run_planner_chat
+from cogniagent.gui.server_manager import parse_agentic_plan, parse_model_tool_call, run_planner_chat
 
 
 class TestFileSearchTool(unittest.TestCase):
@@ -287,3 +287,40 @@ class TestPlannerPersonalAgentIntegration(unittest.TestCase):
         mock_notify.assert_called_once_with("Alert", "Done")
         self.assertIn("sent the toast notification", result)
         self.assertEqual([(item.name, item.ok) for item in receipts], [("NOTIFY", True)])
+
+    @patch("cogniagent.gui.server_manager.start_planner_server", return_value=True)
+    @patch("cogniagent.gui.server_manager.stop_planner_server")
+    @patch("cogniagent.gui.server_manager.find_local_files")
+    @patch("cogniagent.gui.server_manager.requests.post")
+    def test_planner_reads_one_discovered_text_file(self, mock_post, mock_find, _stop, _start):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = os.path.join(tmp_dir, "report.md")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("Project Atlas status is green.")
+            mock_find.return_value = [{"name": "report.md", "path": path}]
+            response = MagicMock(status_code=200)
+            response.json.return_value = {"choices": [{"message": {"content": "Project Atlas is green."}}]}
+            mock_post.return_value = response
+            receipts = []
+            answer = run_planner_chat("Summarize report.md", [], tool_result_callback=receipts.append)
+            self.assertIn("Project Atlas is green", answer)
+            self.assertEqual([item.name for item in receipts], ["FIND_FILES", "READ_LOCAL_FILE"])
+            self.assertEqual(len(receipts[-1].artifact_sha256), 64)
+            self.assertIn("Project Atlas status is green", mock_post.call_args.kwargs["json"]["messages"][0]["content"])
+            self.assertEqual(parse_model_tool_call('[READ_LOCAL_FILE: C:\\reports\\report.md]')[0], "READ_LOCAL_FILE")
+
+    @patch("cogniagent.gui.server_manager.start_planner_server", return_value=True)
+    @patch("cogniagent.gui.server_manager.stop_planner_server")
+    @patch("cogniagent.gui.server_manager.find_local_files")
+    @patch("cogniagent.gui.server_manager.requests.post")
+    def test_ambiguous_local_file_read_asks_for_choice(self, mock_post, mock_find, _stop, _start):
+        mock_find.return_value = [{"name": "report.md", "path": "C:/one/report.md"},
+                                  {"name": "report.md", "path": "C:/two/report.md"}]
+        response = MagicMock(status_code=200)
+        response.json.return_value = {"choices": [{"message": {"content": "Which report.md should I read?"}}]}
+        mock_post.return_value = response
+        receipts = []
+        result = run_planner_chat("Summarize report.md", [], tool_result_callback=receipts.append)
+        self.assertIn("Which report.md", result)
+        self.assertEqual([item.name for item in receipts], ["FIND_FILES"])
+        self.assertIn("Multiple files match", mock_post.call_args.kwargs["json"]["messages"][0]["content"])

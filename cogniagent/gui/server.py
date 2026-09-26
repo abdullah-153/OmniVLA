@@ -353,6 +353,7 @@ def _normalize_database(database: Any) -> dict[str, Any]:
                     {"name": str(receipt.get("name", ""))[:40],
                      "ok": receipt.get("ok") is True,
                      "result_sha256": str(receipt.get("result_sha256", ""))[:64],
+                     "artifact_sha256": str(receipt.get("artifact_sha256", ""))[:64],
                      "elapsed_ms": max(0, min(int(receipt["elapsed_ms"]), 300000))
                      if isinstance(receipt.get("elapsed_ms"), (int, float)) else 0,
                      "observed_at": max(0, int(receipt["observed_at"]))
@@ -958,6 +959,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 tool_receipts.append({
                     "name": str(outcome.name)[:40], "ok": outcome.ok is True,
                     "result_sha256": hashlib.sha256(outcome.content.encode("utf-8")).hexdigest(),
+                    "artifact_sha256": str(outcome.artifact_sha256)[:64],
                     "elapsed_ms": max(0, int(outcome.elapsed_ms)), "observed_at": int(time.time()),
                 })
 
