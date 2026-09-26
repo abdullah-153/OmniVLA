@@ -1170,9 +1170,62 @@ tags: [desktop]
     $("skill-markdown").value = skill?.raw_markdown || SKILL_TEMPLATE;
     $("delete-skill").hidden = !skill;
     $("skill-save-state").textContent = "";
+    loadSkillHistory(state.editingSkill);
     openSkillTab("editor");
     window.setTimeout(() => $("skill-markdown").focus(), 0);
   }
+
+  let skillHistoryRequest = 0;
+  async function loadSkillHistory(name) {
+    const request = ++skillHistoryRequest;
+    $("skill-history").hidden = !name;
+    $("skill-history").open = false;
+    $("skill-revision").innerHTML = '<option value="">Choose a version</option>';
+    $("skill-revision-preview").hidden = true;
+    $("restore-skill").disabled = true;
+    if (!name) return;
+    $("skill-history-status").textContent = "Loading previous versions…";
+    try {
+      const result = await api(`/api/skills/${encodeURIComponent(name)}`);
+      if (request !== skillHistoryRequest) return;
+      for (const revision of result.revisions || []) {
+        const option = document.createElement("option");
+        option.value = revision.revision;
+        option.textContent = `${revision.revision.slice(0, 12)} · ${revision.format.toUpperCase()} · ${revision.size_bytes} bytes`;
+        $("skill-revision").append(option);
+      }
+      $("skill-history-status").textContent = result.revisions?.length ? "Preview before restoring. Your current saved version is retained." : "No previous versions yet.";
+    } catch (error) { if (request === skillHistoryRequest) $("skill-history-status").textContent = error.message; }
+  }
+
+  $("skill-revision").addEventListener("change", async () => {
+    const request = ++skillHistoryRequest;
+    const name = state.editingSkill;
+    const revision = $("skill-revision").value;
+    $("restore-skill").disabled = true;
+    $("skill-revision-preview").hidden = true;
+    if (!revision) return;
+    try {
+      const result = await api("/api/skills/revision", {method: "POST", body: {name, revision}});
+      if (request !== skillHistoryRequest) return;
+      $("skill-revision-preview").textContent = result.skill.raw_markdown || JSON.stringify(result.skill, null, 2);
+      $("skill-revision-preview").hidden = false;
+      $("restore-skill").disabled = false;
+    } catch (error) { if (request === skillHistoryRequest) $("skill-history-status").textContent = error.message; }
+  });
+
+  $("restore-skill").addEventListener("click", async () => {
+    const name = state.editingSkill;
+    const revision = $("skill-revision").value;
+    if (!name || !revision || !window.confirm("Restore this version? Unsaved editor changes will be replaced. The current saved version is retained.")) return;
+    $("restore-skill").disabled = true;
+    try {
+      const result = await api("/api/skills/restore", {method: "POST", body: {name, revision}});
+      if (state.editingSkill === name) startSkillEditor(result.skill);
+      await loadSkills();
+      toast("Previous skill version restored.");
+    } catch (error) { $("skill-history-status").textContent = error.message; $("restore-skill").disabled = false; }
+  });
 
   async function saveSkill() {
     const markdown = $("skill-markdown").value.trim();

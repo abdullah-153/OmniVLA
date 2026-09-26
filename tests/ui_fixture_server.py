@@ -9,6 +9,10 @@ root = tempfile.TemporaryDirectory(prefix='omnivla-ui-check-')
 server.CHATS_DB_PATH = str(Path(root.name) / 'chats.json')
 server._db_cache = None
 user_profile._profile_memory_instance = user_profile.UserProfileMemory(str(Path(root.name) / 'personal'))
+from cogniagent.skills.skill_schema import SkillDefinition
+server.skills_registry = server.SkillRegistry(str(Path(root.name) / 'skills'))
+server.skills_registry.save_skill(SkillDefinition(name='fixture_report',title='Original report',description='Original fixture procedure'))
+server.skills_registry.save_skill(SkillDefinition(name='fixture_report',title='Updated report',description='Updated fixture procedure'))
 class FixtureHandler(server.WebUIRequestHandler):
     def do_POST(self):
         if self.path == '/__fixture/shutdown':

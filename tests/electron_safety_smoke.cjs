@@ -19,6 +19,17 @@ app.whenReady().then(async()=>{
     await waitFor(win,`document.getElementById('local-state-label')?.textContent !== 'Checking' && document.getElementById('chat-list')?.children.length > 0`);
     const setup = await win.webContents.executeJavaScript(`(async()=>{ const session=await (await fetch('/api/session')).json(); return {token:!!session.token,manualBudget:!!document.getElementById('max-steps'),profileSection:!!document.getElementById('memory-provenance')}; })()`);
     if(!setup.token || setup.manualBudget || !setup.profileSection) throw new Error('Console setup failed: '+JSON.stringify(setup));
+    await win.webContents.executeJavaScript(`document.startViewTransition=undefined; document.getElementById('open-skills').click()`);
+    await waitFor(win,`document.querySelector('[data-skill-name="fixture_report"] [data-skill-action="edit"]')`);
+    await win.webContents.executeJavaScript(`document.querySelector('[data-skill-name="fixture_report"] [data-skill-action="edit"]').click()`);
+    await waitFor(win,`document.getElementById('skill-revision').options.length === 2`);
+    await win.webContents.executeJavaScript(`document.getElementById('skill-history').open=true; const select=document.getElementById('skill-revision'); select.selectedIndex=1; select.dispatchEvent(new Event('change'))`);
+    await waitFor(win,`document.getElementById('skill-revision-preview').textContent.includes('Original report') && !document.getElementById('restore-skill').disabled`);
+    await win.webContents.executeJavaScript(`document.getElementById('open-skills').click(); document.querySelector('[data-skill-tab="editor"]').click(); document.getElementById('skill-history').scrollIntoView({block:'center'})`);
+    await delay(500);
+    await fs.promises.writeFile(path.join(root,'scratch','skill-history.png'), (await win.webContents.capturePage()).toPNG());
+    await win.webContents.executeJavaScript(`window.confirm=()=>true; document.getElementById('restore-skill').click()`);
+    await waitFor(win,`document.getElementById('skill-editor-title').textContent === 'Original report'`);
     await win.webContents.executeJavaScript(`fetch('/__fixture/plan',{method:'POST'})`);
     await waitFor(win,`document.querySelector('.plan-card-criteria li')?.textContent.includes('Requested filename') && document.querySelector('.plan-context summary')?.textContent.includes('Personal context supplied')`);
     await waitFor(win,`[...document.querySelectorAll('.plan-context summary')].some(s=>s.textContent.includes('Tool receipts (1)')) && [...document.querySelectorAll('.message')].some(m=>m.textContent.includes('File SHA-256'))`);

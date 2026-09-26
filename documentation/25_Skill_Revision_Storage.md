@@ -8,4 +8,6 @@ Imported JSON and Markdown skills are updated at their existing source path and 
 
 The authenticated skill detail endpoint includes revision metadata. Local authenticated clients can preview a snapshot with `POST /api/skills/revision` or restore it with `POST /api/skills/restore`, passing `name` and `revision`. Restore is rejected while a desktop task is running. Preview does not change the active source.
 
-A console history view and evaluation results per revision remain to be implemented. Snapshots are local recovery copies, not tamper-proof audit records, and currently have no automatic retention limit.
+The Markdown editor includes Previous versions with a read-only preview and explicit restore action. Restoring warns that unsaved editor changes will be replaced. Stale preview responses are ignored when selecting another revision or skill. The Electron fixture exercises preview and restore; visual screenshot verification is pending because hidden-window captures returned a stale chat frame.
+
+Evaluation results per revision remain to be implemented. Snapshots are local recovery copies, not tamper-proof audit records, and currently have no automatic retention limit.
