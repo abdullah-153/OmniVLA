@@ -8,6 +8,7 @@ import json
 import os
 import time
 from cogniagent.tools.file_search import simplify_scoped_pattern
+from cogniagent.runtime.cancellation import PlannerCancelled
 from typing import Callable, Any
 
 
@@ -30,6 +31,7 @@ class PersonalToolGateway:
     _fields = {
         "BROWSER_SEARCH": {"query": 240},
         "FIND_FILES": {"pattern": 240},
+        "SEARCH_LOCAL_TEXT": {"query": 240},
         "READ_WEBPAGE": {"url": 2048},
         "READ_LOCAL_FILE": {"path": 2048},
         "NOTIFY": {"title": 120, "message": 500},
@@ -39,7 +41,8 @@ class PersonalToolGateway:
                  format_files: Callable, read_page: Callable, format_page: Callable,
                  notify: Callable, read_local_file: Callable | None = None,
                  format_local_file: Callable | None = None,
-                 file_search_roots: list[str] | None = None):
+                 file_search_roots: list[str] | None = None,
+                 search_text: Callable | None = None, format_text: Callable | None = None):
         self.browser_search = browser_search
         self.find_files = find_files
         self.format_files = format_files
@@ -49,6 +52,8 @@ class PersonalToolGateway:
         self.read_local_file = read_local_file
         self.format_local_file = format_local_file
         self.file_search_roots = file_search_roots
+        self.search_text = search_text
+        self.format_text = format_text
         self._discovered_paths: set[str] = set()
         self.file_matches: list[dict[str, Any]] = []
         self._cache: dict[tuple[str, tuple[tuple[str, str], ...]], ToolResult] = {}
@@ -69,7 +74,7 @@ class PersonalToolGateway:
                 return ToolResult(name, False, f"Invalid {field} argument.", 0)
             values[field] = value.strip()
         cache_key = (name, tuple(sorted(values.items())))
-        if name == "FIND_FILES":
+        if name in {"FIND_FILES", "SEARCH_LOCAL_TEXT"}:
             cache_key = (name, cache_key[1] + (("search_roots", json.dumps(self.file_search_roots)),))
         if name == "READ_LOCAL_FILE":
             try:
@@ -89,6 +94,20 @@ class PersonalToolGateway:
             if name == "BROWSER_SEARCH":
                 content = self.browser_search(values["query"], max_results=5)
                 ok = True
+            elif name == "SEARCH_LOCAL_TEXT":
+                if self.search_text is None or self.format_text is None:
+                    raise ValueError("Local text search unavailable")
+                search_result = self.search_text(values["query"], self.file_search_roots)
+                content = self.format_text(search_result)
+                ok = search_result.get("success") is True
+                if ok:
+                    if len(search_result.get("matches", [])) == 1:
+                        artifact_sha256 = str(search_result["matches"][0].get("sha256", ""))[:64]
+                    for match in search_result.get("matches", [])[:3]:
+                        try:
+                            self._discovered_paths.add(str(Path(match["path"]).resolve(strict=True)).casefold())
+                        except (KeyError, OSError, TypeError, ValueError):
+                            continue
             elif name == "FIND_FILES":
                 pattern = values["pattern"]
                 # Remembered folders are defaults; explicit locations stay exact.
@@ -128,6 +147,8 @@ class PersonalToolGateway:
                 ok = self.notify(values["title"], values["message"]) is True
                 content = (f"<notification_event>\nSent Windows desktop notification '{values['title']}'.\n</notification_event>"
                            if ok else "<notification_event>\nNotification was unavailable.\n</notification_event>")
+        except PlannerCancelled:
+            raise
         except Exception:
             ok = False
             content = f"{name} failed."

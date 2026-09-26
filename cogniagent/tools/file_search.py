@@ -81,6 +81,7 @@ def find_local_files(
     max_results: int = 15,
     max_depth: int = 5,
     timeout_sec: float = 3.0,
+    allowed_suffixes: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Discover local files matching a glob or substring pattern.
 
@@ -91,6 +92,7 @@ def find_local_files(
     if not clean_pattern or max_results <= 0 or timeout_sec <= 0:
         return []
     scoped = search_roots is not None
+    suffixes = {suffix.casefold() for suffix in allowed_suffixes} if allowed_suffixes is not None else None
     roots = [os.path.realpath(root) for root in (search_roots or [])]
     if scoped and not roots:
         return []
@@ -99,6 +101,8 @@ def find_local_files(
     if os.path.isabs(clean_pattern) or any(separator in clean_pattern for separator in ("/", "\\")):
         try:
             file_path = os.path.abspath(clean_pattern)
+            if suffixes is not None and os.path.splitext(file_path)[1].casefold() not in suffixes:
+                return []
             if (scoped and not _within_roots(file_path, roots)) or not os.path.isfile(file_path):
                 return []
             stat = os.stat(file_path)
@@ -111,7 +115,7 @@ def find_local_files(
     # 1. Attempt Voidtools Everything CLI (instant sub-15ms search)
     # Global index queries cannot enforce a folder boundary. Scoped searches walk
     # only their supplied roots, including when those roots no longer exist.
-    es_path = None if scoped else _find_everything_cli()
+    es_path = None if scoped or suffixes is not None else _find_everything_cli()
     if es_path:
         try:
             cmd = [es_path, "-n", str(max_results), clean_pattern]
@@ -191,6 +195,8 @@ def find_local_files(
             for f in filenames:
                 if time.monotonic() - start_time > timeout_sec:
                     return results
+                if suffixes is not None and os.path.splitext(f)[1].casefold() not in suffixes:
+                    continue
                 if fnmatch.fnmatch(f.lower(), glob_pattern.lower()):
                     full_path = os.path.abspath(os.path.join(dirpath, f))
                     identity = os.path.normcase(os.path.realpath(full_path))

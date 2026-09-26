@@ -1,0 +1,117 @@
+{
+  "model": "models/Spark-X2.5-4B-Q4_K_M.gguf",
+  "scope": "Real planner, isolated memory and real temporary files; external effects disabled.",
+  "cases": [
+    {
+      "id": "atlas_named_report",
+      "answer": "The status for the Atlas project is currently **awaiting review**.",
+      "searches": [
+        {
+          "pattern": "status.md",
+          "project": "Atlas",
+          "matches": [
+            "status.md"
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "name": "FIND_FILES",
+          "ok": true
+        },
+        {
+          "name": "READ_LOCAL_FILE",
+          "ok": true
+        }
+      ],
+      "read_expected_file": true,
+      "accepted_phrases": [
+        "awaiting review"
+      ],
+      "passed": true,
+      "duration_seconds": 28.54
+    },
+    {
+      "id": "boreal_named_report",
+      "answer": "Based on the retrieved data, the status for the **Boreal** project is **blocked by a supplier**.",
+      "searches": [
+        {
+          "pattern": "status.md",
+          "project": "Boreal",
+          "matches": [
+            "status.md"
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "name": "FIND_FILES",
+          "ok": true
+        },
+        {
+          "name": "READ_LOCAL_FILE",
+          "ok": true
+        }
+      ],
+      "read_expected_file": true,
+      "accepted_phrases": [
+        "blocked by supplier",
+        "blocked by a supplier"
+      ],
+      "passed": true,
+      "duration_seconds": 22.88
+    },
+    {
+      "id": "atlas_discovery",
+      "answer": "I found the Atlas project status document at `C:\\Users\\Abdullah\\AppData\\Local\\Temp\\omnivla-project-eval-hjtof0cu\\Atlas\\status.md`.\n\nThe document's content states: **\"Atlas status: awaiting review.\"**\n\nThis indicates the Atlas project is currently in an **awaiting review** state.\n\nNote: The search result was a direct excerpt from the file, so no further reading is needed. If you need more detailed information or additional context, let me know.",
+      "searches": [
+        {
+          "query": "Atlas status",
+          "project": "Atlas",
+          "kind": "content",
+          "matches": [
+            "status.md"
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "name": "SEARCH_LOCAL_TEXT",
+          "ok": true
+        }
+      ],
+      "read_expected_file": true,
+      "accepted_phrases": [
+        "awaiting review"
+      ],
+      "passed": true,
+      "duration_seconds": 57.5
+    },
+    {
+      "id": "atlas_content_search",
+      "answer": "Based on the search results, the Atlas project file containing \"status\" is located at:\n\n**Path:** `C:\\Users\\Abdullah\\AppData\\Local\\Temp\\omnivla-project-eval-hjtof0cu\\Atlas\\status.md`\n\n**Contents found:**\n> \"Atlas status: awaiting review.\"\n\nThe search was bounded (coverage limited to up to 60 files, depth 5, first 12000 characters per file, and 3 matches), so this is the only match returned. No additional status-related content was found in the scanned files.",
+      "searches": [
+        {
+          "query": "status",
+          "project": "Atlas",
+          "kind": "content",
+          "matches": [
+            "status.md"
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "name": "SEARCH_LOCAL_TEXT",
+          "ok": true
+        }
+      ],
+      "read_expected_file": true,
+      "accepted_phrases": [
+        "awaiting review"
+      ],
+      "passed": true,
+      "duration_seconds": 29.12
+    }
+  ]
+}

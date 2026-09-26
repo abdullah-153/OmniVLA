@@ -23,6 +23,7 @@ from cogniagent.tools import (
     detect_webpage_read_intent, read_webpage, format_webpage_summary,
 )
 from cogniagent.tools.gateway import PersonalToolGateway
+from cogniagent.tools.local_text_search import search_local_text, format_text_search
 from cogniagent.tools.local_file_reader import (
     detect_local_file_read_intent, read_local_text_file, format_local_file,
 )
@@ -536,7 +537,7 @@ def parse_model_tool_call(text: str) -> tuple[str | None, dict[str, str]]:
 
     # 1. Standard tag format: [BROWSER_SEARCH: <query>], [FIND_FILES: <pattern>], etc.
     tag_m = re.search(
-        r"\[(BROWSER_SEARCH|FIND_FILES|READ_LOCAL_FILE|READ_WEBPAGE|NOTIFY):\s*([^\]]+)\]",
+        r"\[(BROWSER_SEARCH|SEARCH_LOCAL_TEXT|FIND_FILES|READ_LOCAL_FILE|READ_WEBPAGE|NOTIFY):\s*([^\]]+)\]",
         text,
         re.IGNORECASE,
     )
@@ -544,13 +545,13 @@ def parse_model_tool_call(text: str) -> tuple[str | None, dict[str, str]]:
         # Some local models emit a closed XML wrapper despite bracket examples.
         # Accept only read-only tools and plain argument text in this variant.
         tag_m = re.search(
-            r"<tool_call>\s*(BROWSER_SEARCH|FIND_FILES|READ_LOCAL_FILE|READ_WEBPAGE):\s*"
+            r"<tool_call>\s*(BROWSER_SEARCH|SEARCH_LOCAL_TEXT|FIND_FILES|READ_LOCAL_FILE|READ_WEBPAGE):\s*"
             r"([^<>]+?)(?:</arg_value>)?\s*</tool_call>", text, re.IGNORECASE,
         )
     if tag_m:
         name = tag_m.group(1).upper()
         arg_str = tag_m.group(2).strip()
-        if name == "BROWSER_SEARCH":
+        if name in {"BROWSER_SEARCH", "SEARCH_LOCAL_TEXT"}:
             return name, {"query": arg_str}
         elif name == "FIND_FILES":
             return name, {"pattern": arg_str}
@@ -573,7 +574,7 @@ def parse_model_tool_call(text: str) -> tuple[str | None, dict[str, str]]:
                 parsed = parsed[0]
             if isinstance(parsed, dict):
                 t_name = str(parsed.get("tool") or parsed.get("name") or "").strip().upper()
-                if t_name in ("BROWSER_SEARCH", "FIND_FILES", "READ_LOCAL_FILE", "READ_WEBPAGE", "NOTIFY"):
+                if t_name in ("BROWSER_SEARCH", "SEARCH_LOCAL_TEXT", "FIND_FILES", "READ_LOCAL_FILE", "READ_WEBPAGE", "NOTIFY"):
                     args = parsed.get("arguments") or parsed.get("parameters") or parsed
                     if not isinstance(args, dict):
                         args = {"query": str(args)}
@@ -583,7 +584,7 @@ def parse_model_tool_call(text: str) -> tuple[str | None, dict[str, str]]:
                     url = str(args.get("url") or parsed.get("url") or "").strip()
                     title = str(args.get("title") or parsed.get("title") or "").strip()
                     msg = str(args.get("message") or args.get("body") or parsed.get("message") or "").strip()
-                    if t_name == "BROWSER_SEARCH" and query:
+                    if t_name in {"BROWSER_SEARCH", "SEARCH_LOCAL_TEXT"} and query:
                         return t_name, {"query": query}
                     elif t_name == "FIND_FILES" and (pattern or query):
                         return t_name, {"pattern": pattern or query}
@@ -598,7 +599,7 @@ def parse_model_tool_call(text: str) -> tuple[str | None, dict[str, str]]:
 
     # 3. Flexible / Partial JSON regex fallback (for unclosed/truncated JSON streams)
     tool_rgx = re.search(
-        r'["\']?(?:tool|name)["\']?\s*:\s*["\']?(BROWSER_SEARCH|FIND_FILES|READ_LOCAL_FILE|READ_WEBPAGE|NOTIFY)["\']?',
+        r'["\']?(?:tool|name)["\']?\s*:\s*["\']?(BROWSER_SEARCH|SEARCH_LOCAL_TEXT|FIND_FILES|READ_LOCAL_FILE|READ_WEBPAGE|NOTIFY)["\']?',
         text,
         re.IGNORECASE,
     )
@@ -610,7 +611,7 @@ def parse_model_tool_call(text: str) -> tuple[str | None, dict[str, str]]:
             re.IGNORECASE,
         )
         val = query_m.group(1).strip() if query_m else ""
-        if t_name == "BROWSER_SEARCH":
+        if t_name in {"BROWSER_SEARCH", "SEARCH_LOCAL_TEXT"}:
             return t_name, {"query": val}
         elif t_name == "FIND_FILES":
             return t_name, {"pattern": val}
@@ -634,23 +635,23 @@ def strip_tool_syntaxes(text: str) -> str:
         return ""
     # Strip whole markdown codeblocks containing tool calls
     cleaned = re.sub(
-        r"```+[a-zA-Z0-9_-]*[\s\S]*?(?:BROWSER_SEARCH|FIND_FILES|READ_LOCAL_FILE|READ_WEBPAGE|NOTIFY)[\s\S]*?```+",
+        r"```+[a-zA-Z0-9_-]*[\s\S]*?(?:BROWSER_SEARCH|SEARCH_LOCAL_TEXT|FIND_FILES|READ_LOCAL_FILE|READ_WEBPAGE|NOTIFY)[\s\S]*?```+",
         "",
         text,
         flags=re.IGNORECASE,
     )
     # Strip tag calls
-    cleaned = re.sub(r"\[(?:BROWSER_SEARCH|FIND_FILES|READ_LOCAL_FILE|READ_WEBPAGE|NOTIFY):[^\]]+\]", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\[(?:BROWSER_SEARCH|SEARCH_LOCAL_TEXT|FIND_FILES|READ_LOCAL_FILE|READ_WEBPAGE|NOTIFY):[^\]]+\]", "", cleaned, flags=re.IGNORECASE)
     # Strip full JSON tool call arrays / objects
     cleaned = re.sub(
-        r"\[\s*\{\s*[\"']?(?:tool|name)[\"']?\s*:\s*[\"']?(?:BROWSER_SEARCH|FIND_FILES|READ_LOCAL_FILE|READ_WEBPAGE|NOTIFY)[\"']?[\s\S]*?\}\s*\]",
+        r"\[\s*\{\s*[\"']?(?:tool|name)[\"']?\s*:\s*[\"']?(?:BROWSER_SEARCH|SEARCH_LOCAL_TEXT|FIND_FILES|READ_LOCAL_FILE|READ_WEBPAGE|NOTIFY)[\"']?[\s\S]*?\}\s*\]",
         "",
         cleaned,
         flags=re.IGNORECASE,
     )
     # Strip partial/open JSON blocks
     cleaned = re.sub(
-        r"\[?\s*\{\s*[\"']?(?:tool|name)[\"']?\s*:\s*[\"']?(?:BROWSER_SEARCH|FIND_FILES|READ_LOCAL_FILE|READ_WEBPAGE|NOTIFY)[\"']?[\s\S]*?(?:\}\s*\]?|$)",
+        r"\[?\s*\{\s*[\"']?(?:tool|name)[\"']?\s*:\s*[\"']?(?:BROWSER_SEARCH|SEARCH_LOCAL_TEXT|FIND_FILES|READ_LOCAL_FILE|READ_WEBPAGE|NOTIFY)[\"']?[\s\S]*?(?:\}\s*\]?|$)",
         "",
         cleaned,
         flags=re.IGNORECASE,
@@ -730,6 +731,8 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
             format_page=format_webpage_summary, notify=send_notification,
             read_local_file=read_local_text_file, format_local_file=format_local_file,
             file_search_roots=file_search_roots,
+            search_text=lambda query, roots: search_local_text(query, roots, cancel_event=cancel_event),
+            format_text=format_text_search,
         )
 
         def use_tool(name, arguments):
@@ -844,6 +847,10 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
 
         if file_search_roots is not None and not tool_contexts:
             system_prompt += (
+                "\nUse `[SEARCH_LOCAL_TEXT: <one to eight distinctive words>]` to find facts in project notes "
+                "when the filename is unknown. It searches file contents within the remembered folders "
+                "and returns bounded excerpts with file paths and line numbers. Use those source locations "
+                "in your answer. Search coverage is partial; no result does not prove absence. "
                 "\nFIND_FILES is already limited to the relevant remembered project folders. "
                 "Search for filename terms (for example, status), without requiring the project name "
                 "in the filename. If no files match, try a simpler filename pattern in the same "
@@ -900,6 +907,13 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
                         if activity_callback:
                             activity_callback(f'Searching web for "{dyn_q}"...')
                         tool_feedback = use_tool("BROWSER_SEARCH", {"query": dyn_q}).content
+                        tool_executed = True
+                elif tool_name == "SEARCH_LOCAL_TEXT":
+                    query = tool_args.get("query", "").strip()
+                    if query:
+                        if activity_callback:
+                            activity_callback("Searching project file contents...")
+                        tool_feedback = use_tool("SEARCH_LOCAL_TEXT", {"query": query}).content
                         tool_executed = True
                 elif tool_name == "FIND_FILES":
                     dyn_pat = tool_args.get("pattern", "").strip()

@@ -10,6 +10,7 @@ from unittest.mock import patch
 from cogniagent.gui import server_manager as planner
 from cogniagent.memory.user_profile import UserProfileMemory
 from cogniagent.tools.file_search import find_local_files
+from cogniagent.tools.local_text_search import search_local_text
 
 
 def main():
@@ -33,6 +34,7 @@ def main():
             ("atlas_named_report", "Summarize status.md for the Atlas project.", "Atlas", ["awaiting review"]),
             ("boreal_named_report", "Summarize status.md for the Boreal project.", "Boreal", ["blocked by supplier", "blocked by a supplier"]),
             ("atlas_discovery", "Find the Atlas project status document and read it to tell me its status.", "Atlas", ["awaiting review"]),
+            ("atlas_content_search", "Search the Atlas project file contents for status and tell me what they say.", "Atlas", ["awaiting review"]),
         ]
         try:
             for case_id, prompt, project, expected in cases:
@@ -48,9 +50,17 @@ def main():
                     return matches
 
                 started = time.monotonic()
+                def search_contents(query, roots, **kwargs):
+                    if roots != [str(reports[project].parent)]:
+                        raise ValueError("Expected the task's remembered project folder")
+                    result = search_local_text(query, roots, **kwargs)
+                    searches.append({"query": query, "project": project, "kind": "content",
+                                     "matches": [Path(item["path"]).name for item in result.get("matches", [])]})
+                    return result
                 try:
                     with patch("cogniagent.memory.user_profile.get_user_profile", return_value=profile), \
                          patch.object(planner, "find_local_files", side_effect=discover), \
+                         patch.object(planner, "search_local_text", side_effect=search_contents), \
                          patch.object(planner, "execute_browser_search", return_value="Disabled in evaluation."), \
                          patch.object(planner, "read_webpage", return_value={"success": False}), \
                          patch.object(planner, "send_notification", return_value=False):
@@ -58,13 +68,14 @@ def main():
                             learn_personal_context_enabled=False, persist_in_ram=True,
                             tool_result_callback=receipts.append)
                     expected_hash = hashlib.sha256(reports[project].read_bytes()).hexdigest()
-                    grounded = any(r.name == "READ_LOCAL_FILE" and r.ok and
+                    grounded = any(r.name in {"READ_LOCAL_FILE", "SEARCH_LOCAL_TEXT"} and r.ok and
                                    r.artifact_sha256 == expected_hash for r in receipts)
                     result = {"id": case_id, "answer": answer, "searches": searches,
                               "tools": [{"name": r.name, "ok": r.ok} for r in receipts],
                               "read_expected_file": grounded,
                               "accepted_phrases": expected,
-                              "passed": grounded and any(phrase.casefold() in answer.casefold() for phrase in expected)}
+                              "passed": (grounded and any(phrase.casefold() in answer.casefold() for phrase in expected)
+                                         and (case_id != "atlas_content_search" or any(r.name == "SEARCH_LOCAL_TEXT" for r in receipts)))}
                 except Exception as error:
                     result = {"id": case_id, "passed": False, "error": str(error), "searches": searches}
                 result["duration_seconds"] = round(time.monotonic() - started, 2)
