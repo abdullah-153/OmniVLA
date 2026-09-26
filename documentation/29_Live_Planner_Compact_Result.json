@@ -1,0 +1,26 @@
+{
+  "model": "models/Spark-X2.5-4B-Q4_K_M.gguf",
+  "scope": "Real local planner; synthetic tools and temporary data, no desktop execution.",
+  "cases": [
+    {
+      "id": "read_named_report",
+      "tools": [
+        "FIND_FILES",
+        "READ_LOCAL_FILE"
+      ],
+      "answer": "The file **atlas.md** contains the following key details:\n\n- **Delivery Date:** 14 November\n- **Status:** Awaiting review",
+      "passed": true,
+      "duration_seconds": 19.59
+    },
+    {
+      "id": "discover_and_read",
+      "tools": [
+        "FIND_FILES",
+        "READ_LOCAL_FILE"
+      ],
+      "answer": "Based on the read content of the **Atlas project status document** (`atlas.md`), the delivery date is **14 November**.\n\nThe document also notes the current status as \"awaiting review.\"",
+      "passed": true,
+      "duration_seconds": 40.31
+    }
+  ]
+}
