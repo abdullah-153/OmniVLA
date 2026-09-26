@@ -6,6 +6,7 @@ from pathlib import Path
 import json
 import os
 import time
+from cogniagent.tools.file_search import simplify_scoped_pattern
 from typing import Callable, Any
 
 
@@ -87,6 +88,9 @@ class PersonalToolGateway:
                 roots = None if explicit else self.file_search_roots
                 matches = (self.find_files(pattern) if roots is None else
                            self.find_files(pattern, search_roots=roots))
+                retry_pattern = simplify_scoped_pattern(pattern, roots) if roots and not matches else None
+                if retry_pattern:
+                    matches = self.find_files(retry_pattern, search_roots=roots)
                 self.file_matches = matches[:15]
                 for item in matches[:15]:
                     try:
@@ -94,6 +98,9 @@ class PersonalToolGateway:
                     except (KeyError, OSError, TypeError, ValueError):
                         continue
                 content = self.format_files(matches, pattern=values["pattern"])
+                if retry_pattern:
+                    content = ("Original filename query had no matches. Retried within the same folder using "
+                               + json.dumps(retry_pattern) + ".\n" + content)
                 if roots is not None:
                     content = ("Search limited to remembered project folders: " + json.dumps(roots)
                                + ". Missing folders do not trigger a broader search.\n" + content)

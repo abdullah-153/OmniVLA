@@ -1,0 +1,78 @@
+{
+  "model": "models/Spark-X2.5-4B-Q4_K_M.gguf",
+  "scope": "Real planner, isolated memory and real temporary files; external effects disabled.",
+  "cases": [
+    {
+      "id": "atlas_named_report",
+      "answer": "The status for the Atlas project is currently **awaiting review**.",
+      "searches": [
+        {
+          "pattern": "status.md",
+          "project": "Atlas",
+          "matches": [
+            "status.md"
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "name": "FIND_FILES",
+          "ok": true
+        },
+        {
+          "name": "READ_LOCAL_FILE",
+          "ok": true
+        }
+      ],
+      "read_expected_file": true,
+      "passed": true,
+      "duration_seconds": 28.83
+    },
+    {
+      "id": "boreal_named_report",
+      "answer": "The status for the Boreal project is **blocked by a supplier**.",
+      "searches": [
+        {
+          "pattern": "status.md",
+          "project": "Boreal",
+          "matches": [
+            "status.md"
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "name": "FIND_FILES",
+          "ok": true
+        },
+        {
+          "name": "READ_LOCAL_FILE",
+          "ok": true
+        }
+      ],
+      "read_expected_file": true,
+      "passed": false,
+      "duration_seconds": 22.36
+    },
+    {
+      "id": "atlas_discovery",
+      "answer": "I searched the Atlas project folder (`C:\\Users\\Abdullah\\AppData\\Local\\Temp\\omnivla-project-eval-q0c8lugz\\Atlas`) for a file matching the pattern \"Atlas*status*\", but no matching local files were found.\n\nI was unable to locate the Atlas project status document in the available project folder. To proceed, I would need to either:\n1. **Broaden the search**: If you can provide a broader file name pattern or indicate the type of document (e.g., \"report\", \"update\", \"progress\"), I can search again.\n2. **Check other locations**: If the document might be in a different folder or location, please let me know the path, and I can read it directly.\n\nPlease provide additional details so I can locate the correct document.",
+      "searches": [
+        {
+          "pattern": "Atlas*status*",
+          "project": "Atlas",
+          "matches": []
+        }
+      ],
+      "tools": [
+        {
+          "name": "FIND_FILES",
+          "ok": true
+        }
+      ],
+      "read_expected_file": false,
+      "passed": false,
+      "duration_seconds": 51.9
+    }
+  ]
+}

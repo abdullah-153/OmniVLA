@@ -1,0 +1,94 @@
+{
+  "model": "models/Spark-X2.5-4B-Q4_K_M.gguf",
+  "scope": "Real planner, isolated memory and real temporary files; external effects disabled.",
+  "cases": [
+    {
+      "id": "atlas_named_report",
+      "answer": "Based on the retrieved findings, the status of the Atlas project is **awaiting review**.",
+      "searches": [
+        {
+          "pattern": "status.md",
+          "project": "Atlas",
+          "matches": [
+            "status.md"
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "name": "FIND_FILES",
+          "ok": true
+        },
+        {
+          "name": "READ_LOCAL_FILE",
+          "ok": true
+        }
+      ],
+      "read_expected_file": true,
+      "accepted_phrases": [
+        "awaiting review"
+      ],
+      "passed": true,
+      "duration_seconds": 28.36
+    },
+    {
+      "id": "boreal_named_report",
+      "answer": "The status for the Boreal project is **blocked by a supplier**.",
+      "searches": [
+        {
+          "pattern": "status.md",
+          "project": "Boreal",
+          "matches": [
+            "status.md"
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "name": "FIND_FILES",
+          "ok": true
+        },
+        {
+          "name": "READ_LOCAL_FILE",
+          "ok": true
+        }
+      ],
+      "read_expected_file": true,
+      "accepted_phrases": [
+        "blocked by supplier",
+        "blocked by a supplier"
+      ],
+      "passed": true,
+      "duration_seconds": 21.99
+    },
+    {
+      "id": "atlas_discovery",
+      "answer": "Based on the content of the Atlas project status document (`status.md`), the status is:\n\n**Atlas status: awaiting review.**\n\nThe document is complete (no truncation) and contains this single status line.",
+      "searches": [
+        {
+          "pattern": "status",
+          "project": "Atlas",
+          "matches": [
+            "status.md"
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "name": "FIND_FILES",
+          "ok": true
+        },
+        {
+          "name": "READ_LOCAL_FILE",
+          "ok": true
+        }
+      ],
+      "read_expected_file": true,
+      "accepted_phrases": [
+        "awaiting review"
+      ],
+      "passed": true,
+      "duration_seconds": 57.49
+    }
+  ]
+}

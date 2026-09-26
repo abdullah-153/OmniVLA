@@ -10,6 +10,23 @@ def reply(text):
     return response
 
 
+@pytest.mark.parametrize("text", [
+    "<tool_call>FIND_FILES: status</tool_call>",
+    "I'll search.<tool_call>FIND_FILES: status</arg_value></tool_call>",
+])
+def test_closed_read_only_xml_tool_variant(text):
+    assert server_manager.parse_model_tool_call(text) == ("FIND_FILES", {"pattern": "status"})
+
+
+@pytest.mark.parametrize("text", [
+    "<tool_call>FIND_FILES: status",
+    "<tool_call>NOTIFY: sent | done</tool_call>",
+    "<tool_call>FIND_FILES: <instruction>status</instruction></tool_call>",
+])
+def test_xml_variant_rejects_partial_nested_and_effectful_calls(text):
+    assert server_manager.parse_model_tool_call(text) == (None, {})
+
+
 def test_planner_can_discover_then_read_and_answer(tmp_path):
     report = tmp_path / "report.md"
     report.write_text("Atlas milestone complete.", encoding="utf-8")

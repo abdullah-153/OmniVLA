@@ -1,0 +1,77 @@
+{
+  "model": "models/Spark-X2.5-4B-Q4_K_M.gguf",
+  "scope": "Real planner, isolated memory and real temporary files; external effects disabled.",
+  "cases": [
+    {
+      "id": "atlas_named_report",
+      "answer": "The status of the Atlas project is currently **awaiting review**.",
+      "searches": [
+        {
+          "pattern": "status.md",
+          "project": "Atlas",
+          "matches": [
+            "status.md"
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "name": "FIND_FILES",
+          "ok": true
+        },
+        {
+          "name": "READ_LOCAL_FILE",
+          "ok": true
+        }
+      ],
+      "read_expected_file": true,
+      "accepted_phrases": [
+        "awaiting review"
+      ],
+      "passed": true,
+      "duration_seconds": 27.6
+    },
+    {
+      "id": "boreal_named_report",
+      "answer": "The status for the Boreal project is **blocked by a supplier**.",
+      "searches": [
+        {
+          "pattern": "status.md",
+          "project": "Boreal",
+          "matches": [
+            "status.md"
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "name": "FIND_FILES",
+          "ok": true
+        },
+        {
+          "name": "READ_LOCAL_FILE",
+          "ok": true
+        }
+      ],
+      "read_expected_file": true,
+      "accepted_phrases": [
+        "blocked by supplier",
+        "blocked by a supplier"
+      ],
+      "passed": true,
+      "duration_seconds": 21.84
+    },
+    {
+      "id": "atlas_discovery",
+      "answer": "I'll search for the Atlas project status document in the relevant project folder.<tool_call>FIND_FILES: status</arg_value></tool_call>",
+      "searches": [],
+      "tools": [],
+      "read_expected_file": false,
+      "accepted_phrases": [
+        "awaiting review"
+      ],
+      "passed": false,
+      "duration_seconds": 29.59
+    }
+  ]
+}

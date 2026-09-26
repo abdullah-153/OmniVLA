@@ -45,6 +45,20 @@ def project_search_roots(context_pack: dict) -> list[str] | None:
             roots.append(path)
     return roots or None
 
+
+def simplify_scoped_pattern(pattern: str, roots: list[str]) -> str | None:
+    """Remove a redundant folder label from a descriptive, extensionless query."""
+    if len(roots) != 1 or any(char in pattern for char in ("/", "\\", ".", "[", "]", "?")):
+        return None
+    label = os.path.basename(os.path.normpath(roots[0]))
+    if len(label) < 3:
+        return None
+    simplified, removed = re.subn(r"(?<!\w)" + re.escape(label) + r"(?!\w)", "", pattern, flags=re.I)
+    simplified = simplified.strip(" *")
+    if not removed or len(simplified) < 3:
+        return None
+    return simplified
+
 _EVERYTHING_PATHS = [
     "es.exe",
     r"C:\Program Files\Everything\es.exe",

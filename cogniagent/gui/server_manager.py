@@ -538,6 +538,13 @@ def parse_model_tool_call(text: str) -> tuple[str | None, dict[str, str]]:
         text,
         re.IGNORECASE,
     )
+    if not tag_m:
+        # Some local models emit a closed XML wrapper despite bracket examples.
+        # Accept only read-only tools and plain argument text in this variant.
+        tag_m = re.search(
+            r"<tool_call>\s*(BROWSER_SEARCH|FIND_FILES|READ_LOCAL_FILE|READ_WEBPAGE):\s*"
+            r"([^<>]+?)(?:</arg_value>)?\s*</tool_call>", text, re.IGNORECASE,
+        )
     if tag_m:
         name = tag_m.group(1).upper()
         arg_str = tag_m.group(2).strip()
@@ -810,6 +817,15 @@ def run_planner_chat(message, chat_history, temp=0.2, max_tokens=640, rag_contex
 
         if user_profile_context:
             system_prompt += f"\n\n{user_profile_context}"
+
+        if file_search_roots is not None and not tool_contexts:
+            system_prompt += (
+                "\nFIND_FILES is already limited to the relevant remembered project folders. "
+                "Search for filename terms (for example, status), without requiring the project name "
+                "in the filename. If no files match, try a simpler filename pattern in the same "
+                "folders before asking the user. Read a discovered file to establish its contents; "
+                "ask the user to choose if multiple plausible files remain."
+            )
 
         if rag_context:
             system_prompt += (

@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 
-from cogniagent.tools.file_search import find_local_files, project_search_roots
+from cogniagent.tools.file_search import find_local_files, project_search_roots, simplify_scoped_pattern
 from tests.test_tool_gateway import make_gateway
 from tests.test_planner_tool_sequence import reply
 from cogniagent.gui import server_manager
@@ -61,3 +61,18 @@ def test_planner_uses_relevant_project_folder(tmp_path):
     profile.build_context_pack.assert_called_once_with("Check Atlas status")
     search.assert_called_once_with("report.md", search_roots=[str(tmp_path)])
     assert "remembered project folders" in receipts[0].content
+
+
+def test_empty_scoped_search_retries_without_redundant_folder_name(tmp_path):
+    gateway, callbacks = make_gateway()
+    root = str(tmp_path / "Atlas")
+    gateway.file_search_roots = [root]
+    callbacks["find_files"].side_effect = [[], [{"name": "status.md"}]]
+    result = gateway.run("FIND_FILES", {"pattern": "Atlas*status*"})
+    assert result.ok and gateway.file_matches == [{"name": "status.md"}]
+    assert callbacks["find_files"].call_args_list[1].kwargs == {"search_roots": [root]}
+    assert callbacks["find_files"].call_args_list[1].args == ("status",)
+    assert "Original filename query had no matches" in result.content
+    for pattern in ("Atlas.md", "Atlas", "Atlas?status", "other status", "Atlas/status", "*status*"):
+        assert simplify_scoped_pattern(pattern, [root]) is None
+    assert simplify_scoped_pattern("Atlas status", [root, str(tmp_path / "Other")]) is None
