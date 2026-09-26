@@ -547,6 +547,32 @@ def http_app(tmp_path, monkeypatch):
     httpd.shutdown(); httpd.server_close(); thread.join()
 
 
+def test_skill_revision_api_preview_restore_and_authorization(http_app, tmp_path, monkeypatch):
+    from cogniagent.skills.skill_registry import SkillRegistry
+    from cogniagent.skills.skill_schema import SkillDefinition
+    registry = SkillRegistry(str(tmp_path / "skills"))
+    monkeypatch.setattr(server, "skills_registry", registry)
+    monkeypatch.setattr(server.gui_app, "running_thread", None)
+    registry.save_skill(SkillDefinition(name="report", title="Original", description="First"))
+    registry.save_skill(SkillDefinition(name="report", title="Updated", description="Second"))
+    revision = registry.list_revisions("report")[0]["revision"]
+    payload = {"name": "report", "revision": revision}
+    assert requests.post(http_app + "/api/skills/restore", json=payload, timeout=3).status_code == 401
+    session = requests.get(http_app + "/api/session", timeout=3).json()["token"]
+    headers = {"X-OmniVLA-Session": session}
+    preview = requests.post(http_app + "/api/skills/revision", json=payload, headers=headers, timeout=3)
+    assert preview.json()["skill"]["title"] == "Original"
+    assert registry.get_skill("report").title == "Updated"
+    live = MagicMock()
+    live.is_alive.return_value = True
+    monkeypatch.setattr(server.gui_app, "running_thread", live)
+    assert requests.post(http_app + "/api/skills/restore", json=payload, headers=headers, timeout=3).status_code == 409
+    monkeypatch.setattr(server.gui_app, "running_thread", None)
+    restored = requests.post(http_app + "/api/skills/restore", json=payload, headers=headers, timeout=3)
+    assert restored.status_code == 200
+    assert registry.get_skill("report").title == "Original"
+
+
 def test_http_host_session_and_overlay(http_app):
     bad=requests.get(http_app+"/api/session",headers={"Host":"untrusted.example:8000","Origin":"http://untrusted.example:8000"},timeout=3)
     assert bad.status_code == 403

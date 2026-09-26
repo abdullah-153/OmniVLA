@@ -1567,7 +1567,25 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         if not skill:
             self._error(404, "Skill not found.")
             return
-        self._json_response({"skill": skill.to_dict()})
+        self._json_response({"skill": skill.to_dict(), "revisions": skills_registry.list_revisions(name)})
+
+    def _skill_revision(self, payload: dict[str, Any], restore: bool = False) -> None:
+        name = validate_skill_name(payload.get("name"))
+        if not skills_registry.get_skill(name):
+            self._error(404, "Skill not found.")
+            return
+        if restore and gui_app.running_thread and gui_app.running_thread.is_alive():
+            self._error(409, "Stop the active task before restoring a skill.")
+            return
+        try:
+            revision = payload.get("revision")
+            skill = skills_registry.get_revision(name, revision)
+            if restore:
+                skills_registry.save_skill(skill)
+            self._json_response({"success": True, "skill": skill.to_dict(),
+                                 "revisions": skills_registry.list_revisions(name)})
+        except (ValueError, TypeError) as error:
+            self._error(400, str(error))
 
     def _save_skill_definition(self, payload: dict[str, Any]) -> None:
         try:
@@ -1789,6 +1807,7 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
         local_only_routes = {
             "/api/profile", "/api/settings", "/api/safety", "/api/pairing/rotate", "/api/clear_vram", "/api/memory/clear",
             "/api/skills", "/api/skills/delete", "/api/skills/synthesize", "/api/skills/generate_intelligent",
+            "/api/skills/revision", "/api/skills/restore",
             "/api/observe/start", "/api/observe/action", "/api/observe/stop",
             "/api/shutdown", "/shutdown",
         }
@@ -1813,6 +1832,8 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 "/api/memory/clear",
                 "/api/skills",
                 "/api/skills/delete",
+                "/api/skills/revision",
+                "/api/skills/restore",
                 "/api/skills/synthesize",
                 "/api/skills/generate_intelligent",
                 "/api/observe/start",
@@ -1882,6 +1903,10 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 self._save_skill_definition(payload)
             elif path == "/api/skills/delete":
                 self._delete_skill_definition(payload)
+            elif path == "/api/skills/revision":
+                self._skill_revision(payload)
+            elif path == "/api/skills/restore":
+                self._skill_revision(payload, restore=True)
             elif path == "/api/skills/synthesize":
                 self._synthesize_skill_from_observation(payload)
             elif path == "/api/skills/generate_intelligent":

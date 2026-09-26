@@ -6,4 +6,6 @@
 
 Imported JSON and Markdown skills are updated at their existing source path and retain their format. This avoids duplicate definitions that can resurrect the old procedure after restart. Identical saves do not create extra revisions; source writes use consistent UTF-8 bytes across platforms.
 
-This is a registry API foundation. A console history view and evaluation results per revision remain to be implemented. Snapshots are local recovery copies, not tamper-proof audit records, and currently have no automatic retention limit.
+The authenticated skill detail endpoint includes revision metadata. Local authenticated clients can preview a snapshot with `POST /api/skills/revision` or restore it with `POST /api/skills/restore`, passing `name` and `revision`. Restore is rejected while a desktop task is running. Preview does not change the active source.
+
+A console history view and evaluation results per revision remain to be implemented. Snapshots are local recovery copies, not tamper-proof audit records, and currently have no automatic retention limit.

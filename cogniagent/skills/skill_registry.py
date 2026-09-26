@@ -137,8 +137,8 @@ class SkillRegistry:
                 for item in sorted(history.iterdir())
                 if re.fullmatch(r"[a-f0-9]{64}\.(md|json)", item.name)]
 
-    def restore_revision(self, name: str, revision: str) -> str:
-        """Restore a verified snapshot, retaining the replaced version."""
+    def get_revision(self, name: str, revision: str) -> SkillDefinition:
+        """Read a verified snapshot without changing the active skill."""
         name = self.validate_skill_name(name)
         if not re.fullmatch(r"[a-f0-9]{64}", str(revision)):
             raise ValueError("Invalid skill revision.")
@@ -153,7 +153,11 @@ class SkillRegistry:
         skill = (SkillDefinition.from_dict(json.loads(raw.decode("utf-8"))) if source.suffix == ".json"
                  else SkillDefinition.from_markdown(raw.decode("utf-8")))
         skill.name = name
-        return self.save_skill(skill)
+        return skill
+
+    def restore_revision(self, name: str, revision: str) -> str:
+        """Restore a verified snapshot, retaining the replaced version."""
+        return self.save_skill(self.get_revision(name, revision))
 
     def delete_skill(self, name: str) -> bool:
         """Delete a skill from disk and memory."""
